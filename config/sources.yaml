@@ -1,0 +1,5 @@
+allowed_scoring_tiers: [A, B]
+discovery_only_tiers: [C]
+minimum_gate_confidence: high
+max_age_days: 730
+

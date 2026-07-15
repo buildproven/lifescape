@@ -1,0 +1,9 @@
+gates:
+  - {id: purchase_feasibility, metric_id: median_sale_price, operator: max, threshold: 700000, critical: true}
+  - {id: healthcare, metric_id: er_drive_minutes, operator: max, threshold: 25, critical: true}
+  - {id: broadband, metric_id: broadband_mbps_down, operator: min, threshold: 100, critical: true}
+  - {id: winter_severity, metric_id: annual_snowfall, operator: max, threshold: 65, critical: true}
+  - {id: hazard_profile, metric_id: flood_risk_score, operator: max, threshold: 7, critical: true}
+  - {id: distress_profile, metric_id: distress_index, operator: max, threshold: 7, critical: true}
+  - {id: aging_in_place_supply, metric_id: one_level_inventory_count, operator: min, threshold: 5, critical: true}
+

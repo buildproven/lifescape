@@ -1,0 +1,12 @@
+profile_version: "1.0"
+purchase_budget_min: 400000
+purchase_budget_max: 700000
+max_annual_carrying_cost: 50000
+household: active_couple_late_50s
+future_self_ages: [60, 75, 85]
+priorities:
+  - healthcare
+  - nature
+  - daily_life
+  - financial_resilience
+

@@ -1,0 +1,12 @@
+place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,retrieved_at,observed_period,source_geography,confidence,synthetic,median_sale_price,er_drive_minutes,broadband_mbps_down,annual_snowfall,flood_risk_score,distress_index,one_level_inventory_count,trail_miles_within_30,restaurant_density,education_attainment,volunteer_org_count,median_days_on_market,population_growth_10yr,airport_drive_minutes,winter_escape_score,water_access_drive_minutes,sailing_season_months
+libertyville_il,Libertyville,IL,town,fixture://benchmark-v1,Synthetic benchmark v1,Retirement Decision Engine,A,2026-01-01,synthetic-v1,town,high,true,510000,12,1000,38,2,2,18,45,22,58,42,24,7,35,7,12,5
+new_bern_nc,New Bern,NC,town,fixture://benchmark-v1,Synthetic benchmark v1,Retirement Decision Engine,A,2026-01-01,synthetic-v1,town,high,true,330000,9,500,2,6,4,22,35,25,34,39,38,12,48,8,3,9
+maryville_tn,Maryville,TN,town,fixture://benchmark-v1,Synthetic benchmark v1,Retirement Decision Engine,A,2026-01-01,synthetic-v1,town,high,true,390000,14,1000,6,2,2,26,120,18,35,34,31,18,18,6,35,2
+williamsburg_va,Williamsburg,VA,town,fixture://benchmark-v1,Synthetic benchmark v1,Retirement Decision Engine,A,2026-01-01,synthetic-v1,town,high,true,470000,11,1000,5,4,2,20,55,27,55,48,29,9,25,8,8,7
+beaufort_sc,Beaufort,SC,town,fixture://benchmark-v1,Synthetic benchmark v1,Retirement Decision Engine,A,2026-01-01,synthetic-v1,town,high,true,460000,16,500,0,8,3,12,25,24,39,41,45,8,55,8,2,10
+hendersonville_nc,Hendersonville,NC,town,fixture://benchmark-v1,Synthetic benchmark v1,Retirement Decision Engine,A,2026-01-01,synthetic-v1,town,high,true,430000,13,1000,8,2,2,24,95,23,40,45,34,11,22,7,40,1
+charleston_sc,Charleston,SC,town,fixture://benchmark-v1,Synthetic benchmark v1,Retirement Decision Engine,A,2026-01-01,synthetic-v1,town,high,true,720000,8,1000,0,7,5,9,30,35,47,55,41,16,18,9,2,10
+traverse_city_mi,Traverse City,MI,town,fixture://benchmark-v1,Synthetic benchmark v1,Retirement Decision Engine,A,2026-01-01,synthetic-v1,town,high,true,480000,10,500,125,2,2,15,80,29,43,50,28,14,12,5,1,5
+muskegon_mi,Muskegon,MI,town,fixture://benchmark-v1,Synthetic benchmark v1,Retirement Decision Engine,A,2026-01-01,synthetic-v1,town,high,true,240000,12,500,95,3,6,17,50,16,22,37,39,-2,45,6,2,5
+erie_pa,Erie,PA,town,fixture://benchmark-v1,Synthetic benchmark v1,Retirement Decision Engine,A,2026-01-01,synthetic-v1,town,high,true,210000,10,,89,3,5,20,42,17,28,40,47,-4,20,6,2,4
+

@@ -1,0 +1,4 @@
+regions:
+  - id: US
+    states: "*"
+

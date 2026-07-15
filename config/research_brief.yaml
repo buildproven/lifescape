@@ -1,0 +1,6 @@
+name: milestone-1-benchmark
+scope: town
+regions: [US]
+benchmark_only: true
+frozen: true
+
