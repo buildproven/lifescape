@@ -23,13 +23,15 @@ The benchmark data is synthetic and exists only to exercise methodology. Generat
 
 Use the benchmark CSV as the import contract. Identity and source columns precede one column per configured metric. Blank metric cells remain missing; they are never guessed.
 
+For real evidence, use a config directory whose `research_brief.yaml` sets `benchmark_only: false`.
+
 ```bash
 retire run \
   --evidence path/to/evidence.csv \
+  --profile path/to/user_profile.yaml \
   --config-dir config \
   --database outputs/run.sqlite \
   --output-dir outputs/run
 ```
 
 See [the implementation plan](docs/implementation-plan.md), [source policy](docs/source-policy.md), and [limitations](docs/limitations.md).
-

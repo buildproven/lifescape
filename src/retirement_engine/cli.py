@@ -26,6 +26,7 @@ def run_command(
     config_dir: Annotated[Path, typer.Option(exists=True, file_okay=False)] = Path("config"),
     database: Annotated[Path, typer.Option()] = Path("outputs/run.sqlite"),
     output_dir: Annotated[Path, typer.Option()] = Path("outputs/run"),
+    profile: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
     simulations: Annotated[int, typer.Option(min=1000)] = 1000,
 ) -> None:
     """Evaluate a manual evidence CSV and write comparison reports."""
@@ -35,6 +36,7 @@ def run_command(
         config_dir=config_dir,
         database_path=database,
         output_dir=output_dir,
+        profile_path=profile,
         simulations=simulations,
     )
     _event(

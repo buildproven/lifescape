@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import StrEnum
+from math import isfinite
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -56,7 +57,7 @@ class GateDefinition(StrictModel):
     id: str
     metric_id: str
     operator: GateOperator
-    threshold: float
+    threshold: float = Field(allow_inf_nan=False)
     critical: bool = True
 
 
@@ -81,7 +82,7 @@ class PlaceRecord(StrictModel):
 class ObservationRecord(StrictModel):
     place: PlaceRecord
     metric_id: str
-    raw_value: float
+    raw_value: float = Field(allow_inf_nan=False)
     observed_period: str
     source: SourceRecord
 
@@ -123,6 +124,7 @@ class SensitivityResult(StrictModel):
 
 class RunResult(StrictModel):
     run_id: str
+    profile_version: str
     config_hash: str
     generated_at: datetime
     places: tuple[PlaceRecord, ...]
@@ -138,6 +140,8 @@ class WeightsConfig(StrictModel):
 
     @model_validator(mode="after")
     def total_is_one_hundred(self) -> WeightsConfig:
+        if any(not isfinite(value) for value in self.weights.values()):
+            raise ValueError("weights must be finite")
         if abs(sum(self.weights.values()) - 100.0) > 1e-8:
             raise ValueError("weights must total 100")
         if any(value < 0 for value in self.weights.values()):
@@ -154,3 +158,36 @@ class SourcesConfig(StrictModel):
     discovery_only_tiers: frozenset[SourceTier]
     minimum_gate_confidence: Confidence
     max_age_days: int = Field(ge=0)
+
+
+class ResearchBrief(StrictModel):
+    name: str
+    scope: str
+    regions: tuple[str, ...]
+    benchmark_only: bool
+    frozen: bool
+
+
+class UserProfile(StrictModel):
+    profile_version: str
+    purchase_budget_min: float = Field(ge=0)
+    purchase_budget_max: float = Field(ge=0)
+    max_annual_carrying_cost: float = Field(ge=0)
+    household: str
+    future_self_ages: tuple[int, ...]
+    priorities: tuple[str, ...]
+
+    @model_validator(mode="after")
+    def budget_range_is_ordered(self) -> UserProfile:
+        if self.purchase_budget_min > self.purchase_budget_max:
+            raise ValueError("purchase_budget_min cannot exceed purchase_budget_max")
+        return self
+
+
+class RegionDefinition(StrictModel):
+    id: str
+    states: str | tuple[str, ...]
+
+
+class RegionsConfig(StrictModel):
+    regions: tuple[RegionDefinition, ...]

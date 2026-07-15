@@ -5,7 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, create_engine
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    ForeignKeyConstraint,
+    String,
+    Text,
+    create_engine,
+    event,
+)
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
@@ -62,6 +72,7 @@ class SourceRow(Base):
 
 class MetricRow(Base):
     __tablename__ = "metrics"
+    run_id: Mapped[str] = mapped_column(ForeignKey("research_runs.run_id"), primary_key=True)
     metric_id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String)
     unit: Mapped[str] = mapped_column(String)
@@ -74,10 +85,13 @@ class MetricRow(Base):
 
 class ObservationRow(Base):
     __tablename__ = "observations"
+    __table_args__ = (
+        ForeignKeyConstraint(["run_id", "metric_id"], ["metrics.run_id", "metrics.metric_id"]),
+    )
     observation_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(ForeignKey("research_runs.run_id"))
+    run_id: Mapped[str] = mapped_column(String)
     place_id: Mapped[str] = mapped_column(ForeignKey("places.place_id"))
-    metric_id: Mapped[str] = mapped_column(ForeignKey("metrics.metric_id"))
+    metric_id: Mapped[str] = mapped_column(String)
     raw_value: Mapped[float] = mapped_column(Float)
     observed_period: Mapped[str] = mapped_column(String)
     retrieved_at: Mapped[str] = mapped_column(String)
@@ -95,7 +109,7 @@ class GateResultRow(Base):
     result: Mapped[str] = mapped_column(String)
     raw_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     threshold: Mapped[float] = mapped_column(Float)
-    source_id: Mapped[int | None] = mapped_column(nullable=True)
+    source_id: Mapped[int | None] = mapped_column(ForeignKey("sources.source_id"), nullable=True)
     notes: Mapped[str] = mapped_column(Text)
 
 
@@ -126,6 +140,11 @@ class UnknownRow(Base):
 def initialize_database(path: Path) -> tuple[Session, Engine]:
     path.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(f"sqlite:///{path}")
+    event.listen(
+        engine,
+        "connect",
+        lambda connection, _: connection.execute("PRAGMA foreign_keys=ON"),
+    )
     Base.metadata.create_all(engine)
     return Session(engine), engine
 
@@ -134,6 +153,7 @@ def persist_run(
     session: Session,
     *,
     run_id: str,
+    profile_version: str,
     config_hash: str,
     generated_at: datetime,
     metrics: tuple[MetricDefinition, ...],
@@ -148,7 +168,7 @@ def persist_run(
     session.add(
         ResearchRunRow(
             run_id=run_id,
-            profile_version="1.0",
+            profile_version=profile_version,
             config_hash=config_hash,
             started_at=generated_at,
             completed_at=generated_at,
@@ -157,30 +177,39 @@ def persist_run(
     )
     places = {observation.place.place_id: observation.place for observation in observations}
     for place in places.values():
-        session.add(
-            PlaceRow(
-                place_id=place.place_id,
-                name=place.name,
-                state=place.state,
-                geography_type=place.geography_type,
-            )
-        )
-    gate_by_metric = {gate.metric_id: gate.id for gate in gate_definitions}
-    for metric in metrics:
-        if session.get(MetricRow, metric.id) is None:
+        existing_place = session.get(PlaceRow, place.place_id)
+        if existing_place is None:
             session.add(
-                MetricRow(
-                    metric_id=metric.id,
-                    name=metric.name,
-                    unit=metric.unit,
-                    direction=metric.direction,
-                    freshness_rule=f"{metric.freshness_days} days",
-                    geography_level=metric.geography_level,
-                    criterion=metric.criterion,
-                    gate_id=gate_by_metric.get(metric.id),
+                PlaceRow(
+                    place_id=place.place_id,
+                    name=place.name,
+                    state=place.state,
+                    geography_type=place.geography_type,
                 )
             )
+        elif (
+            existing_place.name,
+            existing_place.state,
+            existing_place.geography_type,
+        ) != (place.name, place.state, place.geography_type):
+            raise ValueError(f"place identity changed for {place.place_id!r}")
+    gate_by_metric = {gate.metric_id: gate.id for gate in gate_definitions}
+    for metric in metrics:
+        session.add(
+            MetricRow(
+                run_id=run_id,
+                metric_id=metric.id,
+                name=metric.name,
+                unit=metric.unit,
+                direction=metric.direction,
+                freshness_rule=f"{metric.freshness_days} days",
+                geography_level=metric.geography_level,
+                criterion=metric.criterion,
+                gate_id=gate_by_metric.get(metric.id),
+            )
+        )
     source_ids: dict[tuple[str, str], int] = {}
+    observation_source_ids: dict[tuple[str, str], int] = {}
     for observation in observations:
         key = (observation.source.url, observation.source.retrieved_at.isoformat())
         if key not in source_ids:
@@ -209,6 +238,10 @@ def persist_run(
                 notes="synthetic benchmark" if observation.source.synthetic else "",
             )
         )
+        observation_source_ids[(observation.place.place_id, observation.metric_id)] = source_ids[
+            key
+        ]
+    gate_metric_ids = {gate.id: gate.metric_id for gate in gate_definitions}
     for gate in gates:
         session.add(
             GateResultRow(
@@ -218,6 +251,9 @@ def persist_run(
                 result=gate.result,
                 raw_value=gate.raw_value,
                 threshold=gate.threshold,
+                source_id=observation_source_ids.get(
+                    (gate.place_id, gate_metric_ids[gate.gate_id])
+                ),
                 notes=gate.notes,
             )
         )

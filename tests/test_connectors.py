@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -32,3 +33,61 @@ def test_manual_csv_rejects_unknown_columns(tmp_path: Path) -> None:
     csv_path.write_text("unexpected\n1\n", encoding="utf-8")
     with pytest.raises(EvidenceError, match="missing columns"):
         ingest_csv(csv_path, (), load_sources(Path("config")))
+
+
+def test_manual_csv_rejects_duplicate_observations(tmp_path: Path) -> None:
+    header = (
+        "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
+        "retrieved_at,observed_period,source_geography,confidence,synthetic,median_sale_price\n"
+    )
+    row = "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,town,high,true,1\n"
+    csv_path = tmp_path / "duplicate.csv"
+    csv_path.write_text(header + row + row, encoding="utf-8")
+    metrics = tuple(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
+    with pytest.raises(EvidenceError, match="duplicate observation"):
+        ingest_csv(csv_path, metrics, load_sources(Path("config")))
+
+
+def test_manual_csv_enforces_metric_freshness(tmp_path: Path) -> None:
+    csv_path = tmp_path / "stale.csv"
+    csv_path.write_text(
+        "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
+        "retrieved_at,observed_period,source_geography,confidence,synthetic,median_sale_price\n"
+        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,town,high,false,1\n",
+        encoding="utf-8",
+    )
+    metric = next(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
+    strict_metric = metric.model_copy(update={"freshness_days": 30})
+    with pytest.raises(EvidenceError, match="stale"):
+        ingest_csv(
+            csv_path,
+            (strict_metric,),
+            load_sources(Path("config")),
+            as_of=date(2026, 2, 1),
+        )
+
+
+def test_manual_csv_rejects_nonfinite_values(tmp_path: Path) -> None:
+    csv_path = tmp_path / "nonfinite.csv"
+    csv_path.write_text(
+        "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
+        "retrieved_at,observed_period,source_geography,confidence,synthetic,median_sale_price\n"
+        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,town,high,true,nan\n",
+        encoding="utf-8",
+    )
+    metric = next(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
+    with pytest.raises(EvidenceError, match="finite number"):
+        ingest_csv(csv_path, (metric,), load_sources(Path("config")))
+
+
+def test_manual_csv_rejects_rows_without_metric_values(tmp_path: Path) -> None:
+    csv_path = tmp_path / "empty-row.csv"
+    csv_path.write_text(
+        "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
+        "retrieved_at,observed_period,source_geography,confidence,synthetic,median_sale_price\n"
+        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,town,high,true,\n",
+        encoding="utf-8",
+    )
+    metric = next(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
+    with pytest.raises(EvidenceError, match="no metric values"):
+        ingest_csv(csv_path, (metric,), load_sources(Path("config")))

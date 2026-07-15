@@ -54,6 +54,7 @@ def validate_source(
     *,
     for_gate: bool = False,
     as_of: date | None = None,
+    max_age_days: int | None = None,
 ) -> None:
     """Enforce source tier, confidence, geography, and freshness policy."""
     if source.tier not in policy.allowed_scoring_tiers:
@@ -68,7 +69,14 @@ def validate_source(
             f"minimum is {policy.minimum_gate_confidence}"
         )
     reference_date = as_of or date.today()
-    if not source.synthetic and (reference_date - source.retrieved_at).days > policy.max_age_days:
+    if source.retrieved_at > reference_date:
+        raise SourcePolicyError(
+            f"source retrieval date is in the future: {source.retrieved_at.isoformat()}"
+        )
+    allowed_age = (
+        policy.max_age_days if max_age_days is None else min(policy.max_age_days, max_age_days)
+    )
+    if not source.synthetic and (reference_date - source.retrieved_at).days > allowed_age:
         raise SourcePolicyError(f"source is stale: {source.retrieved_at.isoformat()}")
 
 
@@ -82,6 +90,8 @@ def ingest_csv(
     """Load a wide manual CSV into provenance-preserving observations."""
     metric_map = {metric.id: metric for metric in metrics}
     observations: list[ObservationRecord] = []
+    seen_observations: set[tuple[str, str]] = set()
+    seen_places: dict[str, PlaceRecord] = {}
     try:
         with path.open(newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
@@ -117,9 +127,26 @@ def ingest_csv(
                             f"row {row_number}: source geography {source.geography!r} "
                             f"does not match {place.geography_type!r}"
                         )
+                    existing_place = seen_places.get(place.place_id)
+                    if existing_place is not None and existing_place != place:
+                        raise EvidenceError(f"inconsistent identity for place {place.place_id!r}")
+                    seen_places[place.place_id] = place
+                    row_has_observation = False
                     for metric_id in metric_map:
                         value = row.get(metric_id, "").strip()
                         if value:
+                            key = (place.place_id, metric_id)
+                            if key in seen_observations:
+                                raise EvidenceError(
+                                    f"duplicate observation for place {place.place_id!r} "
+                                    f"and metric {metric_id!r}"
+                                )
+                            validate_source(
+                                source,
+                                policy,
+                                as_of=as_of,
+                                max_age_days=metric_map[metric_id].freshness_days,
+                            )
                             observations.append(
                                 ObservationRecord(
                                     place=place,
@@ -129,6 +156,10 @@ def ingest_csv(
                                     source=source,
                                 )
                             )
+                            seen_observations.add(key)
+                            row_has_observation = True
+                    if not row_has_observation:
+                        raise EvidenceError(f"row {row_number} has no metric values")
                 except (KeyError, ValueError, ValidationError) as exc:
                     if isinstance(exc, EvidenceError):
                         raise

@@ -19,6 +19,8 @@ def write_reports(run: RunResult, output_dir: Path) -> tuple[Path, Path, Path]:
         if gate.result in {GateState.FAIL, GateState.UNKNOWN}:
             blocking_by_place.setdefault(gate.place_id, []).append(gate)
     blocked = sorted(blocking_by_place)
+    has_synthetic = any(item.source.synthetic for item in run.observations)
+    all_synthetic = all(item.source.synthetic for item in run.observations)
     template_dir = Path(__file__).resolve().parent / "templates"
     environment = Environment(
         loader=FileSystemLoader(template_dir), undefined=StrictUndefined, autoescape=False
@@ -29,6 +31,8 @@ def write_reports(run: RunResult, output_dir: Path) -> tuple[Path, Path, Path]:
         sensitivity_by_place=sensitivity_by_place,
         blocking_by_place=blocking_by_place,
         blocked=blocked,
+        has_synthetic=has_synthetic,
+        all_synthetic=all_synthetic,
     )
     markdown_path = output_dir / "comparison.md"
     markdown_path.write_text(markdown.rstrip() + "\n", encoding="utf-8")

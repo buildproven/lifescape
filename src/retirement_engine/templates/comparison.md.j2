@@ -1,8 +1,13 @@
-# Retirement town benchmark comparison
+# Retirement town comparison
 
+{% if all_synthetic -%}
 > **Synthetic benchmark warning:** These fixture values are invented solely to test engine behavior. They are not research and must not support a real purchase decision.
+{% elif has_synthetic -%}
+> **Mixed-evidence warning:** This run contains synthetic observations. Treat affected results as test output, not purchase evidence.
+{% endif %}
 
 - Run ID: `{{ run.run_id }}`
+- Profile version: `{{ run.profile_version }}`
 - Configuration hash: `{{ run.config_hash }}`
 - Generated: {{ run.generated_at.isoformat() }}
 - Eligible towns ranked: {{ run.scores | length }}
@@ -57,4 +62,4 @@ None.
 
 ## Evidence and limitations
 
-All fixture observations are explicitly marked synthetic. Tier C evidence is prohibited from gates and scores. Missing critical gate evidence remains `UNKNOWN` and blocks ranking. Scores are comparative within this fixture set, not claims about real towns.
+{% if all_synthetic -%}All fixture observations are explicitly marked synthetic. {% elif has_synthetic -%}Synthetic observations are explicitly identified in the provenance table. {% endif -%}Tier C evidence is prohibited from gates and scores. Missing critical gate evidence remains `UNKNOWN` and blocks ranking. Scores are comparative within this candidate set, not standalone claims about towns.
