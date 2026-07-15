@@ -19,8 +19,8 @@ def test_manual_csv_ingests_benchmark() -> None:
 def test_manual_csv_rejects_geography_substitution(tmp_path: Path) -> None:
     csv_path = tmp_path / "bad.csv"
     csv_path.write_text(
-        "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,retrieved_at,observed_period,source_geography,confidence,synthetic,median_sale_price\n"
-        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,county,high,true,1\n",
+        "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,retrieved_at,observed_period,observed_at,source_geography,confidence,synthetic,median_sale_price\n"
+        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,2025-12-31,county,high,true,1\n",
         encoding="utf-8",
     )
     metrics = tuple(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
@@ -38,9 +38,9 @@ def test_manual_csv_rejects_unknown_columns(tmp_path: Path) -> None:
 def test_manual_csv_rejects_duplicate_observations(tmp_path: Path) -> None:
     header = (
         "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
-        "retrieved_at,observed_period,source_geography,confidence,synthetic,median_sale_price\n"
+        "retrieved_at,observed_period,observed_at,source_geography,confidence,synthetic,median_sale_price\n"
     )
-    row = "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,town,high,true,1\n"
+    row = "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,2025-12-31,town,high,true,1\n"
     csv_path = tmp_path / "duplicate.csv"
     csv_path.write_text(header + row + row, encoding="utf-8")
     metrics = tuple(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
@@ -52,8 +52,8 @@ def test_manual_csv_enforces_metric_freshness(tmp_path: Path) -> None:
     csv_path = tmp_path / "stale.csv"
     csv_path.write_text(
         "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
-        "retrieved_at,observed_period,source_geography,confidence,synthetic,median_sale_price\n"
-        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,town,high,false,1\n",
+        "retrieved_at,observed_period,observed_at,source_geography,confidence,synthetic,median_sale_price\n"
+        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,2026-01-01,town,high,false,1\n",
         encoding="utf-8",
     )
     metric = next(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
@@ -71,8 +71,8 @@ def test_manual_csv_rejects_nonfinite_values(tmp_path: Path) -> None:
     csv_path = tmp_path / "nonfinite.csv"
     csv_path.write_text(
         "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
-        "retrieved_at,observed_period,source_geography,confidence,synthetic,median_sale_price\n"
-        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,town,high,true,nan\n",
+        "retrieved_at,observed_period,observed_at,source_geography,confidence,synthetic,median_sale_price\n"
+        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,2025-12-31,town,high,true,nan\n",
         encoding="utf-8",
     )
     metric = next(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
@@ -84,10 +84,23 @@ def test_manual_csv_rejects_rows_without_metric_values(tmp_path: Path) -> None:
     csv_path = tmp_path / "empty-row.csv"
     csv_path.write_text(
         "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
-        "retrieved_at,observed_period,source_geography,confidence,synthetic,median_sale_price\n"
-        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,town,high,true,\n",
+        "retrieved_at,observed_period,observed_at,source_geography,confidence,synthetic,median_sale_price\n"
+        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,2025-12-31,town,high,true,\n",
         encoding="utf-8",
     )
     metric = next(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
     with pytest.raises(EvidenceError, match="no metric values"):
+        ingest_csv(csv_path, (metric,), load_sources(Path("config")))
+
+
+def test_manual_csv_rejects_ambiguous_synthetic_flag(tmp_path: Path) -> None:
+    csv_path = tmp_path / "ambiguous.csv"
+    csv_path.write_text(
+        "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
+        "retrieved_at,observed_period,observed_at,source_geography,confidence,synthetic,median_sale_price\n"
+        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,2025-12-31,town,high,tru,1\n",
+        encoding="utf-8",
+    )
+    metric = next(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
+    with pytest.raises(EvidenceError, match="must be true or false"):
         ingest_csv(csv_path, (metric,), load_sources(Path("config")))

@@ -42,10 +42,37 @@ IDENTITY_COLUMNS = {
     "tier",
     "retrieved_at",
     "observed_period",
+    "observed_at",
     "source_geography",
     "confidence",
     "synthetic",
 }
+
+
+def _parse_boolean(value: str, *, row_number: int, field: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized not in {"true", "false"}:
+        raise EvidenceError(f"row {row_number}: {field} must be true or false")
+    return normalized == "true"
+
+
+def validate_observation_freshness(
+    observation_date: date,
+    metric: MetricDefinition,
+    source: SourceRecord,
+    *,
+    as_of: date,
+) -> None:
+    if source.synthetic:
+        return
+    if observation_date > as_of:
+        raise SourcePolicyError(
+            f"observation date is in the future: {observation_date.isoformat()}"
+        )
+    if (as_of - observation_date).days > metric.freshness_days:
+        raise SourcePolicyError(
+            f"observation is stale for {metric.id}: {observation_date.isoformat()}"
+        )
 
 
 def validate_source(
@@ -57,7 +84,10 @@ def validate_source(
     max_age_days: int | None = None,
 ) -> None:
     """Enforce source tier, confidence, geography, and freshness policy."""
-    if source.tier not in policy.allowed_scoring_tiers:
+    if (
+        source.tier in policy.discovery_only_tiers
+        or source.tier not in policy.allowed_scoring_tiers
+    ):
         raise SourcePolicyError(f"Tier {source.tier} source cannot affect gates or scores")
     confidence_order = {Confidence.LOW: 0, Confidence.MEDIUM: 1, Confidence.HIGH: 2}
     if (
@@ -119,7 +149,9 @@ def ingest_csv(
                         retrieved_at=date.fromisoformat(row["retrieved_at"]),
                         geography=row["source_geography"],
                         confidence=Confidence(row["confidence"]),
-                        synthetic=row["synthetic"].strip().lower() == "true",
+                        synthetic=_parse_boolean(
+                            row["synthetic"], row_number=row_number, field="synthetic"
+                        ),
                     )
                     validate_source(source, policy, as_of=as_of)
                     if source.geography != place.geography_type:
@@ -131,6 +163,8 @@ def ingest_csv(
                     if existing_place is not None and existing_place != place:
                         raise EvidenceError(f"inconsistent identity for place {place.place_id!r}")
                     seen_places[place.place_id] = place
+                    observed_at = date.fromisoformat(row["observed_at"])
+                    reference_date = as_of or date.today()
                     row_has_observation = False
                     for metric_id in metric_map:
                         value = row.get(metric_id, "").strip()
@@ -141,11 +175,11 @@ def ingest_csv(
                                     f"duplicate observation for place {place.place_id!r} "
                                     f"and metric {metric_id!r}"
                                 )
-                            validate_source(
+                            validate_observation_freshness(
+                                observed_at,
+                                metric_map[metric_id],
                                 source,
-                                policy,
-                                as_of=as_of,
-                                max_age_days=metric_map[metric_id].freshness_days,
+                                as_of=reference_date,
                             )
                             observations.append(
                                 ObservationRecord(
@@ -153,6 +187,7 @@ def ingest_csv(
                                     metric_id=metric_id,
                                     raw_value=float(value),
                                     observed_period=row["observed_period"],
+                                    observed_at=observed_at,
                                     source=source,
                                 )
                             )

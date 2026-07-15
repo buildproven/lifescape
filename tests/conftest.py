@@ -39,6 +39,7 @@ def observation_factory():
             metric_id=metric_id,
             raw_value=value,
             observed_period="2025",
+            observed_at=date(2025, 12, 31),
             source=SourceRecord(
                 url=f"https://example.gov/{place_id}/{metric_id}",
                 title="Evidence",

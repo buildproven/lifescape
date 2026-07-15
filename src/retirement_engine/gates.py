@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import date
 
 from retirement_engine.evidence import SourcePolicyError, validate_source
 from retirement_engine.models import (
@@ -21,6 +22,7 @@ def evaluate_gates(
     definitions: tuple[GateDefinition, ...],
     policy: SourcesConfig,
     waivers: Mapping[tuple[str, str], str] | None = None,
+    as_of: date | None = None,
 ) -> tuple[GateResult, ...]:
     indexed = {(item.place.place_id, item.metric_id): item for item in observations}
     documented_waivers = waivers or {}
@@ -56,7 +58,7 @@ def evaluate_gates(
                 )
                 continue
             try:
-                validate_source(observation.source, policy, for_gate=True)
+                validate_source(observation.source, policy, for_gate=True, as_of=as_of)
             except SourcePolicyError as exc:
                 results.append(
                     GateResult(

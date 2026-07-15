@@ -32,10 +32,13 @@ def score_places(
     )
     criterion_sources: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     defined_by_criterion: dict[str, int] = defaultdict(int)
+    critical_by_criterion: dict[str, set[str]] = defaultdict(set)
     for metric in metrics:
         if metric.criterion not in config.weights:
             continue
         defined_by_criterion[metric.criterion] += 1
+        if metric.critical:
+            critical_by_criterion[metric.criterion].add(metric.id)
         records = by_metric.get(metric.id, {})
         normalized = normalize_values(
             {place_id: record.raw_value for place_id, record in records.items()}, metric.direction
@@ -52,13 +55,19 @@ def score_places(
             values = criterion_metric_scores[criterion].get(place_id, [])
             expected = defined_by_criterion.get(criterion, 0)
             missing = max(expected - len(values), 0)
+            present_metric_ids = {
+                metric.id
+                for metric in metrics
+                if metric.criterion == criterion and place_id in by_metric.get(metric.id, {})
+            }
+            missing_critical = bool(critical_by_criterion[criterion] - present_metric_ids)
             if values:
                 base = sum(values) / len(values)
             else:
                 base = 5.0
                 missing = max(missing, 1)
             penalty = min(config.missing_noncritical_penalty * missing, 10.0)
-            normalized_score = max(base - penalty, 0.0)
+            normalized_score = 0.0 if missing_critical else max(base - penalty, 0.0)
             weighted = normalized_score * weight / 100
             criteria.append(
                 CriterionScore(
@@ -68,6 +77,7 @@ def score_places(
                     weight=weight,
                     weighted_score=round(weighted, 6),
                     missing_penalty=penalty,
+                    missing_critical=missing_critical,
                     source_urls=tuple(sorted(criterion_sources[criterion].get(place_id, set()))),
                 )
             )

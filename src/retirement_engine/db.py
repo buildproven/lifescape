@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from sqlalchemy import (
@@ -11,6 +11,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     ForeignKeyConstraint,
+    Integer,
     String,
     Text,
     create_engine,
@@ -25,6 +26,7 @@ from retirement_engine.models import (
     MetricDefinition,
     ObservationRecord,
     PlaceScore,
+    SensitivityResult,
 )
 
 
@@ -37,6 +39,11 @@ class ResearchRunRow(Base):
     run_id: Mapped[str] = mapped_column(String, primary_key=True)
     profile_version: Mapped[str] = mapped_column(String)
     config_hash: Mapped[str] = mapped_column(String)
+    engine_version: Mapped[str] = mapped_column(String)
+    evaluated_as_of: Mapped[str] = mapped_column(String)
+    evidence_through: Mapped[datetime] = mapped_column(DateTime)
+    simulations: Mapped[int] = mapped_column(Integer)
+    sensitivity_seed: Mapped[int] = mapped_column(Integer)
     started_at: Mapped[datetime] = mapped_column(DateTime)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String)
@@ -65,6 +72,7 @@ class SourceRow(Base):
     retrieved_at: Mapped[str] = mapped_column(String)
     publication_date: Mapped[str | None] = mapped_column(String, nullable=True)
     geography: Mapped[str] = mapped_column(String)
+    confidence: Mapped[str] = mapped_column(String)
     license_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     checksum: Mapped[str | None] = mapped_column(String, nullable=True)
     synthetic: Mapped[bool] = mapped_column(Boolean)
@@ -94,6 +102,7 @@ class ObservationRow(Base):
     metric_id: Mapped[str] = mapped_column(String)
     raw_value: Mapped[float] = mapped_column(Float)
     observed_period: Mapped[str] = mapped_column(String)
+    observed_at: Mapped[str] = mapped_column(String)
     retrieved_at: Mapped[str] = mapped_column(String)
     source_id: Mapped[int] = mapped_column(ForeignKey("sources.source_id"))
     confidence: Mapped[str] = mapped_column(String)
@@ -123,6 +132,7 @@ class ScoreRow(Base):
     weight: Mapped[float] = mapped_column(Float)
     weighted_score: Mapped[float] = mapped_column(Float)
     missing_penalty: Mapped[float] = mapped_column(Float)
+    missing_critical: Mapped[bool] = mapped_column(Boolean)
 
 
 class UnknownRow(Base):
@@ -135,6 +145,17 @@ class UnknownRow(Base):
     resolution_action: Mapped[str] = mapped_column(Text)
     blocking: Mapped[bool] = mapped_column(Boolean)
     status: Mapped[str] = mapped_column(String)
+
+
+class SensitivityRow(Base):
+    __tablename__ = "sensitivity_results"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("research_runs.run_id"))
+    place_id: Mapped[str] = mapped_column(ForeignKey("places.place_id"))
+    top_three_frequency: Mapped[float] = mapped_column(Float)
+    mean_rank: Mapped[float] = mapped_column(Float)
+    rank_variance: Mapped[float] = mapped_column(Float)
+    fragile: Mapped[bool] = mapped_column(Boolean)
 
 
 def initialize_database(path: Path) -> tuple[Session, Engine]:
@@ -155,23 +176,34 @@ def persist_run(
     run_id: str,
     profile_version: str,
     config_hash: str,
-    generated_at: datetime,
+    engine_version: str,
+    evaluated_as_of: date,
+    evidence_through: datetime,
+    simulations: int,
+    sensitivity_seed: int,
     metrics: tuple[MetricDefinition, ...],
     gate_definitions: tuple[GateDefinition, ...],
     observations: tuple[ObservationRecord, ...],
     gates: tuple[GateResult, ...],
     scores: tuple[PlaceScore, ...],
-) -> None:
+    sensitivity: tuple[SensitivityResult, ...],
+) -> bool:
     """Persist one fully evaluated run in a single transaction."""
     if session.get(ResearchRunRow, run_id) is not None:
-        return
+        return False
+    executed_at = datetime.now(UTC)
     session.add(
         ResearchRunRow(
             run_id=run_id,
             profile_version=profile_version,
             config_hash=config_hash,
-            started_at=generated_at,
-            completed_at=generated_at,
+            engine_version=engine_version,
+            evaluated_as_of=evaluated_as_of.isoformat(),
+            evidence_through=evidence_through,
+            simulations=simulations,
+            sensitivity_seed=sensitivity_seed,
+            started_at=executed_at,
+            completed_at=executed_at,
             status="completed",
         )
     )
@@ -208,10 +240,19 @@ def persist_run(
                 gate_id=gate_by_metric.get(metric.id),
             )
         )
-    source_ids: dict[tuple[str, str], int] = {}
+    source_ids: dict[tuple[object, ...], int] = {}
     observation_source_ids: dict[tuple[str, str], int] = {}
     for observation in observations:
-        key = (observation.source.url, observation.source.retrieved_at.isoformat())
+        key = (
+            observation.source.url,
+            observation.source.title,
+            observation.source.publisher,
+            observation.source.tier,
+            observation.source.retrieved_at,
+            observation.source.geography,
+            observation.source.confidence,
+            observation.source.synthetic,
+        )
         if key not in source_ids:
             row = SourceRow(
                 url=observation.source.url,
@@ -220,6 +261,7 @@ def persist_run(
                 tier=observation.source.tier,
                 retrieved_at=observation.source.retrieved_at.isoformat(),
                 geography=observation.source.geography,
+                confidence=observation.source.confidence,
                 synthetic=observation.source.synthetic,
             )
             session.add(row)
@@ -232,6 +274,7 @@ def persist_run(
                 metric_id=observation.metric_id,
                 raw_value=observation.raw_value,
                 observed_period=observation.observed_period,
+                observed_at=observation.observed_at.isoformat(),
                 retrieved_at=observation.source.retrieved_at.isoformat(),
                 source_id=source_ids[key],
                 confidence=observation.source.confidence,
@@ -280,6 +323,19 @@ def persist_run(
                     weight=criterion.weight,
                     weighted_score=criterion.weighted_score,
                     missing_penalty=criterion.missing_penalty,
+                    missing_critical=criterion.missing_critical,
                 )
             )
+    for result in sensitivity:
+        session.add(
+            SensitivityRow(
+                run_id=run_id,
+                place_id=result.place_id,
+                top_three_frequency=result.top_three_frequency,
+                mean_rank=result.mean_rank,
+                rank_variance=result.rank_variance,
+                fragile=result.fragile,
+            )
+        )
     session.commit()
+    return True

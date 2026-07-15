@@ -84,6 +84,7 @@ class ObservationRecord(StrictModel):
     metric_id: str
     raw_value: float = Field(allow_inf_nan=False)
     observed_period: str
+    observed_at: date
     source: SourceRecord
 
 
@@ -104,6 +105,7 @@ class CriterionScore(StrictModel):
     weight: float
     weighted_score: float
     missing_penalty: float = 0.0
+    missing_critical: bool = False
     source_urls: tuple[str, ...] = ()
 
 
@@ -126,7 +128,12 @@ class RunResult(StrictModel):
     run_id: str
     profile_version: str
     config_hash: str
-    generated_at: datetime
+    engine_version: str
+    evaluated_as_of: date
+    evidence_through: datetime
+    simulations: int
+    sensitivity_seed: int
+    persisted: bool = False
     places: tuple[PlaceRecord, ...]
     observations: tuple[ObservationRecord, ...]
     gate_results: tuple[GateResult, ...]
@@ -159,6 +166,15 @@ class SourcesConfig(StrictModel):
     minimum_gate_confidence: Confidence
     max_age_days: int = Field(ge=0)
 
+    @model_validator(mode="after")
+    def scoring_and_discovery_tiers_are_disjoint(self) -> SourcesConfig:
+        overlap = self.allowed_scoring_tiers & self.discovery_only_tiers
+        if overlap:
+            raise ValueError(
+                f"source tiers cannot be both scoring and discovery-only: {sorted(overlap)}"
+            )
+        return self
+
 
 class ResearchBrief(StrictModel):
     name: str
@@ -187,6 +203,12 @@ class UserProfile(StrictModel):
 class RegionDefinition(StrictModel):
     id: str
     states: str | tuple[str, ...]
+
+    @model_validator(mode="after")
+    def string_scope_is_wildcard(self) -> RegionDefinition:
+        if isinstance(self.states, str) and self.states != "*":
+            raise ValueError("region states must be '*' or a list of state codes")
+        return self
 
 
 class RegionsConfig(StrictModel):

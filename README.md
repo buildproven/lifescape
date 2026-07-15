@@ -21,7 +21,7 @@ The benchmark data is synthetic and exists only to exercise methodology. Generat
 
 ## Manual evidence
 
-Use the benchmark CSV as the import contract. Identity and source columns precede one column per configured metric. Blank metric cells remain missing; they are never guessed.
+Use the benchmark CSV as the import contract. Identity and source columns, including an explicit `observed_at` date, precede one column per configured metric. Blank metric cells remain missing; they are never guessed.
 
 For real evidence, use a config directory whose `research_brief.yaml` sets `benchmark_only: false`.
 

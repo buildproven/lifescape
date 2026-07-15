@@ -5,7 +5,7 @@
 - Candidate discovery and research agents are not implemented.
 - Confidence aggregation and contradiction tracking are deferred to Milestone 3; Milestone 1 enforces high confidence at gates.
 - Neighborhood, property, mapping, scouting, future-self, and regret workflows are deferred to later milestones.
-- Freshness enforcement currently uses a policy-wide maximum; metric-specific freshness fields are stored but not independently enforced.
+- Source retrieval recency and metric-specific observation age are enforced independently. Complex observation intervals still use one explicit effective observation date supplied by the evidence curator.
+- Annual carrying-cost and priority-to-weight personalization are deferred until property-level evidence exists; Milestone 1 applies the profile's maximum purchase budget directly to the purchase-feasibility gate.
 - Percentile scores are relative to the eligible candidate set and are not absolute quality claims.
 - The engine produces comparison artifacts, not a `BUY` recommendation.
-

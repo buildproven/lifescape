@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from typing import Annotated
 
@@ -28,6 +29,8 @@ def run_command(
     output_dir: Annotated[Path, typer.Option()] = Path("outputs/run"),
     profile: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
     simulations: Annotated[int, typer.Option(min=1000)] = 1000,
+    sensitivity_seed: Annotated[int, typer.Option()] = 20260714,
+    as_of: Annotated[date | None, typer.Option()] = None,
 ) -> None:
     """Evaluate a manual evidence CSV and write comparison reports."""
     _event("run_started", evidence=str(evidence), config_dir=str(config_dir))
@@ -38,12 +41,15 @@ def run_command(
         output_dir=output_dir,
         profile_path=profile,
         simulations=simulations,
+        sensitivity_seed=sensitivity_seed,
+        as_of=as_of,
     )
     _event(
         "run_completed",
         run_id=result.run_id,
         eligible=len(result.scores),
         total_places=len(result.places),
+        persisted=result.persisted,
         output_dir=str(output_dir),
     )
     typer.echo(result.run_id)
@@ -54,6 +60,7 @@ def benchmark(
     output_dir: Annotated[Path, typer.Option()] = Path("outputs/benchmark"),
     config_dir: Annotated[Path, typer.Option(exists=True, file_okay=False)] = Path("config"),
     simulations: Annotated[int, typer.Option(min=1000)] = 1000,
+    sensitivity_seed: Annotated[int, typer.Option()] = 20260714,
 ) -> None:
     """Run the ten-town, explicitly synthetic golden benchmark."""
     evidence = Path("data/benchmarks/evidence.csv")
@@ -65,6 +72,7 @@ def benchmark(
         database_path=database,
         output_dir=output_dir,
         simulations=simulations,
+        sensitivity_seed=sensitivity_seed,
     )
     _event(
         "benchmark_completed",

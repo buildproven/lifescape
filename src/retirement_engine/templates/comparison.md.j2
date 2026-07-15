@@ -8,8 +8,11 @@
 
 - Run ID: `{{ run.run_id }}`
 - Profile version: `{{ run.profile_version }}`
+- Engine version: `{{ run.engine_version }}`
 - Configuration hash: `{{ run.config_hash }}`
-- Generated: {{ run.generated_at.isoformat() }}
+- Evaluated as of: {{ run.evaluated_as_of.isoformat() }}
+- Evidence retrieved through: {{ run.evidence_through.isoformat() }}
+- Sensitivity: {{ run.simulations }} simulations, seed {{ run.sensitivity_seed }}
 - Eligible towns ranked: {{ run.scores | length }}
 - Blocked towns: {{ blocked | length }}
 
@@ -32,10 +35,10 @@
 
 ## Raw metrics and provenance
 
-| Town | Metric | Raw value | Period | Confidence | Tier | Source |
-|---|---|---:|---|---|---|---|
+| Town | Metric | Raw value | Period | Observation date | Confidence | Tier | Source |
+|---|---|---:|---|---|---|---|---|
 {% for item in run.observations | sort(attribute='metric_id') | sort(attribute='place.place_id') -%}
-| {{ place_names[item.place.place_id] }} | {{ item.metric_id }} | {{ item.raw_value }} | {{ item.observed_period }} | {{ item.source.confidence }} | {{ item.source.tier }} | {{ item.source.url }} |
+| {{ place_names[item.place.place_id] }} | {{ item.metric_id }} | {{ item.raw_value }} | {{ item.observed_period }} | {{ item.observed_at.isoformat() }} | {{ item.source.confidence }} | {{ item.source.tier }} | {{ item.source.url }} |
 {% endfor %}
 
 ## Score breakdown
@@ -43,10 +46,10 @@
 {% for score in run.scores -%}
 ### {{ score.rank }}. {{ place_names[score.place_id] }} — {{ '%.1f' | format(score.total_score) }}
 
-| Criterion | Score | Weight | Contribution | Missing penalty | Sources |
-|---|---:|---:|---:|---:|---|
+| Criterion | Net score | Weight | Contribution | Missing penalty | Missing critical | Sources |
+|---|---:|---:|---:|---:|---|---|
 {% for item in score.criteria -%}
-| {{ item.criterion }} | {{ '%.1f' | format(item.normalized_score) }} | {{ '%.1f' | format(item.weight) }} | {{ '%.2f' | format(item.weighted_score) }} | {{ '%.1f' | format(item.missing_penalty) }} | {{ item.source_urls | join(', ') or 'MISSING' }} |
+| {{ item.criterion }} | {{ '%.1f' | format(item.normalized_score) }} | {{ '%.1f' | format(item.weight) }} | {{ '%.2f' | format(item.weighted_score) }} | {{ '%.1f' | format(item.missing_penalty) }} | {{ 'YES' if item.missing_critical else 'no' }} | {{ item.source_urls | join(', ') or 'MISSING' }} |
 {% endfor %}
 
 {% endfor -%}
