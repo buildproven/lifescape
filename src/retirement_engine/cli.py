@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-from contextlib import ExitStack
 from datetime import date
-from importlib import resources
 from pathlib import Path
 from typing import Annotated
 
@@ -15,6 +13,7 @@ from retirement_engine.config import load_sources
 from retirement_engine.evidence import SourcePolicyError, validate_source
 from retirement_engine.models import Confidence, SourceRecord, SourceTier
 from retirement_engine.pipeline import execute_run
+from retirement_engine.resources import bundled_benchmark
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 
@@ -78,14 +77,8 @@ def benchmark(
     """Run the ten-town, explicitly synthetic golden benchmark."""
     database = output_dir / "benchmark.sqlite"
     _event("benchmark_started", towns=10, synthetic=True)
-    package_resources = resources.files("retirement_engine").joinpath("resources")
-    with ExitStack() as stack:
-        evidence = stack.enter_context(
-            resources.as_file(package_resources.joinpath("benchmark-evidence.csv"))
-        )
-        effective_config = config_dir or stack.enter_context(
-            resources.as_file(package_resources.joinpath("config"))
-        )
+    with bundled_benchmark() as (evidence, packaged_config):
+        effective_config = config_dir or packaged_config
         result = execute_run(
             evidence_path=evidence,
             config_dir=effective_config,
@@ -101,6 +94,19 @@ def benchmark(
         blocked=len(result.places) - len(result.scores),
     )
     typer.echo(result.run_id)
+
+
+@app.command("app")
+def app_command(
+    port: Annotated[int, typer.Option(min=1024, max=65535)] = 8765,
+    output_dir: Annotated[Path, typer.Option()] = Path("outputs/app"),
+    no_open: Annotated[bool, typer.Option("--no-open")] = False,
+) -> None:
+    """Open the guided local browser workspace."""
+    from retirement_engine.web import serve
+
+    _event("app_started", url=f"http://127.0.0.1:{port}", output_dir=str(output_dir))
+    serve(port=port, output_dir=output_dir, open_browser=not no_open)
 
 
 @app.command("validate-sources")

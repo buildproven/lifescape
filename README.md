@@ -6,15 +6,41 @@ The governing rule is: **gates eliminate, weights rank, evidence decides, uncert
 
 ## Quick start
 
-Requires Python 3.12+.
+Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and Node.js 22.9+.
 
 ```bash
-python -m venv .venv
-.venv/bin/pip install -e '.[dev]'
-.venv/bin/retire benchmark --output-dir outputs/benchmark
-.venv/bin/pytest
-.venv/bin/ruff check .
-.venv/bin/mypy src
+uv sync --locked --extra dev --python 3.12
+uv run playwright install chromium
+npm ci
+uv run retire app
+```
+
+`retire app` opens a guided local workspace at `http://127.0.0.1:8765`. Set your
+budget and planning age, choose towns, review evidence completeness, then run and
+download the comparison. You can also import a CSV matching the documented evidence
+contract; the file is processed locally and validated before it reaches scoring.
+
+The public deployment at `lifescape.buildproven.ai` is intentionally a stateless
+synthetic-data demonstration. It does not accept private CSV imports or promise durable
+reports; use the local app for private evidence and downloadable provenance. Hosted runs
+are protected by deployment-wide Vercel edge limits and bounded application safeguards.
+`LIFESCAPE_HOSTED_RUNS_ENABLED=false` fails closed on new deployments.
+
+For an immediate incident stop, enable the disabled Vercel rule recorded in
+`ops/vercel-firewall.json`, publish the firewall draft, and verify the live controls:
+
+```bash
+vercel firewall rules enable rule_emergency_disable_lifescape_hosted_runs_s3mPXu --scope buildproven
+vercel firewall publish --yes --scope buildproven
+VERCEL_EMERGENCY_STATUS=Enabled npm run ops:verify:vercel
+```
+
+For the command-line benchmark and QA Architect checks:
+
+```bash
+uv run retire benchmark --output-dir outputs/benchmark
+npm run quality:check
+npm run security:check
 ```
 
 The installed `retire benchmark` command includes its synthetic evidence and default configuration,

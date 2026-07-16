@@ -1,0 +1,14 @@
+.venv
+.vercel
+dist
+node_modules
+outputs
+uv.lock
+package-lock.json
+*.py
+*.csv
+*.sqlite
+coverage
+config
+docs
+*.md

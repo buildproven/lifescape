@@ -1,0 +1,17 @@
+.venv/
+node_modules/
+.vercel/
+dist/
+outputs/
+coverage/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+uv.lock
+package-lock.json
+.env
+.env.*
+!.env.example
+*.sqlite
+*.pyc

@@ -1,0 +1,13 @@
+[extend]
+path = ".gitleaks.toml"
+
+[allowlist]
+description = "Generated local artifacts excluded only from the working-tree scan"
+paths = [
+  '''(^|/)\.cache/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)__pycache__/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)dist/''',
+  '''(^|/)outputs/''',
+]

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#17352a" />
+    <title>Lifescape — retirement decisions, made visible</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2314221b%22/><path d=%22M18 16v32h29v-7H26V16z%22 fill=%22%2378aa8d%22/></svg>"
+    />
+    <link rel="stylesheet" href="/static/app.css" />
+    <script src="/static/app.js" defer></script>
+    <noscript
+      ><style>
+        .loading-screen {
+          display: none;
+        }
+      </style></noscript
+    >
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="rail" aria-label="Comparison progress">
+        <div class="brand-block">
+          <a class="brand" href="/" aria-label="Lifescape home">Lifescape</a>
+          <p>Decision workspace</p>
+        </div>
+
+        <nav class="step-nav" aria-label="Setup steps">
+          <button class="step-link is-active" data-step-target="profile" type="button">
+            <span>01</span><strong>Profile</strong><small>Set the decision frame</small>
+          </button>
+          <button class="step-link" data-step-target="towns" type="button" disabled>
+            <span>02</span><strong>Towns</strong><small>Choose the field</small>
+          </button>
+          <button class="step-link" data-step-target="evidence" type="button" disabled>
+            <span>03</span><strong>Evidence</strong><small>Check readiness</small>
+          </button>
+          <button class="step-link" data-step-target="results" type="button" disabled>
+            <span>04</span><strong>Results</strong><small>Read the decision</small>
+          </button>
+        </nav>
+
+        <div class="rail-note">
+          <span class="status-dot" aria-hidden="true"></span>
+          <p id="rail-note-copy"><strong>{{ rail_note_title }}</strong>{{ rail_note_body }}</p>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="workspace-header">
+          <div>
+            <span class="eyebrow" id="step-eyebrow">Step 1 of 4</span>
+            <h1 id="step-title">Shape the decision</h1>
+          </div>
+          <div class="dataset-control">
+            <div>
+              <span id="dataset-label">Synthetic benchmark</span>
+              <small id="dataset-meta">Loading evidence…</small>
+            </div>
+            <button class="text-button" id="import-button" type="button">Import CSV</button>
+            <input id="evidence-file" type="file" accept=".csv,text/csv" hidden />
+          </div>
+        </header>
+
+        <div class="notice is-warning" id="synthetic-notice">
+          <span>Demo evidence</span>
+          <p>These values are invented to test the method. They are not purchase research.</p>
+        </div>
+
+        <section class="stage is-active" data-stage="profile" aria-labelledby="profile-heading">
+          <div class="stage-intro">
+            <h2 id="profile-heading">What must the move still work for?</h2>
+            <p>
+              Start with the constraints that can eliminate a town. You can revisit these before
+              running.
+            </p>
+          </div>
+
+          <div class="form-grid">
+            <div class="field field-wide">
+              <div class="field-heading">
+                <label for="budget">Maximum purchase budget</label>
+                <output id="budget-output" for="budget">$700,000</output>
+              </div>
+              <input
+                id="budget"
+                type="range"
+                min="150000"
+                max="1500000"
+                step="25000"
+                value="700000"
+              />
+              <div class="range-labels"><span>$150k</span><span>$1.5m</span></div>
+              <p class="field-help">Towns above this amount fail the purchase-feasibility gate.</p>
+            </div>
+
+            <fieldset class="field">
+              <legend>Planning age</legend>
+              <div class="choice-row" id="age-choices">
+                <label><input type="radio" name="age" value="65" /><span>65</span></label>
+                <label><input type="radio" name="age" value="75" checked /><span>75</span></label>
+                <label><input type="radio" name="age" value="85" /><span>85</span></label>
+              </div>
+              <p class="field-help">The profile carries this perspective into the run record.</p>
+            </fieldset>
+
+            <fieldset class="field">
+              <legend>Household</legend>
+              <div class="choice-row choice-row-text" id="household-choices">
+                <label><input type="radio" name="household" value="solo" /><span>Solo</span></label>
+                <label
+                  ><input type="radio" name="household" value="couple" checked /><span
+                    >Couple</span
+                  ></label
+                >
+                <label
+                  ><input type="radio" name="household" value="family" /><span>Family</span></label
+                >
+              </div>
+              <p class="field-help">Stored with the comparison so assumptions remain visible.</p>
+            </fieldset>
+          </div>
+        </section>
+
+        <section class="stage" data-stage="towns" aria-labelledby="towns-heading">
+          <div class="stage-intro stage-intro-row">
+            <div>
+              <h2 id="towns-heading">Choose a meaningful field</h2>
+              <p>Select at least two towns. Scores are comparative within this set.</p>
+            </div>
+            <div class="selection-count">
+              <strong id="selected-count">0</strong><span>selected</span>
+            </div>
+          </div>
+
+          <div class="list-tools">
+            <label class="search-field">
+              <span>Search towns</span>
+              <input id="town-search" type="search" placeholder="Town or state" />
+            </label>
+            <button class="text-button" id="toggle-all" type="button">Clear all</button>
+          </div>
+          <div class="town-list" id="town-list" aria-live="polite"></div>
+        </section>
+
+        <section class="stage" data-stage="evidence" aria-labelledby="evidence-heading">
+          <div class="stage-intro stage-intro-row">
+            <div>
+              <h2 id="evidence-heading">Know what the engine can see</h2>
+              <p>
+                Every blank remains unknown. Missing critical evidence blocks ranking instead of
+                being guessed.
+              </p>
+            </div>
+            <div class="readiness-mark" aria-label="Evidence readiness">
+              <svg viewBox="0 0 48 48" role="img" aria-hidden="true">
+                <circle cx="24" cy="24" r="20"></circle>
+                <circle
+                  class="readiness-progress"
+                  id="readiness-progress"
+                  cx="24"
+                  cy="24"
+                  r="20"
+                ></circle>
+              </svg>
+              <strong id="readiness-value">0%</strong>
+            </div>
+          </div>
+
+          <div class="evidence-summary">
+            <div><span>Source policy</span><strong>Tier A / high confidence</strong></div>
+            <div><span>Geography</span><strong>Town-level only</strong></div>
+            <div><span>Missing values</span><strong>Never imputed</strong></div>
+          </div>
+          <div class="evidence-list" id="evidence-list"></div>
+        </section>
+
+        <section class="stage" data-stage="results" aria-label="Comparison results">
+          <div class="results-empty" id="results-empty">
+            <span class="loading-line"></span>
+            <h2 id="results-heading">The engine is weighing the field</h2>
+            <p>
+              Checking hard gates, ranking eligible towns, and testing stability across 1,000
+              simulations.
+            </p>
+          </div>
+          <div class="results-content" id="results-content" hidden>
+            <div class="result-lead" id="result-lead"></div>
+            <div class="result-layout">
+              <div>
+                <div class="section-heading">
+                  <h3>Ranked towns</h3>
+                  <span>Eligible only</span>
+                </div>
+                <div class="ranking-list" id="ranking-list"></div>
+              </div>
+              <aside class="result-inspector" id="result-inspector" aria-live="polite"></aside>
+            </div>
+            <div class="blocked-section" id="blocked-section"></div>
+            <div class="download-strip" id="download-strip"></div>
+          </div>
+        </section>
+
+        <footer class="action-bar">
+          <button class="secondary-button" id="back-button" type="button" hidden>Back</button>
+          <p id="action-hint">Your settings stay editable until you run the comparison.</p>
+          <button class="primary-button" id="next-button" type="button">
+            Choose towns <span>→</span>
+          </button>
+        </footer>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="loading-screen" id="loading-screen">
+      <div>
+        <span>Lifescape</span>
+        <p>Opening your decision workspace…</p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,19 +1,24 @@
-.PHONY: install test lint typecheck quality benchmark
+.PHONY: install test lint typecheck quality benchmark app
 
 install:
-	python -m pip install -e '.[dev]'
+	uv sync --locked --extra dev --python 3.12
+	uv run playwright install chromium
+	npm ci
 
 test:
-	pytest
+	uv run pytest
 
 lint:
-	ruff check .
+	uv run ruff check .
 
 typecheck:
-	mypy src
+	uv run mypy src
 
-quality: lint typecheck test
+quality:
+	npm run quality:check
 
 benchmark:
-	retire benchmark --output-dir outputs/benchmark
+	uv run retire benchmark --output-dir outputs/benchmark
 
+app:
+	uv run retire app

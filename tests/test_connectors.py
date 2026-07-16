@@ -35,6 +35,21 @@ def test_manual_csv_rejects_unknown_columns(tmp_path: Path) -> None:
         ingest_csv(csv_path, (), load_sources(Path("config")))
 
 
+def test_manual_csv_rejects_duplicate_headers(tmp_path: Path) -> None:
+    csv_path = tmp_path / "duplicate-header.csv"
+    csv_path.write_text(
+        "place_id,place_id,place_name,state,geography_type,source_url,source_title,"
+        "publisher,tier,retrieved_at,observed_period,observed_at,source_geography,"
+        "confidence,synthetic\n"
+        "x,replaced,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,"
+        "2025,2025-12-31,town,high,true\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(EvidenceError, match="duplicate columns"):
+        ingest_csv(csv_path, (), load_sources(Path("config")))
+
+
 def test_manual_csv_rejects_duplicate_observations(tmp_path: Path) -> None:
     header = (
         "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"

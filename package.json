@@ -1,0 +1,63 @@
+{
+  "name": "lifescape-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Quality automation for the Lifescape retirement decision engine",
+  "scripts": {
+    "prepare": "[ \"$CI\" = \"true\" ] && echo 'Skipping Husky in CI' || husky",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "npm run lint:js && npm run lint:css",
+    "lint:fix": "eslint src/retirement_engine/static/app.js --fix && stylelint \"src/retirement_engine/static/**/*.css\" --fix",
+    "lint:js": "eslint src/retirement_engine/static/app.js",
+    "lint:css": "stylelint \"src/retirement_engine/static/**/*.css\"",
+    "test": "uv run pytest",
+    "test:coverage": "uv run pytest --cov=retirement_engine --cov-report=term-missing --cov-fail-under=90",
+    "quality:frontend": "npm run format:check && npm run lint",
+    "quality:python": "uv run ruff format --check . && uv run ruff check . && uv run mypy src && npm run test:coverage && uv run --extra dev -- uv build --no-build-isolation",
+    "quality:check": "npm run quality:frontend && npm run quality:python",
+    "security:npm": "npm audit --audit-level=high",
+    "security:python": "uv run pip-audit --local",
+    "security:config": "eslint src/retirement_engine/static/app.js && bash scripts/run-gitleaks.sh",
+    "security:check": "npm run security:npm && npm run security:python && npm run security:config",
+    "ops:verify:vercel": "bash scripts/verify-vercel-firewall.sh"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.4.1",
+    "@commitlint/config-conventional": "^20.4.1",
+    "@eslint/js": "^9.12.0",
+    "commitlint": "^20.4.1",
+    "eslint": "^9.12.0",
+    "eslint-plugin-security": "^3.0.1",
+    "globals": "^15.9.0",
+    "husky": "^9.1.4",
+    "lint-staged": "^15.2.10",
+    "prettier": "^3.3.3",
+    "stylelint": "^16.8.0",
+    "stylelint-config-standard": "^37.0.0"
+  },
+  "lint-staged": {
+    "**/*.py": [
+      "uv run ruff format --check",
+      "uv run ruff check --fix"
+    ],
+    "src/retirement_engine/static/**/*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "src/retirement_engine/static/**/*.css": [
+      "stylelint --fix",
+      "prettier --write"
+    ],
+    "**/*.{cjs,html,json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "engines": {
+    "node": ">=22.9"
+  },
+  "volta": {
+    "node": "22.22.2",
+    "npm": "10.9.7"
+  }
+}

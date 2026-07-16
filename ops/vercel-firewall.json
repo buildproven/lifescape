@@ -1,0 +1,19 @@
+{
+  "project": "buildproven/lifescape",
+  "verifiedAt": "2026-07-16",
+  "rateLimit": {
+    "id": "rule_rate_limit_lifescape_hosted_runs_MaiEPl",
+    "name": "Rate limit Lifescape hosted runs",
+    "path": "/api/run",
+    "requests": 10,
+    "windowSeconds": 60,
+    "key": "ip",
+    "status": "Enabled"
+  },
+  "emergencyDeny": {
+    "id": "rule_emergency_disable_lifescape_hosted_runs_s3mPXu",
+    "name": "Emergency disable Lifescape hosted runs",
+    "path": "/api/run",
+    "status": "Disabled"
+  }
+}

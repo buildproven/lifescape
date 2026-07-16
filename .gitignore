@@ -1,13 +1,20 @@
 .venv/
+node_modules/
 __pycache__/
 *.py[cod]
 *.sqlite
 .coverage
+coverage/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.cache/
 dist/
 outputs/*
 !outputs/.gitkeep
-.env
+.env*
+!.env.example
+*.log
 
+.vercel
+.DS_Store
