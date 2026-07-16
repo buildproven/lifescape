@@ -63,11 +63,54 @@ def test_quality_automation_matches_project_contract() -> None:
     }
     assert firewall["emergencyDeny"]["status"] == "Disabled"
     assert 'emergency_status="${VERCEL_EMERGENCY_STATUS:-Disabled}"' in firewall_verifier
-    assert '"body-max-line-length": [0]' in commitlint
-    assert '"footer-max-line-length": [0]' in commitlint
+    assert '"line-length-except-review-trailers": [2, "always", 100]' in commitlint
     assert "lint-staged" in pre_commit
     assert "npm run quality:check" in pre_push
     assert "npm run security:check" in pre_push
+
+
+def test_commitlint_limits_prose_but_accepts_revision_bound_review_trailers() -> None:
+    repository = Path(__file__).resolve().parents[1]
+    reviewed_head = "a" * 40
+    reviewed_base = "b" * 40
+    trailer_message = (
+        "chore(quality): stamp final review\n\n"
+        "Reviewed-By: quality "
+        f"(tier=critical, reviewer=codex, findings=0, head={reviewed_head}, "
+        f"base={reviewed_base})\n"
+    )
+    long_prose = "fix: valid subject\n\n" + ("ordinary prose " * 10)
+
+    trailer = subprocess.run(
+        ["npx", "--no", "--", "commitlint"],
+        cwd=repository,
+        input=trailer_message,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    prose = subprocess.run(
+        ["npx", "--no", "--", "commitlint"],
+        cwd=repository,
+        input=long_prose,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    invalid_type = subprocess.run(
+        ["npx", "--no", "--", "commitlint"],
+        cwd=repository,
+        input="unsupported: valid subject\n",
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert trailer.returncode == 0, trailer.stdout + trailer.stderr
+    assert prose.returncode != 0
+    assert "line-length-except-review-trailers" in prose.stdout + prose.stderr
+    assert invalid_type.returncode != 0
+    assert "type-enum" in invalid_type.stdout + invalid_type.stderr
 
 
 def test_gitleaks_runner_rejects_poisoned_cached_binary(tmp_path: Path) -> None:
