@@ -41,8 +41,8 @@ temporary run inputs ── execute_run (existing engine)
 ```
 
 - `cli.py` exposes the one-command entry point and keeps the network host fixed to loopback.
-- `web.py` owns request validation, evidence inspection, run-input preparation, response shaping,
-  and session-scoped downloads.
+- `web.py` owns loopback Host/Origin enforcement, bounded request validation, evidence inspection,
+  atomic run staging/publishing, response shaping, and session-scoped downloads.
 - `pipeline.py` remains the only decision orchestrator.
 - `resources.py` resolves identical benchmark assets in editable and installed-wheel contexts.
 - `templates/app.html` plus `static/` provide a dependency-free browser client; no separate Node
@@ -52,6 +52,8 @@ temporary run inputs ── execute_run (existing engine)
 
 - File and engine validation failures return HTTP 422 with the concrete cause and are surfaced in
   the interface.
+- Runs are staged with their own SQLite provenance database and atomically published only after all
+  reports succeed; failed staging directories are removed.
 - Synthetic and mixed imports retain a visible non-research warning.
 - Unknown critical evidence blocks a town instead of imputing a score.
 - Downloads are limited to an allowlist and the current local app session.
@@ -69,11 +71,11 @@ temporary run inputs ── execute_run (existing engine)
 | U1 | CLI → `serve` | `tests/test_cli.py::test_cli_help_builds_all_commands`; `tests/test_user_journey.py::test_user_completes_guided_comparison`; installed command in `tests/test_packaging.py` |
 | U2 | Profile controls → generated validated profile | `tests/test_user_journey.py::test_user_completes_guided_comparison`; budget/profile engine coverage in `tests/test_reports.py` |
 | U3 | Town selector + `AppRunRequest` | `tests/test_web.py::test_local_app_rejects_unknown_town_selection`; `tests/test_user_journey.py::test_user_completes_guided_comparison` |
-| U4 | Inspect endpoint + readiness stage | `tests/test_web.py::test_local_app_inspects_imported_evidence`; `tests/test_web.py::test_local_app_runs_imported_real_evidence_without_synthetic_label` |
+| U4 | Inspect endpoint + readiness stage | `tests/test_web.py::test_local_app_inspects_imported_evidence`; real/mixed run tests in `tests/test_web.py`; `tests/test_user_journey.py::test_user_keeps_mixed_evidence_warning_after_scoring` |
 | U5 | `_response` over `RunResult` | `tests/test_web.py::test_local_app_runs_selected_towns_and_serves_reports`; `tests/test_user_journey.py::test_user_completes_guided_comparison` |
-| U6 | report allowlist + local output root | `tests/test_web.py::test_local_app_runs_selected_towns_and_serves_reports`; installed benchmark in `tests/test_packaging.py` |
-| S1 | fixed loopback URL; self-contained assets | `tests/test_user_journey.py::test_user_completes_guided_comparison` asserts zero browser errors; static assets tested in `tests/test_packaging.py` |
+| U6 | report/SQLite allowlist + atomic run directory | `tests/test_web.py::test_local_app_runs_selected_towns_and_serves_reports`; installed benchmark in `tests/test_packaging.py` |
+| S1 | fixed loopback URL; trusted Host and same-origin mutation policy; self-contained assets | `tests/test_web.py::test_local_app_rejects_hostile_host_and_origin`; browser journey asserts zero errors; static assets tested in `tests/test_packaging.py` |
 | S2 | web route invokes `execute_run` | API integration and SQLite assertions in `tests/test_web.py`; engine suites under `tests/test_gates.py`, `test_scoring.py`, and `test_reports.py` |
 | S3 | Hatch wheel includes web and benchmark resources | `tests/test_packaging.py::test_installed_wheel_runs_benchmark_outside_checkout` |
-| S4 | strict request models + existing ingestion policy | rejection tests in `tests/test_web.py`, `tests/test_connectors.py`, and `tests/test_source_policy.py` |
-| N1 | responsive CSS and semantic controls | `tests/test_user_journey.py::test_user_completes_guided_comparison`; Playwright desktop/mobile review |
+| S4 | transport limit + strict request models + atomic staging + ingestion policy | size and partial-failure tests in `tests/test_web.py`; `tests/test_connectors.py`; `tests/test_source_policy.py` |
+| N1 | responsive CSS and semantic controls | parameterized Playwright desktop/mobile journey in `tests/test_user_journey.py::test_user_completes_guided_comparison` |

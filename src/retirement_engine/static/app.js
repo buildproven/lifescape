@@ -148,8 +148,14 @@ function renderResults(result) {
   $("#download-strip").innerHTML = `<strong>Run ${escapeHtml(result.run_id)}</strong>
     <a href="${result.downloads["comparison.md"]}">Markdown report</a>
     <a href="${result.downloads["comparison.csv"]}">Ranking CSV</a>
-    <a href="${result.downloads["sensitivity.csv"]}">Sensitivity CSV</a>`;
-  $("#synthetic-notice").style.display = result.synthetic ? "flex" : "none";
+    <a href="${result.downloads["sensitivity.csv"]}">Sensitivity CSV</a>
+    <a href="${result.downloads["lifescape.sqlite"]}">SQLite provenance</a>`;
+  const hasSynthetic = result.evidence_kind !== "real";
+  $("#synthetic-notice").style.display = hasSynthetic ? "flex" : "none";
+  if (hasSynthetic) {
+    $("#synthetic-notice span").textContent = `${result.evidence_kind} evidence`;
+    $("#synthetic-notice p").textContent = "This run contains synthetic values. Treat its results as test output, not purchase research.";
+  }
   $("#back-button").hidden = true;
   $("#action-hint").textContent = "This run is saved locally. Adjust the inputs to explore another field.";
   $("#next-button").hidden = false;
@@ -244,6 +250,11 @@ $("#import-button").addEventListener("click", () => $("#evidence-file").click())
 $("#evidence-file").addEventListener("change", async (event) => {
   const [file] = event.target.files;
   if (!file) return;
+  if (file.size > 5000000) {
+    toast("Evidence CSV exceeds the 5 MB local-app limit.");
+    event.target.value = "";
+    return;
+  }
   try { await importEvidence(file); } catch (error) { toast(error.message); }
   event.target.value = "";
 });

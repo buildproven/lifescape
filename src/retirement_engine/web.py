@@ -8,16 +8,20 @@ import shutil
 import threading
 import webbrowser
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Annotated, Literal, TypedDict
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import uvicorn
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi import Path as ApiPath
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from retirement_engine.config import load_metrics
 from retirement_engine.models import GateState, RunResult
@@ -25,7 +29,49 @@ from retirement_engine.pipeline import execute_run
 from retirement_engine.resources import bundled_benchmark
 
 MAX_EVIDENCE_BYTES = 5_000_000
-DOWNLOAD_FILES = frozenset({"comparison.md", "comparison.csv", "sensitivity.csv"})
+MAX_REQUEST_BYTES = MAX_EVIDENCE_BYTES + 100_000
+DOWNLOAD_FILES = frozenset(
+    {"comparison.md", "comparison.csv", "sensitivity.csv", "lifescape.sqlite"}
+)
+
+
+class BodyLimitMiddleware:
+    """Reject oversized evidence requests before JSON parsing or endpoint dispatch."""
+
+    def __init__(self, app: ASGIApp, max_bytes: int = MAX_REQUEST_BYTES) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] != "POST":
+            await self.app(scope, receive, send)
+            return
+        body = bytearray()
+        more_body = True
+        while more_body:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            body.extend(message.get("body", b""))
+            if len(body) > self.max_bytes:
+                response = JSONResponse(
+                    {"detail": "request exceeds the 5 MB local-app import limit"},
+                    status_code=413,
+                )
+                await response(scope, receive, send)
+                return
+            more_body = message.get("more_body", False)
+
+        delivered = False
+
+        async def replay() -> Message:
+            nonlocal delivered
+            if delivered:
+                return {"type": "http.request", "body": b"", "more_body": False}
+            delivered = True
+            return {"type": "http.request", "body": bytes(body), "more_body": False}
+
+        await self.app(scope, replay, send)
 
 
 class WebModel(BaseModel):
@@ -34,6 +80,13 @@ class WebModel(BaseModel):
 
 class EvidenceInspectRequest(WebModel):
     csv_text: str = Field(min_length=1)
+
+    @field_validator("csv_text")
+    @classmethod
+    def evidence_is_bounded(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > MAX_EVIDENCE_BYTES:
+            raise ValueError("evidence CSV exceeds the 5 MB local-app limit")
+        return value
 
 
 class AppRunRequest(WebModel):
@@ -199,20 +252,45 @@ def _response(run: RunResult, token: str) -> dict[str, object]:
         for place_id, place in places.items()
         if place_id not in ranked_ids
     ]
+    evidence_kind = _observation_evidence_kind(run)
     return {
         "run_id": run.run_id,
         "evaluated_as_of": run.evaluated_as_of.isoformat(),
         "evidence_through": run.evidence_through.date().isoformat(),
-        "synthetic": all(observation.source.synthetic for observation in run.observations),
+        "evidence_kind": evidence_kind,
+        "has_synthetic": evidence_kind != "real",
         "rankings": rankings,
         "blocked": blocked,
         "downloads": {name: f"/api/downloads/{token}/{name}" for name in sorted(DOWNLOAD_FILES)},
     }
 
 
+def _observation_evidence_kind(run: RunResult) -> Literal["real", "synthetic", "mixed"]:
+    flags = {observation.source.synthetic for observation in run.observations}
+    if flags == {True}:
+        return "synthetic"
+    if flags == {False}:
+        return "real"
+    return "mixed"
+
+
+def _validate_mutation_origin(request: Request) -> None:
+    origin = request.headers.get("origin")
+    if origin is None:
+        return
+    parsed = urlsplit(origin)
+    if parsed.scheme != "http" or parsed.netloc != request.headers.get("host"):
+        raise HTTPException(status_code=403, detail="request origin is not this local app")
+
+
 def create_app(output_dir: Path | None = None) -> FastAPI:
     """Create the loopback-only browser application."""
     app = FastAPI(title="Lifescape", docs_url=None, redoc_url=None)
+    app.add_middleware(BodyLimitMiddleware)
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=["127.0.0.1", "localhost", "[::1]"],
+    )
     package_dir = Path(__file__).resolve().parent
     app.mount("/static", StaticFiles(directory=package_dir / "static"), name="static")
     root_output = (output_dir or Path("outputs/app")).resolve()
@@ -243,11 +321,12 @@ def create_app(output_dir: Path | None = None) -> FastAPI:
         }
 
     @app.post("/api/evidence/inspect")
-    def inspect_evidence(request: EvidenceInspectRequest) -> dict[str, object]:
+    def inspect_evidence(payload: EvidenceInspectRequest, request: Request) -> dict[str, object]:
+        _validate_mutation_origin(request)
         try:
             with bundled_benchmark() as (_, config_dir):
                 metric_ids = tuple(metric.id for metric in load_metrics(config_dir))
-            _, rows = _read_evidence(request.csv_text, metric_ids)
+            _, rows = _read_evidence(payload.csv_text, metric_ids)
             return {
                 "places": _catalog(rows, metric_ids),
                 "metric_count": len(metric_ids),
@@ -257,40 +336,51 @@ def create_app(output_dir: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/run")
-    def run_comparison(request: AppRunRequest) -> dict[str, object]:
+    def run_comparison(payload: AppRunRequest, request: Request) -> dict[str, object]:
+        _validate_mutation_origin(request)
         token = uuid4().hex[:12]
-        run_dir = root_output / "runs" / token
+        runs_root = root_output / "runs"
+        run_dir = runs_root / token
         try:
-            run_dir.mkdir(parents=True, exist_ok=False)
-            with bundled_benchmark() as (benchmark_evidence, benchmark_config):
-                metric_ids = tuple(metric.id for metric in load_metrics(benchmark_config))
-                csv_text = request.evidence_csv or benchmark_evidence.read_text(encoding="utf-8")
-                fieldnames, rows = _read_evidence(csv_text, metric_ids)
-                evidence_path = run_dir / "evidence.csv"
-                _filter_evidence(fieldnames, rows, set(request.selected_place_ids), evidence_path)
-                config_dir = benchmark_config
-                if request.evidence_csv is not None:
-                    config_dir = run_dir / "config"
-                    shutil.copytree(benchmark_config, config_dir)
-                    brief_path = config_dir / "research_brief.yaml"
-                    brief = yaml.safe_load(brief_path.read_text(encoding="utf-8"))
-                    brief["benchmark_only"] = False
-                    brief_path.write_text(yaml.safe_dump(brief, sort_keys=False), encoding="utf-8")
-                profile_path = run_dir / "profile.yaml"
-                _prepare_profile(
-                    config_dir / "user_profile.example.yaml",
-                    profile_path,
-                    budget=request.purchase_budget_max,
-                    age=request.future_self_age,
-                    household=request.household,
-                )
-                result = execute_run(
-                    evidence_path=evidence_path,
-                    config_dir=config_dir,
-                    profile_path=profile_path,
-                    database_path=root_output / "lifescape.sqlite",
-                    output_dir=run_dir,
-                )
+            runs_root.mkdir(parents=True, exist_ok=True)
+            with TemporaryDirectory(prefix=".staging-", dir=runs_root) as staging_name:
+                staging_dir = Path(staging_name)
+                with bundled_benchmark() as (benchmark_evidence, benchmark_config):
+                    metric_ids = tuple(metric.id for metric in load_metrics(benchmark_config))
+                    csv_text = payload.evidence_csv or benchmark_evidence.read_text(
+                        encoding="utf-8"
+                    )
+                    fieldnames, rows = _read_evidence(csv_text, metric_ids)
+                    evidence_path = staging_dir / "evidence.csv"
+                    _filter_evidence(
+                        fieldnames, rows, set(payload.selected_place_ids), evidence_path
+                    )
+                    config_dir = benchmark_config
+                    if payload.evidence_csv is not None:
+                        config_dir = staging_dir / "config"
+                        shutil.copytree(benchmark_config, config_dir)
+                        brief_path = config_dir / "research_brief.yaml"
+                        brief = yaml.safe_load(brief_path.read_text(encoding="utf-8"))
+                        brief["benchmark_only"] = False
+                        brief_path.write_text(
+                            yaml.safe_dump(brief, sort_keys=False), encoding="utf-8"
+                        )
+                    profile_path = staging_dir / "profile.yaml"
+                    _prepare_profile(
+                        config_dir / "user_profile.example.yaml",
+                        profile_path,
+                        budget=payload.purchase_budget_max,
+                        age=payload.future_self_age,
+                        household=payload.household,
+                    )
+                    result = execute_run(
+                        evidence_path=evidence_path,
+                        config_dir=config_dir,
+                        profile_path=profile_path,
+                        database_path=staging_dir / "lifescape.sqlite",
+                        output_dir=staging_dir,
+                    )
+                staging_dir.replace(run_dir)
             run_directories[token] = run_dir
             return _response(result, token)
         except (OSError, ValueError) as exc:
