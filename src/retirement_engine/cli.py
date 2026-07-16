@@ -105,7 +105,7 @@ def app_command(
     """Open the guided local browser workspace."""
     from retirement_engine.web import serve
 
-    _event("app_started", url=f"http://127.0.0.1:{port}", output_dir=str(output_dir))
+    _event("app_started", url=f"http://127.0.0.1:{port}/demo", output_dir=str(output_dir))
     serve(port=port, output_dir=output_dir, open_browser=not no_open)
 
 

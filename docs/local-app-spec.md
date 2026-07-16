@@ -25,6 +25,7 @@ learning the engine's file layout or CLI pipeline.
 | H2 | Make hosted data handling and persistence limits explicit. | Hosted mode discloses that selected constraints are processed temporarily, creates no durable run directory, and offers no report or SQLite download. |
 | H3 | Preserve one product implementation. | Hosted mode uses the same UI and `execute_run` engine as the local app. |
 | H4 | Bound and disable public compute safely. | Hosted runs require a same-origin browser request, fail closed on deployment, enforce bounded per-process safeguards, use a deployment-wide Vercel edge limit, and have a disabled emergency-deny rule ready for immediate publication. |
+| H5 | Explain the product before asking a hosted visitor to operate it. | `/` states the problem, method, output, synthetic-data limitation, and local/private path; its primary action opens the shared workspace at `/demo`. |
 | Q1 | Keep local and CI quality gates aligned. | `npm run quality:check` runs locked frontend, Python, coverage, browser, and package checks locally and in GitHub Actions; the package build uses the locked Hatchling backend. |
 | Q2 | Reject vulnerable dependencies and leaked secrets. | npm and Python dependency audits plus Gitleaks working-tree and full-history scans run through `npm run security:check` and CI. |
 | Q3 | Prevent low-quality commits and pushes. | Husky enforces conventional commits, staged formatting/linting, and full pre-push quality/security gates. |
@@ -33,7 +34,7 @@ learning the engine's file layout or CLI pipeline.
 ## Design
 
 ```text
-retire app
+retire app ── opens /demo
    │
    ▼
 FastAPI loopback server ── packaged HTML/CSS/JS workspace
@@ -54,6 +55,7 @@ temporary run inputs ── execute_run (existing engine)
   staging/publishing, response shaping, and session-scoped downloads.
 - `pipeline.py` remains the only decision orchestrator.
 - `resources.py` resolves identical benchmark assets in editable and installed-wheel contexts.
+- `templates/landing.html` explains the hosted product and routes visitors to `/demo`.
 - `templates/app.html` plus `static/` provide a dependency-free browser client; no separate Node
   build is required at runtime.
 
@@ -96,6 +98,7 @@ temporary run inputs ── execute_run (existing engine)
 | H2 | temporary staging without publication + empty downloads | hosted API and browser tests above |
 | H3 | same `create_app`, browser assets, and `execute_run` path | hosted API integration test; Vercel entry point in `api/index.py` |
 | H4 | `HostedRunGuard`, required Origin, fail-closed deployment switch, live rate-limit rule, and disabled emergency-deny rule | hosted API and bounded-state tests in `tests/test_web.py`; `ops/vercel-firewall.json`; `npm run ops:verify:vercel` |
+| H5 | explanatory `/` route + shared `/demo` route | `tests/test_web.py::test_landing_page_explains_the_product_and_links_to_demo`; desktop/mobile `tests/test_user_journey.py::test_visitor_understands_product_and_opens_demo` |
 | Q1 | `package.json` scripts + `.github/workflows/quality.yml` | `tests/test_quality_config.py::test_quality_automation_matches_project_contract`; full `npm run quality:check` |
 | Q2 | security scripts + `.gitleaks.toml` + full-history checkout | quality-config and deleted-secret regression tests; `npm run security:check` |
 | Q3 | `.husky/` hooks + commitlint/lint-staged configuration | quality-config test; commitlint smoke verification |

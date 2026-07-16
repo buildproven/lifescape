@@ -19,7 +19,10 @@ def test_installed_wheel_runs_benchmark_outside_checkout(tmp_path: Path) -> None
     wheel = next(distribution.glob("*.whl"))
     with zipfile.ZipFile(wheel) as archive:
         packaged_files = set(archive.namelist())
+    assert "retirement_engine/templates/landing.html" in packaged_files
     assert "retirement_engine/templates/app.html" in packaged_files
+    assert "retirement_engine/static/landing.css" in packaged_files
+    assert "retirement_engine/static/landing.js" in packaged_files
     assert "retirement_engine/static/app.css" in packaged_files
     assert "retirement_engine/static/app.js" in packaged_files
     outside_checkout = tmp_path / "elsewhere"
