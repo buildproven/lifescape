@@ -476,6 +476,7 @@ def create_app(
         loader=FileSystemLoader(package_dir / "templates"),
         autoescape=select_autoescape(("html",)),
     )
+    landing_template = template_environment.get_template("landing.html")
     app_template = template_environment.get_template("app.html")
     app.mount("/static", StaticFiles(directory=package_dir / "static"), name="static")
     root_output = (output_dir or Path("outputs/app")).resolve()
@@ -492,6 +493,10 @@ def create_app(
 
     @app.get("/", include_in_schema=False)
     def index() -> HTMLResponse:
+        return HTMLResponse(landing_template.render())
+
+    @app.get("/demo", include_in_schema=False)
+    def demo() -> HTMLResponse:
         if hosted_demo:
             title = "Public demo"
             body = (
@@ -655,7 +660,7 @@ def serve(
     open_browser: bool = True,
 ) -> None:
     """Launch the local app and optionally open its browser tab."""
-    url = f"http://{host}:{port}"
+    url = f"http://{host}:{port}/demo"
     if open_browser:
         threading.Timer(0.8, webbrowser.open, args=(url,)).start()
     uvicorn.run(create_app(output_dir), host=host, port=port, log_level="warning")

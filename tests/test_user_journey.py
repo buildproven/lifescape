@@ -62,7 +62,7 @@ def test_user_completes_guided_comparison(tmp_path: Path, viewport: dict[str, in
                 browser_errors.append(message.text) if message.type == "error" else None
             ),
         )
-        page.goto(url)
+        page.goto(f"{url}/demo")
 
         page.get_by_role("heading", name="Shape the decision").wait_for()
         page.get_by_role("button", name="Choose towns →").click()
@@ -93,7 +93,7 @@ def test_user_keeps_mixed_evidence_warning_after_scoring(tmp_path: Path) -> None
                 browser_errors.append(message.text) if message.type == "error" else None
             ),
         )
-        page.goto(url)
+        page.goto(f"{url}/demo")
         page.get_by_role("heading", name="Shape the decision").wait_for()
         page.locator("#evidence-file").set_input_files(
             {
@@ -142,7 +142,7 @@ def test_hosted_user_completes_synthetic_demo_without_private_controls(
                 browser_errors.append(message.text) if message.type == "error" else None
             ),
         )
-        page.goto(url)
+        page.goto(f"{url}/demo")
         page.get_by_role("heading", name="Shape the decision").wait_for()
         assert page.get_by_role("button", name="Import CSV").is_hidden()
         assert page.get_by_text(
@@ -171,7 +171,7 @@ def test_hosted_disclosure_survives_without_javascript(tmp_path: Path) -> None:
     with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(java_script_enabled=False, viewport={"width": 1440, "height": 1000})
-        page.goto(url)
+        page.goto(f"{url}/demo")
 
         assert page.get_by_text("Public demo").is_visible()
         assert page.get_by_text(
@@ -179,4 +179,34 @@ def test_hosted_disclosure_survives_without_javascript(tmp_path: Path) -> None:
             "temporarily; no durable record is promised."
         ).is_visible()
         assert page.get_by_text("Your evidence and outputs stay on this computer.").count() == 0
+        browser.close()
+
+
+@pytest.mark.parametrize(
+    "viewport", [{"width": 390, "height": 844}, {"width": 1440, "height": 1000}]
+)
+def test_visitor_understands_product_and_opens_demo(
+    tmp_path: Path, viewport: dict[str, int]
+) -> None:
+    browser_errors: list[str] = []
+    with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=viewport)
+        page.on(
+            "console",
+            lambda message: (
+                browser_errors.append(message.text) if message.type == "error" else None
+            ),
+        )
+        page.goto(url)
+
+        page.get_by_role("heading", name="Decide where retirement still works.").wait_for()
+        assert page.get_by_text("Gates eliminate").first.is_visible()
+        assert page.get_by_role(
+            "heading", name="From “maybe there” to a decision you can inspect."
+        ).is_visible()
+        page.get_by_role("link", name="Try the synthetic demo").click()
+        page.get_by_role("heading", name="Shape the decision").wait_for()
+        assert page.url.endswith("/demo")
+        assert browser_errors == []
         browser.close()

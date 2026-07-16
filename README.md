@@ -15,7 +15,7 @@ npm ci
 uv run retire app
 ```
 
-`retire app` opens a guided local workspace at `http://127.0.0.1:8765`. Set your
+`retire app` opens a guided local workspace at `http://127.0.0.1:8765/demo`. Set your
 budget and planning age, choose towns, review evidence completeness, then run and
 download the comparison. You can also import a CSV matching the documented evidence
 contract; the file is processed locally and validated before it reaches scoring.

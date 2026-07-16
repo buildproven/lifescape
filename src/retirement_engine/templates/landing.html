@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#13251d" />
+    <meta
+      name="description"
+      content="Lifescape makes retirement-town decisions explainable: hard constraints eliminate, weighted evidence ranks, and uncertainty stays visible."
+    />
+    <title>Lifescape — decide where retirement still works</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2314221b%22/><path d=%22M18 16v32h29v-7H26V16z%22 fill=%22%2378aa8d%22/></svg>"
+    />
+    <link rel="stylesheet" href="/static/landing.css" />
+    <script src="/static/landing.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <a class="wordmark" href="/" aria-label="Lifescape home">Lifescape</a>
+      <nav aria-label="Primary navigation">
+        <a href="#method">Method</a>
+        <a href="#how-it-works">How it works</a>
+        <a class="nav-cta" href="/demo">Open demo <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="kicker">An evidence-backed retirement decision engine</p>
+          <h1 id="hero-title">Decide where retirement still works.</h1>
+          <p class="hero-intro">
+            Lifescape turns your non-negotiables, town evidence, and future-life priorities into an
+            explainable shortlist—without hiding failed options or guessing through missing data.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="/demo"
+              >Try the synthetic demo <span aria-hidden="true">→</span></a
+            >
+            <a class="text-link" href="#how-it-works">See how it decides</a>
+          </div>
+          <p class="demo-disclosure">
+            The public demo uses invented evidence. It is for exploring the method, not choosing a
+            home.
+          </p>
+        </div>
+
+        <div class="decision-field" aria-label="Illustration of an explainable town comparison">
+          <div class="field-label">
+            <span>Synthetic field</span>
+            <strong>10 towns · 17 metrics</strong>
+          </div>
+          <svg class="field-lines" viewBox="0 0 720 620" aria-hidden="true">
+            <path d="M-40 70 C 155 80, 92 280, 322 279 S 490 520, 770 482"></path>
+            <path d="M58 -30 C 100 155, 315 92, 344 300 S 559 409, 684 650"></path>
+            <path d="M-20 490 C 138 380, 258 565, 428 453 S 566 206, 760 216"></path>
+          </svg>
+          <div class="result-stack" aria-hidden="true">
+            <div class="result-row result-lead">
+              <span class="result-rank">01</span>
+              <div><strong>Williamsburg</strong><small>Cleared every hard gate</small></div>
+              <span class="result-state">ranked</span>
+            </div>
+            <div class="result-row">
+              <span class="result-rank">02</span>
+              <div><strong>Roanoke</strong><small>Eligible · stability tested</small></div>
+              <span class="result-state">ranked</span>
+            </div>
+            <div class="result-row">
+              <span class="result-rank">—</span>
+              <div><strong>Asheville</strong><small>Purchase gate failed</small></div>
+              <span class="result-state is-blocked">blocked</span>
+            </div>
+          </div>
+          <div class="field-rule">
+            <span>Gates eliminate</span>
+            <span>Weights rank</span>
+            <span>Evidence decides</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="premise reveal" id="method" aria-labelledby="premise-title">
+        <p class="section-number">01 / The difference</p>
+        <div>
+          <h2 id="premise-title">A shortlist is only useful when you can see why it exists.</h2>
+          <p>
+            Most comparison tools collapse everything into one score. Lifescape separates the
+            decision into hard gates, ranked preferences, source quality, and sensitivity—so a town
+            cannot compensate for failing something essential.
+          </p>
+        </div>
+      </section>
+
+      <section class="method-strip reveal" aria-label="Lifescape decision method">
+        <div>
+          <span>Hard gates</span>
+          <strong>Non-negotiables can eliminate a town.</strong>
+          <p>Budget, critical access, and missing essential evidence stay decisive.</p>
+        </div>
+        <div>
+          <span>Weighted ranking</span>
+          <strong>Only eligible towns compete on preferences.</strong>
+          <p>Comparable evidence is normalized before priorities shape the ranking.</p>
+        </div>
+        <div>
+          <span>Visible uncertainty</span>
+          <strong>A rank is tested, not presented as destiny.</strong>
+          <p>Sensitivity runs show whether the leading group is stable or fragile.</p>
+        </div>
+      </section>
+
+      <section class="process" id="how-it-works" aria-labelledby="process-title">
+        <div class="process-heading reveal">
+          <p class="section-number">02 / How it works</p>
+          <h2 id="process-title">From “maybe there” to a decision you can inspect.</h2>
+          <a class="text-link" href="/demo">Walk through the demo <span>→</span></a>
+        </div>
+        <ol class="process-list">
+          <li class="reveal">
+            <span>01</span>
+            <div>
+              <h3>Set the decision frame</h3>
+              <p>
+                Define the purchase ceiling, planning age, household, and the towns worth comparing.
+                These inputs remain visible and editable.
+              </p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span>02</span>
+            <div>
+              <h3>Inspect the evidence</h3>
+              <p>
+                Review completeness before scoring. Blank critical fields remain unknown; the engine
+                does not invent a value to keep a candidate alive.
+              </p>
+            </div>
+          </li>
+          <li class="reveal">
+            <span>03</span>
+            <div>
+              <h3>Read ranked and blocked outcomes</h3>
+              <p>
+                See the eligible ranking, the criteria behind each result, stability across 1,000
+                simulations, and every town that failed or could not clear a gate.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="proof reveal" aria-labelledby="proof-title">
+        <div class="proof-copy">
+          <p class="section-number">03 / The output</p>
+          <h2 id="proof-title">The answer is not just a winner.</h2>
+          <p>
+            It is a decision record: what qualified, what failed, which criteria mattered, how
+            stable the result was, and where the evidence still needs work.
+          </p>
+        </div>
+        <div class="proof-output">
+          <div class="proof-heading">
+            <span>Synthetic example</span>
+            <strong>Williamsburg leads this field.</strong>
+          </div>
+          <dl>
+            <div>
+              <dt>Eligible</dt>
+              <dd>Ranked with criterion detail</dd>
+            </div>
+            <div>
+              <dt>Blocked</dt>
+              <dd>Still shown with gate reasons</dd>
+            </div>
+            <div>
+              <dt>Uncertain</dt>
+              <dd>Missing evidence remains explicit</dd>
+            </div>
+            <div>
+              <dt>Local app</dt>
+              <dd>Reports and SQLite provenance</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="local-first reveal" aria-labelledby="local-title">
+        <div>
+          <p class="section-number">04 / Local by design</p>
+          <h2 id="local-title">Use the web demo to learn it. Run locally for your real work.</h2>
+        </div>
+        <div class="local-copy">
+          <p>
+            The hosted experience accepts only bundled synthetic evidence and keeps no durable run
+            record. The installable app lets you import your own CSV, processes it on your computer,
+            and produces downloadable reports plus SQLite provenance.
+          </p>
+          <div class="install-command" aria-label="Local installation commands">
+            <code>uv sync --locked --extra dev</code>
+            <code>uv run retire app</code>
+          </div>
+          <a
+            class="text-link"
+            href="https://github.com/buildproven/lifescape-engine"
+            rel="noreferrer"
+            >View the source on GitHub <span>↗</span></a
+          >
+        </div>
+      </section>
+
+      <section class="final-cta reveal" aria-labelledby="cta-title">
+        <p class="kicker">Start with the method</p>
+        <h2 id="cta-title">See what changes when failed options stay visible.</h2>
+        <a class="button button-light" href="/demo"
+          >Open the synthetic demo <span aria-hidden="true">→</span></a
+        >
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <a class="wordmark" href="/">Lifescape</a>
+      <p>Gates eliminate. Weights rank. Evidence decides. Uncertainty stays visible.</p>
+      <a href="https://github.com/buildproven/lifescape-engine" rel="noreferrer">GitHub ↗</a>
+    </footer>
+  </body>
+</html>

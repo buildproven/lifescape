@@ -12,9 +12,21 @@ from fastapi.testclient import TestClient
 from retirement_engine.web import HostedRunGuard, create_app
 
 
-def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
+def test_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
         page = client.get("/")
+
+    assert page.status_code == 200
+    assert "Decide where retirement still works." in page.text
+    assert "hard gates, ranked preferences, source quality, and sensitivity" in page.text
+    assert 'href="/demo"' in page.text
+    assert "The public demo uses invented evidence." in page.text
+    assert "Use the web demo to learn it. Run locally for your real work." in page.text
+
+
+def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        page = client.get("/demo")
         bootstrap = client.get("/api/bootstrap")
 
     assert page.status_code == 200
@@ -33,7 +45,7 @@ def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
         create_app(output, hosted_demo=True, hosted_runs_enabled=True),
         base_url="https://lifescape.buildproven.ai",
     ) as client:
-        page = client.get("/")
+        page = client.get("/demo")
         bootstrap = client.get("/api/bootstrap")
         places = bootstrap.json()["places"]
         imported = client.post(
@@ -188,7 +200,7 @@ def test_hosted_guard_rejects_rotating_clients_without_retaining_them() -> None:
 
 def test_local_html_preserves_local_disclosure(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
-        response = client.get("/")
+        response = client.get("/demo")
 
     assert "Your evidence and outputs stay on this computer." in response.text
     assert "CSV uploads are disabled." not in response.text
