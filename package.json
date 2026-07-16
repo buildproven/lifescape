@@ -19,7 +19,8 @@
     "security:npm": "npm audit --audit-level=high",
     "security:python": "uv run pip-audit --local",
     "security:config": "eslint src/retirement_engine/static/app.js && bash scripts/run-gitleaks.sh",
-    "security:check": "npm run security:npm && npm run security:python && npm run security:config"
+    "security:check": "npm run security:npm && npm run security:python && npm run security:config",
+    "ops:verify:vercel": "bash scripts/verify-vercel-firewall.sh"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.4.1",

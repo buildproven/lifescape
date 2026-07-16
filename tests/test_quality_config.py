@@ -10,6 +10,7 @@ def test_quality_automation_matches_project_contract() -> None:
     repository = Path(__file__).resolve().parents[1]
     package = json.loads((repository / "package.json").read_text(encoding="utf-8"))
     quality = json.loads((repository / ".qualityrc.json").read_text(encoding="utf-8"))
+    firewall = json.loads((repository / "ops/vercel-firewall.json").read_text(encoding="utf-8"))
     workflow = (repository / ".github/workflows/quality.yml").read_text(encoding="utf-8")
     vercel = json.loads((repository / "vercel.json").read_text(encoding="utf-8"))
     pre_commit = (repository / ".husky/pre-commit").read_text(encoding="utf-8")
@@ -31,6 +32,7 @@ def test_quality_automation_matches_project_contract() -> None:
     assert "npm run quality:check" in workflow
     assert "npm run security:check" in workflow
     assert package["scripts"]["security:config"].endswith("bash scripts/run-gitleaks.sh")
+    assert package["scripts"]["ops:verify:vercel"] == "bash scripts/verify-vercel-firewall.sh"
     assert package["scripts"]["quality:python"].endswith(
         "uv run --extra dev -- uv build --no-build-isolation"
     )
@@ -38,10 +40,24 @@ def test_quality_automation_matches_project_contract() -> None:
         encoding="utf-8"
     )
     gitleaks_runner = (repository / "scripts/run-gitleaks.sh").read_text(encoding="utf-8")
-    assert '"$binary" dir' in gitleaks_runner
-    assert '"$binary" git' in gitleaks_runner
+    history_config = (repository / ".gitleaks.toml").read_text(encoding="utf-8")
+    directory_config = (repository / ".gitleaks-dir.toml").read_text(encoding="utf-8")
+    assert '"$binary" dir --config .gitleaks-dir.toml' in gitleaks_runner
+    assert '"$binary" git --config .gitleaks.toml' in gitleaks_runner
     assert "--no-git" not in gitleaks_runner
+    assert "[allowlist]" not in history_config
+    assert 'path = ".gitleaks.toml"' in directory_config
     assert vercel["functions"]["api/index.py"]["maxDuration"] == 30
+    assert firewall["rateLimit"] == {
+        "id": "rule_rate_limit_lifescape_hosted_runs_MaiEPl",
+        "name": "Rate limit Lifescape hosted runs",
+        "path": "/api/run",
+        "requests": 10,
+        "windowSeconds": 60,
+        "key": "ip",
+        "status": "Enabled",
+    }
+    assert firewall["emergencyDeny"]["status"] == "Disabled"
     assert "lint-staged" in pre_commit
     assert "npm run quality:check" in pre_push
     assert "npm run security:check" in pre_push
@@ -90,13 +106,21 @@ def test_gitleaks_runner_detects_secret_removed_from_worktree(tmp_path: Path) ->
         check=True,
     )
     shutil.copy2(repository / ".gitleaks.toml", tmp_path / ".gitleaks.toml")
-    secret_path = tmp_path / "temporary.env"
+    shutil.copy2(repository / ".gitleaks-dir.toml", tmp_path / ".gitleaks-dir.toml")
+    secret_path = tmp_path / "dist/temporary.env"
+    secret_path.parent.mkdir()
     secret_path.write_text(
         "api_key='" + "test-secret-value-123" + "'\n",
         encoding="utf-8",
     )
     subprocess.run(
-        ["git", "add", ".gitleaks.toml", "temporary.env"],
+        [
+            "git",
+            "add",
+            ".gitleaks.toml",
+            ".gitleaks-dir.toml",
+            "dist/temporary.env",
+        ],
         cwd=tmp_path,
         check=True,
     )
@@ -127,4 +151,4 @@ def test_gitleaks_runner_detects_secret_removed_from_worktree(tmp_path: Path) ->
     )
 
     assert completed.returncode != 0
-    assert "temporary.env" in completed.stdout + completed.stderr
+    assert "dist/temporary.env" in completed.stdout + completed.stderr

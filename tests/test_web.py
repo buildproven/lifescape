@@ -5,9 +5,11 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from retirement_engine.web import create_app
+from retirement_engine.web import HostedRunGuard, create_app
 
 
 def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
@@ -169,6 +171,19 @@ def test_hosted_demo_requires_origin_and_rate_limits_runs(tmp_path: Path) -> Non
     assert limited.status_code == 429
     assert int(limited.headers["retry-after"]) >= 1
     assert list((output / "runs").iterdir()) == []
+
+
+def test_hosted_guard_rejects_rotating_clients_without_retaining_them() -> None:
+    guard = HostedRunGuard(enabled=True, max_concurrent=1)
+    guard.acquire("active-client")
+
+    for index in range(256):
+        with pytest.raises(HTTPException) as error:
+            guard.acquire(f"rejected-client-{index}")
+        assert error.value.status_code == 429
+
+    assert guard.tracked_client_count == 1
+    guard.release()
 
 
 def test_local_html_preserves_local_disclosure(tmp_path: Path) -> None:

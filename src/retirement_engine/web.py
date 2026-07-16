@@ -36,7 +36,9 @@ from retirement_engine.resources import bundled_benchmark
 MAX_EVIDENCE_BYTES = 5_000_000
 HOSTED_RUN_LIMIT = 6
 HOSTED_RUN_WINDOW_SECONDS = 60.0
+HOSTED_GLOBAL_RUN_LIMIT = 30
 HOSTED_MAX_CONCURRENT_RUNS = 2
+HOSTED_MAX_TRACKED_CLIENTS = 128
 DOWNLOAD_FILES = frozenset(
     {"comparison.md", "comparison.csv", "sensitivity.csv", "lifescape.sqlite"}
 )
@@ -51,13 +53,18 @@ class HostedRunGuard:
         enabled: bool,
         run_limit: int = HOSTED_RUN_LIMIT,
         window_seconds: float = HOSTED_RUN_WINDOW_SECONDS,
+        global_run_limit: int = HOSTED_GLOBAL_RUN_LIMIT,
         max_concurrent: int = HOSTED_MAX_CONCURRENT_RUNS,
+        max_tracked_clients: int = HOSTED_MAX_TRACKED_CLIENTS,
     ) -> None:
         self.enabled = enabled
         self.run_limit = run_limit
         self.window_seconds = window_seconds
+        self.global_run_limit = global_run_limit
         self.max_concurrent = max_concurrent
+        self.max_tracked_clients = max_tracked_clients
         self._active = 0
+        self._global_requests: deque[float] = deque()
         self._requests: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
 
@@ -70,8 +77,42 @@ class HostedRunGuard:
             )
         now = time.monotonic()
         with self._lock:
-            requests = self._requests.setdefault(client_key, deque())
             cutoff = now - self.window_seconds
+            while self._global_requests and self._global_requests[0] <= cutoff:
+                self._global_requests.popleft()
+            stale_clients = [
+                key
+                for key, history in self._requests.items()
+                if not history or history[-1] <= cutoff
+            ]
+            for key in stale_clients:
+                del self._requests[key]
+            if self._active >= self.max_concurrent:
+                raise HTTPException(
+                    status_code=429,
+                    detail="hosted comparison capacity is busy; try again shortly",
+                    headers={"Retry-After": "5"},
+                )
+            if len(self._global_requests) >= self.global_run_limit:
+                retry_after = max(
+                    1,
+                    ceil(self.window_seconds - (now - self._global_requests[0])),
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail="hosted comparison capacity is exhausted; try again shortly",
+                    headers={"Retry-After": str(retry_after)},
+                )
+            requests = self._requests.get(client_key)
+            if requests is None:
+                if len(self._requests) >= self.max_tracked_clients:
+                    raise HTTPException(
+                        status_code=429,
+                        detail="hosted comparison capacity is exhausted; try again shortly",
+                        headers={"Retry-After": "60"},
+                    )
+                requests = deque()
+                self._requests[client_key] = requests
             while requests and requests[0] <= cutoff:
                 requests.popleft()
             if len(requests) >= self.run_limit:
@@ -81,18 +122,18 @@ class HostedRunGuard:
                     detail="hosted comparison limit reached; try again shortly",
                     headers={"Retry-After": str(retry_after)},
                 )
-            if self._active >= self.max_concurrent:
-                raise HTTPException(
-                    status_code=429,
-                    detail="hosted comparison capacity is busy; try again shortly",
-                    headers={"Retry-After": "5"},
-                )
             requests.append(now)
+            self._global_requests.append(now)
             self._active += 1
 
     def release(self) -> None:
         with self._lock:
             self._active = max(0, self._active - 1)
+
+    @property
+    def tracked_client_count(self) -> int:
+        with self._lock:
+            return len(self._requests)
 
 
 class BodyLimitMiddleware:
@@ -416,7 +457,9 @@ def create_app(
     hosted_runs_enabled: bool | None = None,
     hosted_run_limit: int = HOSTED_RUN_LIMIT,
     hosted_run_window_seconds: float = HOSTED_RUN_WINDOW_SECONDS,
+    hosted_global_run_limit: int = HOSTED_GLOBAL_RUN_LIMIT,
     hosted_max_concurrent: int = HOSTED_MAX_CONCURRENT_RUNS,
+    hosted_max_tracked_clients: int = HOSTED_MAX_TRACKED_CLIENTS,
 ) -> FastAPI:
     """Create the loopback-only browser application."""
     app = FastAPI(title="Lifescape", docs_url=None, redoc_url=None)
@@ -442,7 +485,9 @@ def create_app(
         enabled=(not hosted_demo if hosted_runs_enabled is None else hosted_runs_enabled),
         run_limit=hosted_run_limit,
         window_seconds=hosted_run_window_seconds,
+        global_run_limit=hosted_global_run_limit,
         max_concurrent=hosted_max_concurrent,
+        max_tracked_clients=hosted_max_tracked_clients,
     )
 
     @app.get("/", include_in_schema=False)

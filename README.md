@@ -23,8 +23,17 @@ contract; the file is processed locally and validated before it reaches scoring.
 The public deployment at `lifescape.buildproven.ai` is intentionally a stateless
 synthetic-data demonstration. It does not accept private CSV imports or promise durable
 reports; use the local app for private evidence and downloadable provenance. Hosted runs
-are protected by edge and application limits and can be disabled immediately with
-`LIFESCAPE_HOSTED_RUNS_ENABLED=false`.
+are protected by deployment-wide Vercel edge limits and bounded application safeguards.
+`LIFESCAPE_HOSTED_RUNS_ENABLED=false` fails closed on new deployments.
+
+For an immediate incident stop, enable the disabled Vercel rule recorded in
+`ops/vercel-firewall.json`, publish the firewall draft, and verify the live controls:
+
+```bash
+vercel firewall rules enable rule_emergency_disable_lifescape_hosted_runs_s3mPXu --scope buildproven
+vercel firewall publish --yes --scope buildproven
+npm run ops:verify:vercel
+```
 
 For the command-line benchmark and QA Architect checks:
 
