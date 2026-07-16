@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 
@@ -30,3 +31,22 @@ def test_quality_automation_matches_project_contract() -> None:
     assert "lint-staged" in pre_commit
     assert "npm run quality:check" in pre_push
     assert "npm run security:check" in pre_push
+
+
+def test_gitleaks_runner_rejects_poisoned_cached_binary(tmp_path: Path) -> None:
+    repository = Path(__file__).resolve().parents[1]
+    binary = tmp_path / ".cache/tools/gitleaks/8.30.1/gitleaks"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    binary.chmod(0o755)
+
+    completed = subprocess.run(
+        ["bash", str(repository / "scripts/run-gitleaks.sh")],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "FAILED" in completed.stdout + completed.stderr
