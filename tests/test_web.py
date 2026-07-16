@@ -482,6 +482,15 @@ def test_local_app_preserves_mixed_evidence_warning(tmp_path: Path) -> None:
 
 def test_local_app_rejects_unknown_town_selection(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        duplicate = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": ["williamsburg_va", "williamsburg_va"],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+            },
+        )
         response = client.post(
             "/api/run",
             json={
@@ -492,6 +501,8 @@ def test_local_app_rejects_unknown_town_selection(tmp_path: Path) -> None:
             },
         )
 
+    assert duplicate.status_code == 422
+    assert "selected places must be unique" in duplicate.text
     assert response.status_code == 422
     assert "unknown selected places" in response.json()["detail"]
     assert list((tmp_path / "output/runs").iterdir()) == []
