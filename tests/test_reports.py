@@ -97,9 +97,6 @@ def test_identical_run_reports_idempotent_persistence(tmp_path: Path) -> None:
 
 def test_concurrent_identical_runs_are_idempotent(tmp_path: Path) -> None:
     database = tmp_path / "runs.sqlite"
-    session, engine = initialize_database(database)
-    session.close()
-    engine.dispose()
     barrier = Barrier(4)
 
     def run(index: int) -> bool:
@@ -120,9 +117,6 @@ def test_concurrent_identical_runs_are_idempotent(tmp_path: Path) -> None:
 
 def test_concurrent_distinct_runs_share_places_safely(tmp_path: Path) -> None:
     database = tmp_path / "runs.sqlite"
-    session, engine = initialize_database(database)
-    session.close()
-    engine.dispose()
     barrier = Barrier(4)
 
     def run(index: int) -> str:

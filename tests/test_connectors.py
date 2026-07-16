@@ -67,6 +67,27 @@ def test_manual_csv_enforces_metric_freshness(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.parametrize("synthetic", ["true", "false"])
+def test_manual_csv_rejects_observation_after_source_retrieval(
+    tmp_path: Path, synthetic: str
+) -> None:
+    csv_path = tmp_path / f"impossible-chronology-{synthetic}.csv"
+    csv_path.write_text(
+        "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
+        "retrieved_at,observed_period,observed_at,source_geography,confidence,synthetic,median_sale_price\n"
+        f"x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2026,2026-01-02,town,high,{synthetic},100000\n",
+        encoding="utf-8",
+    )
+    metric = next(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
+    with pytest.raises(EvidenceError, match="after source retrieval"):
+        ingest_csv(
+            csv_path,
+            (metric,),
+            load_sources(Path("config")),
+            as_of=date(2026, 1, 3),
+        )
+
+
 def test_manual_csv_rejects_nonfinite_values(tmp_path: Path) -> None:
     csv_path = tmp_path / "nonfinite.csv"
     csv_path.write_text(

@@ -64,6 +64,11 @@ def validate_observation_freshness(
     *,
     as_of: date,
 ) -> None:
+    if observation_date > source.retrieved_at:
+        raise SourcePolicyError(
+            "observation date cannot be after source retrieval date: "
+            f"{observation_date.isoformat()} > {source.retrieved_at.isoformat()}"
+        )
     if source.synthetic:
         return
     if observation_date > as_of:

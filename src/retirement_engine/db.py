@@ -172,7 +172,14 @@ def initialize_database(path: Path) -> tuple[Session, Engine]:
         "connect",
         lambda connection, _: connection.execute("PRAGMA busy_timeout=30000"),
     )
-    Base.metadata.create_all(engine)
+    with engine.connect() as connection:
+        connection.exec_driver_sql("BEGIN EXCLUSIVE")
+        try:
+            Base.metadata.create_all(connection)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
     return Session(engine), engine
 
 
