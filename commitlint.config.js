@@ -5,8 +5,13 @@ const lineLengthExceptReviewTrailers = (parsed, when = "always", maxLength = 100
   while (lines.at(-1) === "") {
     lines.pop();
   }
-  const finalBlankLine = lines.lastIndexOf("");
-  const trailerBlockStart = finalBlankLine + 1;
+  let trailerBlockStart = lines.length;
+  while (
+    trailerBlockStart > 0 &&
+    REVIEW_TRAILER_PREFIXES.some((prefix) => lines[trailerBlockStart - 1].startsWith(prefix))
+  ) {
+    trailerBlockStart -= 1;
+  }
   const invalidLine = lines.find((line, index) => {
     const recognizedTrailer =
       index >= trailerBlockStart &&

@@ -78,13 +78,16 @@ def test_commitlint_limits_prose_but_accepts_revision_bound_review_trailers() ->
         "Reviewed-By: quality "
         f"(tier=critical, reviewer=codex, findings=0, head={reviewed_head}, "
         f"base={reviewed_base})\n"
+        "Quality-Skip: fallback provider intentionally disabled after operator approval "
+        f"(head={reviewed_head}, base={reviewed_base})\n"
+        "Break-Glass-Approval: brettstark\n"
     )
     long_prose = "fix: valid subject\n\n" + ("ordinary prose " * 10)
     misplaced_trailer = (
         "fix: valid subject\n\n"
         "Reviewed-By: quality "
         f"(tier=critical, reviewer=codex, findings=0, head={reviewed_head}, "
-        f"base={reviewed_base})\n\n"
+        f"base={reviewed_base})\n"
         "ordinary body after the purported trailer\n"
     )
 
