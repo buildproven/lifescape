@@ -14,6 +14,31 @@ from playwright.sync_api import Page, sync_playwright
 from retirement_engine.web import create_app
 
 
+def contrast_ratio(
+    foreground: tuple[int, int, int],
+    background: tuple[int, int, int],
+    alpha: float = 1,
+) -> float:
+    composited = tuple(
+        (alpha * foreground_channel + (1 - alpha) * background_channel) / 255
+        for foreground_channel, background_channel in zip(foreground, background, strict=True)
+    )
+    normalized_background = tuple(channel / 255 for channel in background)
+
+    def luminance(color: tuple[float, float, float]) -> float:
+        linear = tuple(
+            channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+            for channel in color
+        )
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    foreground_luminance = luminance(composited)
+    background_luminance = luminance(normalized_background)
+    return (max(foreground_luminance, background_luminance) + 0.05) / (
+        min(foreground_luminance, background_luminance) + 0.05
+    )
+
+
 @contextmanager
 def running_app(output_dir: Path, *, hosted_demo: bool = False) -> Iterator[str]:
     with socket.socket() as probe:
@@ -201,7 +226,12 @@ def test_landing_disclosures_survive_without_javascript(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "viewport", [{"width": 390, "height": 844}, {"width": 1440, "height": 1000}]
+    "viewport",
+    [
+        {"width": 390, "height": 844},
+        {"width": 768, "height": 1024},
+        {"width": 1440, "height": 1000},
+    ],
 )
 def test_visitor_understands_product_and_opens_demo(
     tmp_path: Path, viewport: dict[str, int]
@@ -223,8 +253,67 @@ def test_visitor_understands_product_and_opens_demo(
         assert page.get_by_role(
             "heading", name="From “maybe there” to a decision you can inspect."
         ).is_visible()
+        assert page.evaluate(
+            "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+        )
+        assert page.locator(".process-list li").evaluate_all(
+            """items => items.every(item => {
+                const box = item.getBoundingClientRect();
+                return box.left >= 0 && box.right <= document.documentElement.clientWidth;
+            })"""
+        )
         page.get_by_role("link", name="Try the synthetic demo").click()
         page.get_by_role("heading", name="Shape the decision").wait_for()
         assert page.url.endswith("/demo")
         assert browser_errors == []
+        browser.close()
+
+
+def test_landing_keyboard_focus_and_disclosure_contrast(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page.goto(url)
+
+        focused_links: list[str] = []
+        for _ in range(12):
+            page.keyboard.press("Tab")
+            focused_links.append(
+                page.evaluate(
+                    """() => {
+                        const active = document.activeElement;
+                        return active instanceof HTMLAnchorElement
+                            ? active.getAttribute("href") || ""
+                            : "";
+                    }"""
+                )
+            )
+        assert "#method" in focused_links
+        assert "/demo" in focused_links
+        assert "https://github.com/buildproven/lifescape-engine" in focused_links
+
+        local_source = page.get_by_role("link", name="View the source on GitHub ↗")
+        local_source.focus()
+        focus_style = local_source.evaluate(
+            "element => ({ outline: getComputedStyle(element).outlineColor, "
+            "shadow: getComputedStyle(element).boxShadow })"
+        )
+        assert focus_style["outline"] == "rgb(19, 37, 29)"
+        assert focus_style["shadow"] != "none"
+
+        disclosure_color = page.locator(".demo-disclosure").evaluate(
+            """element => {
+                const match = getComputedStyle(element).color.match(/[\\d.]+/g);
+                return match ? match.map(Number) : [];
+            }"""
+        )
+        assert len(disclosure_color) == 4
+        assert (
+            contrast_ratio(
+                tuple(int(channel) for channel in disclosure_color[:3]),
+                (32, 61, 48),
+                disclosure_color[3],
+            )
+            >= 4.5
+        )
         browser.close()

@@ -42,8 +42,9 @@ a {
 }
 
 a:focus-visible {
-  outline: 3px solid var(--lime);
-  outline-offset: 4px;
+  outline: 3px solid var(--forest);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--lime);
 }
 
 .skip-link {
@@ -210,7 +211,7 @@ a:focus-visible {
 .demo-disclosure {
   max-width: 460px;
   margin: 25px 0 0;
-  color: rgba(249, 247, 239, 0.48);
+  color: rgba(249, 247, 239, 0.72);
   font-size: 11px;
   line-height: 1.6;
 }
@@ -719,7 +720,7 @@ a:focus-visible {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   :root {
     --page: calc(100vw - 36px);
   }
