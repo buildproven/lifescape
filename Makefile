@@ -3,6 +3,7 @@
 install:
 	uv sync --locked --extra dev --python 3.12
 	uv run playwright install chromium
+	npm ci
 
 test:
 	uv run pytest
@@ -13,7 +14,8 @@ lint:
 typecheck:
 	uv run mypy src
 
-quality: lint typecheck test
+quality:
+	npm run quality:check
 
 benchmark:
 	uv run retire benchmark --output-dir outputs/benchmark

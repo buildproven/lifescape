@@ -24,6 +24,10 @@ learning the engine's file layout or CLI pipeline.
 | H1 | Offer a safe public demonstration. | Hosted mode uses only bundled synthetic evidence and rejects CSV imports. |
 | H2 | Make hosted data handling and persistence limits explicit. | Hosted mode discloses that selected constraints are processed temporarily, creates no durable run directory, and offers no report or SQLite download. |
 | H3 | Preserve one product implementation. | Hosted mode uses the same UI and `execute_run` engine as the local app. |
+| Q1 | Keep local and CI quality gates aligned. | `npm run quality:check` runs locked frontend, Python, coverage, browser, and package checks locally and in GitHub Actions. |
+| Q2 | Reject vulnerable dependencies and leaked secrets. | npm and Python dependency audits plus Gitleaks run through `npm run security:check` and CI. |
+| Q3 | Prevent low-quality commits and pushes. | Husky enforces conventional commits, staged formatting/linting, and full pre-push quality/security gates. |
+| Q4 | Make quality maturity explicit. | QA Architect configuration records production-ready maturity and required 90% coverage, tests, security, documentation, and frontend checks. |
 
 ## Design
 
@@ -86,3 +90,7 @@ temporary run inputs ── execute_run (existing engine)
 | H1 | `hosted_demo` capability boundary + hidden import control | `tests/test_web.py::test_hosted_demo_is_synthetic_and_stateless`; `tests/test_user_journey.py::test_hosted_user_completes_synthetic_demo_without_private_controls` |
 | H2 | temporary staging without publication + empty downloads | hosted API and browser tests above |
 | H3 | same `create_app`, browser assets, and `execute_run` path | hosted API integration test; Vercel entry point in `api/index.py` |
+| Q1 | `package.json` scripts + `.github/workflows/quality.yml` | `tests/test_quality_config.py::test_quality_automation_matches_project_contract`; full `npm run quality:check` |
+| Q2 | security scripts + `.gitleaks.toml` | quality-config test; `npm run security:check` |
+| Q3 | `.husky/` hooks + commitlint/lint-staged configuration | quality-config test; commitlint smoke verification |
+| Q4 | `.qualityrc.json` | quality-config test; `create-qa-architect --validate-config` |

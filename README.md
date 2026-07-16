@@ -6,11 +6,12 @@ The governing rule is: **gates eliminate, weights rank, evidence decides, uncert
 
 ## Quick start
 
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and Node.js 22.9+.
 
 ```bash
 uv sync --locked --extra dev --python 3.12
 uv run playwright install chromium
+npm ci
 uv run retire app
 ```
 
@@ -23,13 +24,12 @@ The public deployment at `lifescape.buildproven.ai` is intentionally a stateless
 synthetic-data demonstration. It does not accept private CSV imports or promise durable
 reports; use the local app for private evidence and downloadable provenance.
 
-For the command-line benchmark and developer checks:
+For the command-line benchmark and QA Architect checks:
 
 ```bash
 uv run retire benchmark --output-dir outputs/benchmark
-uv run pytest
-uv run ruff check .
-uv run mypy src
+npm run quality:check
+npm run security:check
 ```
 
 The installed `retire benchmark` command includes its synthetic evidence and default configuration,
