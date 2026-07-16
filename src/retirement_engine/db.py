@@ -17,6 +17,7 @@ from sqlalchemy import (
     create_engine,
     event,
 )
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
@@ -160,11 +161,16 @@ class SensitivityRow(Base):
 
 def initialize_database(path: Path) -> tuple[Session, Engine]:
     path.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"sqlite:///{path}")
+    engine = create_engine(f"sqlite:///{path}", connect_args={"timeout": 30.0})
     event.listen(
         engine,
         "connect",
         lambda connection, _: connection.execute("PRAGMA foreign_keys=ON"),
+    )
+    event.listen(
+        engine,
+        "connect",
+        lambda connection, _: connection.execute("PRAGMA busy_timeout=30000"),
     )
     Base.metadata.create_all(engine)
     return Session(engine), engine
@@ -189,11 +195,10 @@ def persist_run(
     sensitivity: tuple[SensitivityResult, ...],
 ) -> bool:
     """Persist one fully evaluated run in a single transaction."""
-    if session.get(ResearchRunRow, run_id) is not None:
-        return False
     executed_at = datetime.now(UTC)
-    session.add(
-        ResearchRunRow(
+    claimed_run_id = session.scalar(
+        sqlite_insert(ResearchRunRow)
+        .values(
             run_id=run_id,
             profile_version=profile_version,
             config_hash=config_hash,
@@ -206,20 +211,32 @@ def persist_run(
             completed_at=executed_at,
             status="completed",
         )
+        .on_conflict_do_nothing(index_elements=["run_id"])
+        .returning(ResearchRunRow.run_id)
     )
+    if claimed_run_id is None:
+        existing = session.get(ResearchRunRow, run_id)
+        existing_status = existing.status if existing is not None else None
+        session.rollback()
+        if existing_status == "completed":
+            return False
+        raise ValueError(f"run {run_id!r} exists in incomplete state {existing_status!r}")
     places = {observation.place.place_id: observation.place for observation in observations}
     for place in places.values():
+        session.execute(
+            sqlite_insert(PlaceRow)
+            .values(
+                place_id=place.place_id,
+                name=place.name,
+                state=place.state,
+                geography_type=place.geography_type,
+            )
+            .on_conflict_do_nothing(index_elements=["place_id"])
+        )
         existing_place = session.get(PlaceRow, place.place_id)
         if existing_place is None:
-            session.add(
-                PlaceRow(
-                    place_id=place.place_id,
-                    name=place.name,
-                    state=place.state,
-                    geography_type=place.geography_type,
-                )
-            )
-        elif (
+            raise RuntimeError(f"failed to persist place {place.place_id!r}")
+        if (
             existing_place.name,
             existing_place.state,
             existing_place.geography_type,

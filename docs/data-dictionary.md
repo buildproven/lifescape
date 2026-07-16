@@ -1,6 +1,6 @@
 # Implemented data dictionary
 
-All implemented metrics use town geography and a default 730-day freshness rule. Critical metrics participate in gates and cannot be imputed.
+All implemented metrics use town geography and a default 730-day freshness rule. Each metric also declares an inclusive valid numeric range in `config/metrics.yaml`; ingestion rejects non-finite or out-of-range evidence before gates or scoring. Critical metrics participate in gates and cannot be imputed.
 
 | Metric ID | Description | Unit | Direction | Criterion | Gate | Missing treatment |
 |---|---|---|---|---|---|---|
@@ -23,4 +23,3 @@ All implemented metrics use town geography and a default 730-day freshness rule.
 | `sailing_season_months` | Practical sailing season | Months | Higher | Sailing | None | Penalized |
 
 The full machine-readable definitions are in `config/metrics.yaml`.
-

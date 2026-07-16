@@ -17,6 +17,9 @@ python -m venv .venv
 .venv/bin/mypy src
 ```
 
+The installed `retire benchmark` command includes its synthetic evidence and default configuration,
+so it works from any directory. Pass `--config-dir` only to exercise a custom configuration.
+
 The benchmark data is synthetic and exists only to exercise methodology. Generated artifacts include `comparison.md`, `comparison.csv`, and `sensitivity.csv`.
 
 ## Manual evidence

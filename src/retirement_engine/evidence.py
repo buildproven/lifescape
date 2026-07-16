@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 from datetime import date
+from math import isfinite
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -116,6 +117,7 @@ def ingest_csv(
     policy: SourcesConfig,
     *,
     as_of: date | None = None,
+    required_scope: str | None = None,
 ) -> tuple[ObservationRecord, ...]:
     """Load a wide manual CSV into provenance-preserving observations."""
     metric_map = {metric.id: metric for metric in metrics}
@@ -169,6 +171,24 @@ def ingest_csv(
                     for metric_id in metric_map:
                         value = row.get(metric_id, "").strip()
                         if value:
+                            metric = metric_map[metric_id]
+                            if (
+                                place.geography_type != metric.geography_level
+                                or source.geography != metric.geography_level
+                            ):
+                                raise GeographyMismatchError(
+                                    f"row {row_number}: metric {metric_id!r} requires "
+                                    f"{metric.geography_level!r} geography"
+                                )
+                            if (
+                                required_scope is not None
+                                and metric.geography_level != required_scope
+                            ):
+                                raise GeographyMismatchError(
+                                    f"row {row_number}: metric {metric_id!r} geography "
+                                    f"{metric.geography_level!r} does not match research scope "
+                                    f"{required_scope!r}"
+                                )
                             key = (place.place_id, metric_id)
                             if key in seen_observations:
                                 raise EvidenceError(
@@ -177,15 +197,25 @@ def ingest_csv(
                                 )
                             validate_observation_freshness(
                                 observed_at,
-                                metric_map[metric_id],
+                                metric,
                                 source,
                                 as_of=reference_date,
                             )
+                            raw_value = float(value)
+                            if not isfinite(raw_value):
+                                raise EvidenceError(
+                                    f"row {row_number}: {metric_id} must be a finite number"
+                                )
+                            if not metric.valid_min <= raw_value <= metric.valid_max:
+                                raise EvidenceError(
+                                    f"row {row_number}: {metric_id} value {raw_value} is outside "
+                                    f"valid range [{metric.valid_min}, {metric.valid_max}]"
+                                )
                             observations.append(
                                 ObservationRecord(
                                     place=place,
                                     metric_id=metric_id,
-                                    raw_value=float(value),
+                                    raw_value=raw_value,
                                     observed_period=row["observed_period"],
                                     observed_at=observed_at,
                                     source=source,

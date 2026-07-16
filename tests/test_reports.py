@@ -1,6 +1,8 @@
 import csv
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 import yaml
@@ -91,6 +93,60 @@ def test_identical_run_reports_idempotent_persistence(tmp_path: Path) -> None:
 
     assert first.persisted is True
     assert second.persisted is False
+
+
+def test_concurrent_identical_runs_are_idempotent(tmp_path: Path) -> None:
+    database = tmp_path / "runs.sqlite"
+    session, engine = initialize_database(database)
+    session.close()
+    engine.dispose()
+    barrier = Barrier(4)
+
+    def run(index: int) -> bool:
+        barrier.wait()
+        return execute_run(
+            evidence_path=Path("data/benchmarks/evidence.csv"),
+            config_dir=Path("config"),
+            database_path=database,
+            output_dir=tmp_path / f"same-{index}",
+        ).persisted
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        persisted = list(pool.map(run, range(4)))
+
+    assert persisted.count(True) == 1
+    assert persisted.count(False) == 3
+
+
+def test_concurrent_distinct_runs_share_places_safely(tmp_path: Path) -> None:
+    database = tmp_path / "runs.sqlite"
+    session, engine = initialize_database(database)
+    session.close()
+    engine.dispose()
+    barrier = Barrier(4)
+
+    def run(index: int) -> str:
+        barrier.wait()
+        result = execute_run(
+            evidence_path=Path("data/benchmarks/evidence.csv"),
+            config_dir=Path("config"),
+            database_path=database,
+            output_dir=tmp_path / f"distinct-{index}",
+            sensitivity_seed=20260714 + index,
+        )
+        assert result.persisted is True
+        return result.run_id
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        run_ids = list(pool.map(run, range(4)))
+
+    assert len(set(run_ids)) == 4
+    session, engine = initialize_database(database)
+    try:
+        assert session.query(ResearchRunRow).count() == 4
+    finally:
+        session.close()
+        engine.dispose()
 
 
 def test_evidence_change_changes_run_identity(tmp_path: Path) -> None:

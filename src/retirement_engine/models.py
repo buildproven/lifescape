@@ -51,6 +51,14 @@ class MetricDefinition(StrictModel):
     criterion: str
     critical: bool = False
     freshness_days: int = Field(default=730, ge=0)
+    valid_min: float = Field(allow_inf_nan=False)
+    valid_max: float = Field(allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def valid_range_is_ordered(self) -> MetricDefinition:
+        if self.valid_min >= self.valid_max:
+            raise ValueError("valid_min must be less than valid_max")
+        return self
 
 
 class GateDefinition(StrictModel):

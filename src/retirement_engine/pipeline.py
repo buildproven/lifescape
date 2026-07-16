@@ -30,7 +30,13 @@ def execute_run(
     as_of: date | None = None,
 ) -> RunResult:
     config = load_configuration(config_dir, profile_path)
-    raw_observations = ingest_csv(evidence_path, config.metrics, config.sources, as_of=as_of)
+    raw_observations = ingest_csv(
+        evidence_path,
+        config.metrics,
+        config.sources,
+        as_of=as_of,
+        required_scope=config.research_brief.scope,
+    )
     effective_as_of = as_of or (
         max(item.source.retrieved_at for item in raw_observations)
         if raw_observations and all(item.source.synthetic for item in raw_observations)

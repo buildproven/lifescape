@@ -5,10 +5,22 @@ from retirement_engine.scoring import score_places
 def test_scoring_ranks_and_penalizes_missing_data(observation_factory) -> None:
     metrics = (
         MetricDefinition(
-            id="nature", name="Nature", unit="index", direction=Direction.HIGHER, criterion="nature"
+            id="nature",
+            name="Nature",
+            unit="index",
+            direction=Direction.HIGHER,
+            criterion="nature",
+            valid_min=0,
+            valid_max=100,
         ),
         MetricDefinition(
-            id="social", name="Social", unit="index", direction=Direction.HIGHER, criterion="social"
+            id="social",
+            name="Social",
+            unit="index",
+            direction=Direction.HIGHER,
+            criterion="social",
+            valid_min=0,
+            valid_max=100,
         ),
     )
     config = WeightsConfig(weights={"nature": 50, "social": 50}, missing_noncritical_penalty=2)
@@ -33,6 +45,8 @@ def test_missing_critical_metric_scores_zero_and_stays_visible() -> None:
             direction=Direction.HIGHER,
             criterion="safety",
             critical=True,
+            valid_min=0,
+            valid_max=100,
         ),
     )
     scores = score_places(

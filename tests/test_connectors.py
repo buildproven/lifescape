@@ -80,6 +80,32 @@ def test_manual_csv_rejects_nonfinite_values(tmp_path: Path) -> None:
         ingest_csv(csv_path, (metric,), load_sources(Path("config")))
 
 
+def test_manual_csv_rejects_values_outside_metric_range(tmp_path: Path) -> None:
+    csv_path = tmp_path / "impossible.csv"
+    csv_path.write_text(
+        "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
+        "retrieved_at,observed_period,observed_at,source_geography,confidence,synthetic,er_drive_minutes\n"
+        "x,Town,NC,town,https://example.gov,Title,Publisher,A,2026-01-01,2025,2025-12-31,town,high,true,-30\n",
+        encoding="utf-8",
+    )
+    metric = next(item for item in load_metrics(Path("config")) if item.id == "er_drive_minutes")
+    with pytest.raises(EvidenceError, match="outside valid range"):
+        ingest_csv(csv_path, (metric,), load_sources(Path("config")))
+
+
+def test_manual_csv_enforces_metric_geography_even_when_row_matches(tmp_path: Path) -> None:
+    csv_path = tmp_path / "wrong-level.csv"
+    csv_path.write_text(
+        "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
+        "retrieved_at,observed_period,observed_at,source_geography,confidence,synthetic,median_sale_price\n"
+        "x,Town,NC,county,https://example.gov,Title,Publisher,A,2026-01-01,2025,2025-12-31,county,high,true,100000\n",
+        encoding="utf-8",
+    )
+    metric = next(item for item in load_metrics(Path("config")) if item.id == "median_sale_price")
+    with pytest.raises(GeographyMismatchError, match="requires 'town'"):
+        ingest_csv(csv_path, (metric,), load_sources(Path("config")), required_scope="town")
+
+
 def test_manual_csv_rejects_rows_without_metric_values(tmp_path: Path) -> None:
     csv_path = tmp_path / "empty-row.csv"
     csv_path.write_text(

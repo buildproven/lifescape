@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from contextlib import ExitStack
 from datetime import date
+from importlib import resources
 from pathlib import Path
 from typing import Annotated
 
@@ -69,22 +71,29 @@ def run_command(
 @app.command()
 def benchmark(
     output_dir: Annotated[Path, typer.Option()] = Path("outputs/benchmark"),
-    config_dir: Annotated[Path, typer.Option(exists=True, file_okay=False)] = Path("config"),
+    config_dir: Annotated[Path | None, typer.Option(exists=True, file_okay=False)] = None,
     simulations: Annotated[int, typer.Option(min=1000)] = 1000,
     sensitivity_seed: Annotated[int, typer.Option()] = 20260714,
 ) -> None:
     """Run the ten-town, explicitly synthetic golden benchmark."""
-    evidence = Path("data/benchmarks/evidence.csv")
     database = output_dir / "benchmark.sqlite"
     _event("benchmark_started", towns=10, synthetic=True)
-    result = execute_run(
-        evidence_path=evidence,
-        config_dir=config_dir,
-        database_path=database,
-        output_dir=output_dir,
-        simulations=simulations,
-        sensitivity_seed=sensitivity_seed,
-    )
+    package_resources = resources.files("retirement_engine").joinpath("resources")
+    with ExitStack() as stack:
+        evidence = stack.enter_context(
+            resources.as_file(package_resources.joinpath("benchmark-evidence.csv"))
+        )
+        effective_config = config_dir or stack.enter_context(
+            resources.as_file(package_resources.joinpath("config"))
+        )
+        result = execute_run(
+            evidence_path=evidence,
+            config_dir=effective_config,
+            database_path=database,
+            output_dir=output_dir,
+            simulations=simulations,
+            sensitivity_seed=sensitivity_seed,
+        )
     _event(
         "benchmark_completed",
         run_id=result.run_id,

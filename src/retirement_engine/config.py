@@ -104,6 +104,21 @@ def load_configuration(config_dir: Path, profile_path: Path | None = None) -> Ru
     )
     if unknown_gate_metrics:
         raise ConfigurationError(f"gates reference unknown metrics: {unknown_gate_metrics}")
+    metrics_by_id = {metric.id: metric for metric in metrics}
+    invalid_gate_thresholds = sorted(
+        gate.id
+        for gate in gates.gates
+        if gate.metric_id in metrics_by_id
+        and not (
+            metrics_by_id[gate.metric_id].valid_min
+            <= gate.threshold
+            <= metrics_by_id[gate.metric_id].valid_max
+        )
+    )
+    if invalid_gate_thresholds:
+        raise ConfigurationError(
+            f"gate thresholds fall outside metric valid ranges: {invalid_gate_thresholds}"
+        )
     noncritical_gates = sorted(gate.id for gate in gates.gates if not gate.critical)
     if noncritical_gates:
         raise ConfigurationError(f"hard gates must be critical: {noncritical_gates}")
@@ -124,6 +139,13 @@ def load_configuration(config_dir: Path, profile_path: Path | None = None) -> Ru
     unknown_regions = sorted(set(research_brief.regions) - set(region_ids))
     if unknown_regions:
         raise ConfigurationError(f"research brief references unknown regions: {unknown_regions}")
+    scope_mismatches = sorted(
+        metric.id for metric in metrics if metric.geography_level != research_brief.scope
+    )
+    if scope_mismatches:
+        raise ConfigurationError(
+            f"metrics do not match research scope {research_brief.scope!r}: {scope_mismatches}"
+        )
     canonical = {
         "research_brief.yaml": _read_yaml(config_dir / "research_brief.yaml"),
         "user_profile.yaml": _read_yaml(resolved_profile),

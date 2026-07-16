@@ -32,6 +32,10 @@ retire = "retirement_engine.cli:app"
 [tool.hatch.build.targets.wheel]
 packages = ["src/retirement_engine"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"config" = "retirement_engine/resources/config"
+"data/benchmarks/evidence.csv" = "retirement_engine/resources/benchmark-evidence.csv"
+
 [tool.pytest.ini_options]
 addopts = "--strict-markers --strict-config -q"
 testpaths = ["tests"]
@@ -47,4 +51,3 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 python_version = "3.12"
 strict = true
 packages = ["retirement_engine"]
-
