@@ -18,7 +18,7 @@
     "quality:check": "npm run quality:frontend && npm run quality:python",
     "security:npm": "npm audit --audit-level=high",
     "security:python": "uv run pip-audit --local",
-    "security:config": "eslint src/retirement_engine/static/app.js && if command -v gitleaks >/dev/null 2>&1; then gitleaks detect --config .gitleaks.toml --no-git; else npx --yes create-qa-architect@5.14.0 --security-config --no-eslint-security; fi",
+    "security:config": "eslint src/retirement_engine/static/app.js && bash scripts/run-gitleaks.sh",
     "security:check": "npm run security:npm && npm run security:python && npm run security:config"
   },
   "devDependencies": {

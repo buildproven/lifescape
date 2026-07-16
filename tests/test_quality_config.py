@@ -21,8 +21,12 @@ def test_quality_automation_matches_project_contract() -> None:
         "threshold": 90,
     }
     assert "uv sync --locked --extra dev" in workflow
+    assert "pull_request:\n" in workflow
+    assert "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd" in workflow
+    assert "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e" in workflow
     assert "npm run quality:check" in workflow
     assert "npm run security:check" in workflow
+    assert package["scripts"]["security:config"].endswith("bash scripts/run-gitleaks.sh")
     assert "lint-staged" in pre_commit
     assert "npm run quality:check" in pre_push
     assert "npm run security:check" in pre_push
