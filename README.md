@@ -32,7 +32,7 @@ For an immediate incident stop, enable the disabled Vercel rule recorded in
 ```bash
 vercel firewall rules enable rule_emergency_disable_lifescape_hosted_runs_s3mPXu --scope buildproven
 vercel firewall publish --yes --scope buildproven
-npm run ops:verify:vercel
+VERCEL_EMERGENCY_STATUS=Enabled npm run ops:verify:vercel
 ```
 
 For the command-line benchmark and QA Architect checks:

@@ -40,6 +40,9 @@ def test_quality_automation_matches_project_contract() -> None:
         encoding="utf-8"
     )
     gitleaks_runner = (repository / "scripts/run-gitleaks.sh").read_text(encoding="utf-8")
+    firewall_verifier = (repository / "scripts/verify-vercel-firewall.sh").read_text(
+        encoding="utf-8"
+    )
     history_config = (repository / ".gitleaks.toml").read_text(encoding="utf-8")
     directory_config = (repository / ".gitleaks-dir.toml").read_text(encoding="utf-8")
     assert '"$binary" dir --config .gitleaks-dir.toml' in gitleaks_runner
@@ -58,6 +61,7 @@ def test_quality_automation_matches_project_contract() -> None:
         "status": "Enabled",
     }
     assert firewall["emergencyDeny"]["status"] == "Disabled"
+    assert 'emergency_status="${VERCEL_EMERGENCY_STATUS:-Disabled}"' in firewall_verifier
     assert "lint-staged" in pre_commit
     assert "npm run quality:check" in pre_push
     assert "npm run security:check" in pre_push
