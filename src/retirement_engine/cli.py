@@ -21,6 +21,17 @@ def _event(event: str, **fields: object) -> None:
     typer.echo(json.dumps({"event": event, **fields}, sort_keys=True), err=True)
 
 
+def _parse_optional_date(value: str | None, option_name: str) -> date | None:
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise typer.BadParameter(
+            "must be an ISO date (YYYY-MM-DD)", param_hint=option_name
+        ) from exc
+
+
 @app.command("run")
 def run_command(
     evidence: Annotated[Path, typer.Option(exists=True, dir_okay=False)],
@@ -30,7 +41,7 @@ def run_command(
     profile: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
     simulations: Annotated[int, typer.Option(min=1000)] = 1000,
     sensitivity_seed: Annotated[int, typer.Option()] = 20260714,
-    as_of: Annotated[date | None, typer.Option()] = None,
+    as_of: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Evaluate a manual evidence CSV and write comparison reports."""
     _event("run_started", evidence=str(evidence), config_dir=str(config_dir))
@@ -42,7 +53,7 @@ def run_command(
         profile_path=profile,
         simulations=simulations,
         sensitivity_seed=sensitivity_seed,
-        as_of=as_of,
+        as_of=_parse_optional_date(as_of, "--as-of"),
     )
     _event(
         "run_completed",
