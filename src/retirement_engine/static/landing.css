@@ -667,7 +667,7 @@ a:focus-visible {
   text-decoration: none;
 }
 
-.reveal {
+.reveal-enabled .reveal {
   opacity: 0;
   transform: translateY(28px);
   transition:
@@ -675,7 +675,7 @@ a:focus-visible {
     transform 750ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.reveal.is-visible {
+.reveal-enabled .reveal.is-visible {
   opacity: 1;
   transform: none;
 }

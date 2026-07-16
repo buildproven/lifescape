@@ -182,6 +182,24 @@ def test_hosted_disclosure_survives_without_javascript(tmp_path: Path) -> None:
         browser.close()
 
 
+def test_landing_disclosures_survive_without_javascript(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(java_script_enabled=False, viewport={"width": 1440, "height": 1000})
+        page.goto(url)
+
+        assert page.get_by_role(
+            "heading", name="From “maybe there” to a decision you can inspect."
+        ).is_visible()
+        assert page.get_by_text("Synthetic example").is_visible()
+        assert page.get_by_text(
+            "The hosted experience accepts only bundled synthetic evidence and keeps no durable "
+            "run record."
+        ).is_visible()
+        assert page.get_by_text("Use the web demo to learn it.").is_visible()
+        browser.close()
+
+
 @pytest.mark.parametrize(
     "viewport", [{"width": 390, "height": 844}, {"width": 1440, "height": 1000}]
 )

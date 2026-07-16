@@ -15,6 +15,7 @@ if (reducedMotion || !("IntersectionObserver" in window)) {
     { threshold: 0.14 }
   );
   revealItems.forEach((item) => observer.observe(item));
+  document.documentElement.classList.add("reveal-enabled");
 
   const field = document.querySelector(".decision-field");
   window.addEventListener(
