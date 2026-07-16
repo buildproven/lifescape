@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
@@ -20,6 +21,50 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
     assert bootstrap.status_code == 200
     assert len(bootstrap.json()["places"]) == 10
     assert bootstrap.json()["metric_count"] == 17
+
+
+def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    with TestClient(
+        create_app(output, hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
+    ) as client:
+        bootstrap = client.get("/api/bootstrap")
+        places = bootstrap.json()["places"]
+        imported = client.post(
+            "/api/evidence/inspect",
+            content=b"private evidence",
+            headers={"content-type": "text/csv"},
+        )
+        response = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": [place["place_id"] for place in places[:4]],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+            },
+        )
+        download = client.get("/api/downloads/000000000000/comparison.md")
+
+    assert bootstrap.status_code == 200
+    assert bootstrap.json()["mode"] == "hosted-demo"
+    assert bootstrap.json()["allow_imports"] is False
+    assert bootstrap.json()["persistent_outputs"] is False
+    assert imported.status_code == 403
+    assert response.status_code == 200
+    assert response.json()["downloads"] == {}
+    assert download.status_code == 404
+    assert list((output / "runs").iterdir()) == []
+
+
+def test_vercel_entrypoint_exposes_hosted_demo() -> None:
+    vercel_app = runpy.run_path("api/index.py")["app"]
+    with TestClient(vercel_app, base_url="https://lifescape.buildproven.ai") as client:
+        response = client.get("/api/bootstrap")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "hosted-demo"
 
 
 def test_local_app_runs_selected_towns_and_serves_reports(tmp_path: Path) -> None:

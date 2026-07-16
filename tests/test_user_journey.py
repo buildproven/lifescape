@@ -15,12 +15,17 @@ from retirement_engine.web import create_app
 
 
 @contextmanager
-def running_app(output_dir: Path) -> Iterator[str]:
+def running_app(output_dir: Path, *, hosted_demo: bool = False) -> Iterator[str]:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     server = uvicorn.Server(
-        uvicorn.Config(create_app(output_dir), host="127.0.0.1", port=port, log_level="error")
+        uvicorn.Config(
+            create_app(output_dir, hosted_demo=hosted_demo),
+            host="127.0.0.1",
+            port=port,
+            log_level="error",
+        )
     )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -117,3 +122,39 @@ def test_user_keeps_mixed_evidence_warning_after_scoring(tmp_path: Path) -> None
         assert warning in notice.inner_text()
         assert browser_errors == []
         browser.close()
+
+
+def test_hosted_user_completes_synthetic_demo_without_private_controls(
+    tmp_path: Path,
+) -> None:
+    browser_errors: list[str] = []
+    output = tmp_path / "output"
+    with running_app(output, hosted_demo=True) as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page.on(
+            "console",
+            lambda message: (
+                browser_errors.append(message.text) if message.type == "error" else None
+            ),
+        )
+        page.goto(url)
+        page.get_by_role("heading", name="Shape the decision").wait_for()
+        assert page.get_by_role("button", name="Import CSV").is_hidden()
+        assert page.get_by_text("Synthetic evidence only.").is_visible()
+        page.get_by_role("button", name="Choose towns →").click()
+        page.get_by_role("button", name="Review evidence →").click()
+        page.get_by_role("button", name="Run comparison →").click()
+        page.get_by_role("heading", name="Williamsburg leads this field.").wait_for()
+        assert page.get_by_text("Hosted demonstration").is_visible()
+        assert page.get_by_text(
+            "Install Lifescape locally to import private evidence and save provenance."
+        ).is_visible()
+        assert page.get_by_text(
+            "This synthetic run is temporary. Adjust the inputs to explore another field."
+        ).is_visible()
+        assert page.get_by_role("link", name="Markdown report").count() == 0
+        assert browser_errors == []
+        browser.close()
+
+    assert list((output / "runs").iterdir()) == []

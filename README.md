@@ -19,6 +19,10 @@ budget and planning age, choose towns, review evidence completeness, then run an
 download the comparison. You can also import a CSV matching the documented evidence
 contract; the file is processed locally and validated before it reaches scoring.
 
+The public deployment at `lifescape.buildproven.ai` is intentionally a stateless
+synthetic-data demonstration. It does not accept private CSV imports or promise durable
+reports; use the local app for private evidence and downloadable provenance.
+
 For the command-line benchmark and developer checks:
 
 ```bash

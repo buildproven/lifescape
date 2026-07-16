@@ -237,7 +237,7 @@ def _prepare_profile(
     destination.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
 
 
-def _response(run: RunResult, token: str) -> dict[str, object]:
+def _response(run: RunResult, token: str, *, downloads_enabled: bool = True) -> dict[str, object]:
     places = {place.place_id: place for place in run.places}
     sensitivity = {item.place_id: item for item in run.sensitivity}
     gates_by_place: dict[str, list[dict[str, object]]] = {place_id: [] for place_id in places}
@@ -301,7 +301,11 @@ def _response(run: RunResult, token: str) -> dict[str, object]:
         "has_synthetic": evidence_kind != "real",
         "rankings": rankings,
         "blocked": blocked,
-        "downloads": {name: f"/api/downloads/{token}/{name}" for name in sorted(DOWNLOAD_FILES)},
+        "downloads": (
+            {name: f"/api/downloads/{token}/{name}" for name in sorted(DOWNLOAD_FILES)}
+            if downloads_enabled
+            else {}
+        ),
     }
 
 
@@ -323,13 +327,16 @@ def _validate_mutation_origin(request: Request) -> None:
         raise HTTPException(status_code=403, detail="request origin is not this local app")
 
 
-def create_app(output_dir: Path | None = None) -> FastAPI:
+def create_app(output_dir: Path | None = None, *, hosted_demo: bool = False) -> FastAPI:
     """Create the loopback-only browser application."""
     app = FastAPI(title="Lifescape", docs_url=None, redoc_url=None)
     app.add_middleware(BodyLimitMiddleware)
+    allowed_hosts = ["127.0.0.1", "localhost", "[::1]"]
+    if hosted_demo:
+        allowed_hosts.extend(["lifescape.buildproven.ai", "*.vercel.app"])
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["127.0.0.1", "localhost", "[::1]"],
+        allowed_hosts=allowed_hosts,
     )
     package_dir = Path(__file__).resolve().parent
     app.mount("/static", StaticFiles(directory=package_dir / "static"), name="static")
@@ -350,7 +357,9 @@ def create_app(output_dir: Path | None = None) -> FastAPI:
                 (config_dir / "user_profile.example.yaml").read_text(encoding="utf-8")
             )
         return {
-            "mode": "synthetic-demo",
+            "mode": "hosted-demo" if hosted_demo else "synthetic-demo",
+            "allow_imports": not hosted_demo,
+            "persistent_outputs": not hosted_demo,
             "places": _catalog(rows, metric_ids),
             "metric_count": len(metric_ids),
             "defaults": {
@@ -363,6 +372,11 @@ def create_app(output_dir: Path | None = None) -> FastAPI:
 
     @app.post("/api/evidence/inspect")
     async def inspect_evidence(request: Request) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(
+                status_code=403,
+                detail="the hosted demo accepts only its bundled synthetic evidence",
+            )
         _validate_mutation_origin(request)
         try:
             raw_evidence = await request.body()
@@ -435,7 +449,9 @@ def create_app(output_dir: Path | None = None) -> FastAPI:
                         database_path=staging_dir / "lifescape.sqlite",
                         output_dir=staging_dir,
                     )
-                response = _response(result, token)
+                response = _response(result, token, downloads_enabled=not hosted_demo)
+                if hosted_demo:
+                    return response
                 staging_dir.replace(run_dir)
             run_directories[token] = run_dir
             return response
@@ -447,6 +463,11 @@ def create_app(output_dir: Path | None = None) -> FastAPI:
         token: Annotated[str, ApiPath(pattern=r"^[a-f0-9]{12}$")],
         filename: Annotated[str, ApiPath()],
     ) -> FileResponse:
+        if hosted_demo:
+            raise HTTPException(
+                status_code=404,
+                detail="downloads are available only in the local app",
+            )
         if filename not in DOWNLOAD_FILES:
             raise HTTPException(status_code=404, detail="unknown report")
         run_dir = run_directories.get(token)

@@ -21,6 +21,9 @@ learning the engine's file layout or CLI pipeline.
 | S3 | Ship a complete installable artifact. | Wheel contains templates/static assets and works outside the checkout. |
 | S4 | Fail visibly and safely. | Invalid files, selections, ranges, geography, dates, and source policy return actionable errors; two-place minimum and 5 MB import cap are enforced. |
 | N1 | Work across common viewports and input modes. | Full journey works at desktop and mobile widths with keyboard-addressable controls and no browser console errors. |
+| H1 | Offer a safe public demonstration. | Hosted mode uses only bundled synthetic evidence and rejects CSV imports. |
+| H2 | Make hosted persistence limits explicit. | Hosted mode creates no durable run directory and offers no report or SQLite download. |
+| H3 | Preserve one product implementation. | Hosted mode uses the same UI and `execute_run` engine as the local app. |
 
 ## Design
 
@@ -80,3 +83,6 @@ temporary run inputs ── execute_run (existing engine)
 | S3 | Hatch wheel includes web and benchmark resources | `tests/test_packaging.py::test_installed_wheel_runs_benchmark_outside_checkout` |
 | S4 | transport limit + strict request models + atomic staging + ingestion policy | size and partial-failure tests in `tests/test_web.py`; `tests/test_connectors.py`; `tests/test_source_policy.py` |
 | N1 | responsive CSS and semantic controls | parameterized Playwright desktop/mobile journey in `tests/test_user_journey.py::test_user_completes_guided_comparison` |
+| H1 | `hosted_demo` capability boundary + hidden import control | `tests/test_web.py::test_hosted_demo_is_synthetic_and_stateless`; `tests/test_user_journey.py::test_hosted_user_completes_synthetic_demo_without_private_controls` |
+| H2 | temporary staging without publication + empty downloads | hosted API and browser tests above |
+| H3 | same `create_app`, browser assets, and `execute_run` path | hosted API integration test; Vercel entry point in `api/index.py` |

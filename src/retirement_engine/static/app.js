@@ -4,6 +4,7 @@ const state = {
   selected: new Set(),
   metricCount: 0,
   evidenceToken: null,
+  hostedDemo: false,
   result: null,
 };
 
@@ -145,11 +146,14 @@ function renderResults(result) {
     <strong>${escapeHtml(place.name)}, ${escapeHtml(place.state)}</strong>
     <p>${place.gates.map((gate) => `${escapeHtml(gate.name)}: ${escapeHtml(gate.state)}`).join(" · ")}</p>
   </div>`).join("")}` : "";
-  $("#download-strip").innerHTML = `<strong>Run ${escapeHtml(result.run_id)}</strong>
-    <a href="${result.downloads["comparison.md"]}">Markdown report</a>
-    <a href="${result.downloads["comparison.csv"]}">Ranking CSV</a>
-    <a href="${result.downloads["sensitivity.csv"]}">Sensitivity CSV</a>
-    <a href="${result.downloads["lifescape.sqlite"]}">SQLite provenance</a>`;
+  $("#download-strip").innerHTML = Object.keys(result.downloads).length
+    ? `<strong>Run ${escapeHtml(result.run_id)}</strong>
+      <a href="${result.downloads["comparison.md"]}">Markdown report</a>
+      <a href="${result.downloads["comparison.csv"]}">Ranking CSV</a>
+      <a href="${result.downloads["sensitivity.csv"]}">Sensitivity CSV</a>
+      <a href="${result.downloads["lifescape.sqlite"]}">SQLite provenance</a>`
+    : `<strong>Hosted demonstration</strong>
+      <span>Install Lifescape locally to import private evidence and save provenance.</span>`;
   const hasSynthetic = result.evidence_kind !== "real";
   $("#synthetic-notice").style.display = hasSynthetic ? "flex" : "none";
   if (hasSynthetic) {
@@ -157,7 +161,9 @@ function renderResults(result) {
     $("#synthetic-notice p").textContent = "This run contains synthetic values. Treat its results as test output, not purchase research.";
   }
   $("#back-button").hidden = true;
-  $("#action-hint").textContent = "This run is saved locally. Adjust the inputs to explore another field.";
+  $("#action-hint").textContent = state.hostedDemo
+    ? "This synthetic run is temporary. Adjust the inputs to explore another field."
+    : "This run is saved locally. Adjust the inputs to explore another field.";
   $("#next-button").hidden = false;
   $("#next-button").disabled = false;
   $("#next-button").innerHTML = "Adjust comparison <span>↺</span>";
@@ -216,11 +222,16 @@ async function initialize() {
     const response = await fetch("/api/bootstrap");
     if (!response.ok) throw new Error("The local engine did not start correctly.");
     const payload = await response.json();
+    state.hostedDemo = payload.mode === "hosted-demo";
     state.places = payload.places;
     state.metricCount = payload.metric_count;
     state.selected = new Set(state.places.map((place) => place.place_id));
     $("#budget").value = payload.defaults.purchase_budget_max;
     $("#dataset-meta").textContent = `${state.places.length} towns · ${state.metricCount} metrics`;
+    if (!payload.allow_imports) {
+      $("#import-button").hidden = true;
+      $("#rail-note-copy").innerHTML = "<strong>Public demo</strong>Synthetic evidence only. Nothing personal is accepted or retained.";
+    }
     updateBudget();
     renderTowns();
     window.setTimeout(() => $("#loading-screen").classList.add("is-hidden"), 350);
