@@ -38,6 +38,7 @@ def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
         )
         response = client.post(
             "/api/run",
+            headers={"origin": "https://lifescape.buildproven.ai"},
             json={
                 "selected_place_ids": [place["place_id"] for place in places[:4]],
                 "purchase_budget_max": 700_000,
@@ -56,6 +57,30 @@ def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
     assert response.json()["downloads"] == {}
     assert download.status_code == 404
     assert list((output / "runs").iterdir()) == []
+
+
+def test_hosted_demo_accepts_https_preview_origin(tmp_path: Path) -> None:
+    preview_host = "lifescape-example-buildproven.vercel.app"
+    with TestClient(
+        create_app(tmp_path / "output", hosted_demo=True),
+        base_url=f"https://{preview_host}",
+    ) as client:
+        places = client.get("/api/bootstrap").json()["places"]
+        response = client.post(
+            "/api/run",
+            headers={
+                "origin": f"https://{preview_host}",
+                "x-forwarded-proto": "https",
+            },
+            json={
+                "selected_place_ids": [place["place_id"] for place in places[:2]],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+            },
+        )
+
+    assert response.status_code == 200
 
 
 def test_vercel_entrypoint_exposes_hosted_demo() -> None:

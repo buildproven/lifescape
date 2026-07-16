@@ -22,7 +22,7 @@ learning the engine's file layout or CLI pipeline.
 | S4 | Fail visibly and safely. | Invalid files, selections, ranges, geography, dates, and source policy return actionable errors; two-place minimum and 5 MB import cap are enforced. |
 | N1 | Work across common viewports and input modes. | Full journey works at desktop and mobile widths with keyboard-addressable controls and no browser console errors. |
 | H1 | Offer a safe public demonstration. | Hosted mode uses only bundled synthetic evidence and rejects CSV imports. |
-| H2 | Make hosted persistence limits explicit. | Hosted mode creates no durable run directory and offers no report or SQLite download. |
+| H2 | Make hosted data handling and persistence limits explicit. | Hosted mode discloses that selected constraints are processed temporarily, creates no durable run directory, and offers no report or SQLite download. |
 | H3 | Preserve one product implementation. | Hosted mode uses the same UI and `execute_run` engine as the local app. |
 
 ## Design

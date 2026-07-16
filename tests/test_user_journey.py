@@ -141,7 +141,10 @@ def test_hosted_user_completes_synthetic_demo_without_private_controls(
         page.goto(url)
         page.get_by_role("heading", name="Shape the decision").wait_for()
         assert page.get_by_role("button", name="Import CSV").is_hidden()
-        assert page.get_by_text("Synthetic evidence only.").is_visible()
+        assert page.get_by_text(
+            "CSV uploads are disabled. Your selected constraints are processed "
+            "temporarily; no durable record is promised."
+        ).is_visible()
         page.get_by_role("button", name="Choose towns →").click()
         page.get_by_role("button", name="Review evidence →").click()
         page.get_by_role("button", name="Run comparison →").click()

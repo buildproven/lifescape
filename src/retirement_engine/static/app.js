@@ -230,7 +230,7 @@ async function initialize() {
     $("#dataset-meta").textContent = `${state.places.length} towns · ${state.metricCount} metrics`;
     if (!payload.allow_imports) {
       $("#import-button").hidden = true;
-      $("#rail-note-copy").innerHTML = "<strong>Public demo</strong>Synthetic evidence only. Nothing personal is accepted or retained.";
+      $("#rail-note-copy").innerHTML = "<strong>Public demo</strong>CSV uploads are disabled. Your selected constraints are processed temporarily; no durable record is promised.";
     }
     updateBudget();
     renderTowns();

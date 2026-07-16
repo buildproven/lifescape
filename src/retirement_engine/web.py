@@ -318,12 +318,17 @@ def _observation_evidence_kind(run: RunResult) -> Literal["real", "synthetic", "
     return "mixed"
 
 
-def _validate_mutation_origin(request: Request) -> None:
+def _validate_mutation_origin(request: Request, *, trust_forwarded_proto: bool = False) -> None:
     origin = request.headers.get("origin")
     if origin is None:
         return
     parsed = urlsplit(origin)
-    if parsed.scheme != "http" or parsed.netloc != request.headers.get("host"):
+    effective_scheme = request.url.scheme
+    if trust_forwarded_proto:
+        forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
+        if forwarded_proto in {"http", "https"}:
+            effective_scheme = forwarded_proto
+    if parsed.scheme != effective_scheme or parsed.netloc != request.headers.get("host"):
         raise HTTPException(status_code=403, detail="request origin is not this local app")
 
 
@@ -377,7 +382,7 @@ def create_app(output_dir: Path | None = None, *, hosted_demo: bool = False) -> 
                 status_code=403,
                 detail="the hosted demo accepts only its bundled synthetic evidence",
             )
-        _validate_mutation_origin(request)
+        _validate_mutation_origin(request, trust_forwarded_proto=hosted_demo)
         try:
             raw_evidence = await request.body()
             if not raw_evidence:
@@ -401,7 +406,7 @@ def create_app(output_dir: Path | None = None, *, hosted_demo: bool = False) -> 
 
     @app.post("/api/run")
     def run_comparison(payload: AppRunRequest, request: Request) -> dict[str, object]:
-        _validate_mutation_origin(request)
+        _validate_mutation_origin(request, trust_forwarded_proto=hosted_demo)
         token = uuid4().hex[:12]
         runs_root = root_output / "runs"
         run_dir = runs_root / token
