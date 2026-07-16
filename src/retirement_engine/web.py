@@ -477,6 +477,7 @@ def create_app(
         autoescape=select_autoescape(("html",)),
     )
     landing_template = template_environment.get_template("landing.html")
+    demo_template = template_environment.get_template("demo.html")
     app_template = template_environment.get_template("app.html")
     app.mount("/static", StaticFiles(directory=package_dir / "static"), name="static")
     root_output = (output_dir or Path("outputs/app")).resolve()
@@ -493,20 +494,18 @@ def create_app(
 
     @app.get("/", include_in_schema=False)
     def index() -> HTMLResponse:
-        return HTMLResponse(landing_template.render())
+        if hosted_demo:
+            return HTMLResponse(landing_template.render())
+        return HTMLResponse(
+            app_template.render(
+                rail_note_title="Local by design",
+                rail_note_body="Your evidence and outputs stay on this computer.",
+            )
+        )
 
     @app.get("/demo", include_in_schema=False)
-    def demo() -> HTMLResponse:
-        if hosted_demo:
-            title = "Public demo"
-            body = (
-                "CSV uploads are disabled. Your selected constraints are processed "
-                "temporarily; no durable record is promised."
-            )
-        else:
-            title = "Local by design"
-            body = "Your evidence and outputs stay on this computer."
-        return HTMLResponse(app_template.render(rail_note_title=title, rail_note_body=body))
+    def finished_demo() -> HTMLResponse:
+        return HTMLResponse(demo_template.render())
 
     @app.get("/api/bootstrap")
     def bootstrap() -> dict[str, object]:
@@ -660,7 +659,7 @@ def serve(
     open_browser: bool = True,
 ) -> None:
     """Launch the local app and optionally open its browser tab."""
-    url = f"http://{host}:{port}/demo"
+    url = f"http://{host}:{port}"
     if open_browser:
         threading.Timer(0.8, webbrowser.open, args=(url,)).start()
     uvicorn.run(create_app(output_dir), host=host, port=port, log_level="warning")

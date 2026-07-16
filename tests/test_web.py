@@ -12,8 +12,11 @@ from fastapi.testclient import TestClient
 from retirement_engine.web import HostedRunGuard, create_app
 
 
-def test_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> None:
-    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+def test_hosted_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
+    ) as client:
         page = client.get("/")
 
     assert page.status_code == 200
@@ -26,7 +29,7 @@ def test_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> 
 
 def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
-        page = client.get("/demo")
+        page = client.get("/")
         bootstrap = client.get("/api/bootstrap")
 
     assert page.status_code == 200
@@ -66,7 +69,7 @@ def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
         download = client.get("/api/downloads/000000000000/comparison.md")
 
     assert bootstrap.status_code == 200
-    assert "CSV uploads are disabled." in page.text
+    assert "Williamsburg leads this field." in page.text
     assert "stay on this computer" not in page.text
     assert bootstrap.json()["mode"] == "hosted-demo"
     assert bootstrap.json()["allow_imports"] is False
@@ -200,10 +203,22 @@ def test_hosted_guard_rejects_rotating_clients_without_retaining_them() -> None:
 
 def test_local_html_preserves_local_disclosure(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
-        response = client.get("/demo")
+        response = client.get("/")
 
     assert "Your evidence and outputs stay on this computer." in response.text
     assert "CSV uploads are disabled." not in response.text
+
+
+def test_finished_demo_shows_a_completed_decision(tmp_path: Path) -> None:
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        response = client.get("/demo")
+
+    assert response.status_code == 200
+    assert "Williamsburg leads this field." in response.text
+    assert "Ranked after the non-negotiables." in response.text
+    assert "Blocked, not hidden" in response.text
+    assert "Get Lifescape on GitHub" in response.text
+    assert 'href="/"' in response.text
 
 
 def test_local_app_runs_selected_towns_and_serves_reports(tmp_path: Path) -> None:
