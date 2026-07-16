@@ -12,7 +12,16 @@ def test_cli_help_builds_all_commands() -> None:
 
     assert result.exit_code == 0
     assert "benchmark" in result.output
+    assert "app" in result.output
     assert "validate-sources" in result.output
+
+
+def test_app_command_help_exposes_local_options() -> None:
+    result = runner.invoke(app, ["app", "--help"])
+
+    assert result.exit_code == 0
+    assert "--port" in result.output
+    assert "--no-open" in result.output
 
 
 def test_run_rejects_invalid_as_of_date() -> None:

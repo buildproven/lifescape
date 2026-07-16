@@ -11,6 +11,17 @@ Requires Python 3.12+.
 ```bash
 python -m venv .venv
 .venv/bin/pip install -e '.[dev]'
+.venv/bin/retire app
+```
+
+`retire app` opens a guided local workspace at `http://127.0.0.1:8765`. Set your
+budget and planning age, choose towns, review evidence completeness, then run and
+download the comparison. You can also import a CSV matching the documented evidence
+contract; the file is processed locally and validated before it reaches scoring.
+
+For the command-line benchmark and developer checks:
+
+```bash
 .venv/bin/retire benchmark --output-dir outputs/benchmark
 .venv/bin/pytest
 .venv/bin/ruff check .

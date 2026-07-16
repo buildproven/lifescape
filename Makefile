@@ -1,4 +1,4 @@
-.PHONY: install test lint typecheck quality benchmark
+.PHONY: install test lint typecheck quality benchmark app
 
 install:
 	python -m pip install -e '.[dev]'
@@ -17,3 +17,5 @@ quality: lint typecheck test
 benchmark:
 	retire benchmark --output-dir outputs/benchmark
 
+app:
+	retire app
