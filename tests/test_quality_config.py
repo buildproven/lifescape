@@ -1,9 +1,24 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
+
+
+def _isolated_git_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    for name in (
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_COMMON_DIR",
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_WORK_TREE",
+    ):
+        environment.pop(name, None)
+    return environment
 
 
 def test_quality_automation_matches_project_contract() -> None:
@@ -146,6 +161,7 @@ def test_gitleaks_runner_rejects_poisoned_cached_binary(tmp_path: Path) -> None:
         check=False,
         capture_output=True,
         text=True,
+        env=_isolated_git_environment(),
     )
 
     assert completed.returncode != 0
@@ -155,6 +171,7 @@ def test_gitleaks_runner_rejects_poisoned_cached_binary(tmp_path: Path) -> None:
 def test_gitleaks_runner_detects_secret_removed_from_worktree(tmp_path: Path) -> None:
     repository = Path(__file__).resolve().parents[1]
     runner = repository / "scripts/run-gitleaks.sh"
+    git_environment = _isolated_git_environment()
     subprocess.run(
         ["bash", str(runner)],
         cwd=repository,
@@ -162,18 +179,26 @@ def test_gitleaks_runner_detects_secret_removed_from_worktree(tmp_path: Path) ->
         capture_output=True,
         text=True,
         errors="replace",
+        env=git_environment,
     )
 
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "init", "-q"],
+        cwd=tmp_path,
+        check=True,
+        env=git_environment,
+    )
     subprocess.run(
         ["git", "config", "user.email", "quality@example.invalid"],
         cwd=tmp_path,
         check=True,
+        env=git_environment,
     )
     subprocess.run(
         ["git", "config", "user.name", "Quality Test"],
         cwd=tmp_path,
         check=True,
+        env=git_environment,
     )
     shutil.copy2(repository / ".gitleaks.toml", tmp_path / ".gitleaks.toml")
     shutil.copy2(repository / ".gitleaks-dir.toml", tmp_path / ".gitleaks-dir.toml")
@@ -193,18 +218,26 @@ def test_gitleaks_runner_detects_secret_removed_from_worktree(tmp_path: Path) ->
         ],
         cwd=tmp_path,
         check=True,
+        env=git_environment,
     )
     subprocess.run(
         ["git", "commit", "-q", "-m", "test: add temporary credential"],
         cwd=tmp_path,
         check=True,
+        env=git_environment,
     )
     secret_path.unlink()
-    subprocess.run(["git", "add", "-u"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "add", "-u"],
+        cwd=tmp_path,
+        check=True,
+        env=git_environment,
+    )
     subprocess.run(
         ["git", "commit", "-q", "-m", "test: remove temporary credential"],
         cwd=tmp_path,
         check=True,
+        env=git_environment,
     )
     shutil.copytree(
         repository / ".cache/tools/gitleaks",
@@ -218,6 +251,7 @@ def test_gitleaks_runner_detects_secret_removed_from_worktree(tmp_path: Path) ->
         capture_output=True,
         text=True,
         errors="replace",
+        env=git_environment,
     )
 
     assert completed.returncode != 0
