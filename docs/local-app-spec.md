@@ -30,7 +30,7 @@ retire app
    ▼
 FastAPI loopback server ── packaged HTML/CSS/JS workspace
    │                         │
-   │  validated JSON/CSV ◀───┘
+   │  bounded CSV upload + validated JSON ◀───┘
    ▼
 temporary run inputs ── execute_run (existing engine)
                            │
@@ -41,8 +41,9 @@ temporary run inputs ── execute_run (existing engine)
 ```
 
 - `cli.py` exposes the one-command entry point and keeps the network host fixed to loopback.
-- `web.py` owns loopback Host/Origin enforcement, bounded request validation, evidence inspection,
-  atomic run staging/publishing, response shaping, and session-scoped downloads.
+- `web.py` owns loopback Host/Origin enforcement, exact-size raw CSV uploads with opaque
+  session-local tokens, bounded request validation, evidence inspection, atomic run
+  staging/publishing, response shaping, and session-scoped downloads.
 - `pipeline.py` remains the only decision orchestrator.
 - `resources.py` resolves identical benchmark assets in editable and installed-wheel contexts.
 - `templates/app.html` plus `static/` provide a dependency-free browser client; no separate Node

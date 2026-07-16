@@ -3,7 +3,7 @@ const state = {
   places: [],
   selected: new Set(),
   metricCount: 0,
-  evidenceCsv: null,
+  evidenceToken: null,
   result: null,
 };
 
@@ -72,7 +72,7 @@ function renderTowns() {
       <input type="checkbox" value="${escapeHtml(place.place_id)}" ${state.selected.has(place.place_id) ? "checked" : ""}>
       <span class="checkmark" aria-hidden="true"></span>
       <span class="town-name"><strong>${escapeHtml(place.name)}</strong><span>${escapeHtml(place.state)}</span></span>
-      <span class="town-source">${state.evidenceCsv ? "Imported evidence" : "Demo evidence"}</span>
+      <span class="town-source">${state.evidenceToken ? "Imported evidence" : "Demo evidence"}</span>
       <span class="town-readiness">${percentage}% ready</span>
     </label>`;
   }).join("") || "<p>No towns match this search.</p>";
@@ -176,7 +176,7 @@ async function runComparison() {
         purchase_budget_max: Number($("#budget").value),
         future_self_age: Number($("input[name=age]:checked").value),
         household: $("input[name=household]:checked").value,
-        evidence_csv: state.evidenceCsv,
+        evidence_token: state.evidenceToken,
       }),
     });
     const payload = await response.json();
@@ -189,15 +189,14 @@ async function runComparison() {
 }
 
 async function importEvidence(file) {
-  const csvText = await file.text();
   const response = await fetch("/api/evidence/inspect", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ csv_text: csvText }),
+    headers: { "Content-Type": "text/csv" },
+    body: file,
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.detail || "This CSV could not be read.");
-  state.evidenceCsv = csvText;
+  state.evidenceToken = payload.evidence_token;
   state.places = payload.places;
   state.metricCount = payload.metric_count;
   state.selected = new Set(state.places.map((place) => place.place_id));

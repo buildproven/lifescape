@@ -7,6 +7,7 @@ import io
 import shutil
 import threading
 import webbrowser
+from collections import OrderedDict
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated, Literal, TypedDict
@@ -29,7 +30,6 @@ from retirement_engine.pipeline import execute_run
 from retirement_engine.resources import bundled_benchmark
 
 MAX_EVIDENCE_BYTES = 5_000_000
-MAX_REQUEST_BYTES = MAX_EVIDENCE_BYTES + 100_000
 DOWNLOAD_FILES = frozenset(
     {"comparison.md", "comparison.csv", "sensitivity.csv", "lifescape.sqlite"}
 )
@@ -38,12 +38,16 @@ DOWNLOAD_FILES = frozenset(
 class BodyLimitMiddleware:
     """Reject oversized evidence requests before JSON parsing or endpoint dispatch."""
 
-    def __init__(self, app: ASGIApp, max_bytes: int = MAX_REQUEST_BYTES) -> None:
+    def __init__(self, app: ASGIApp, max_bytes: int = MAX_EVIDENCE_BYTES) -> None:
         self.app = app
         self.max_bytes = max_bytes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope["method"] != "POST":
+        if (
+            scope["type"] != "http"
+            or scope["method"] != "POST"
+            or scope["path"] != "/api/evidence/inspect"
+        ):
             await self.app(scope, receive, send)
             return
         body = bytearray()
@@ -78,23 +82,12 @@ class WebModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class EvidenceInspectRequest(WebModel):
-    csv_text: str = Field(min_length=1)
-
-    @field_validator("csv_text")
-    @classmethod
-    def evidence_is_bounded(cls, value: str) -> str:
-        if len(value.encode("utf-8")) > MAX_EVIDENCE_BYTES:
-            raise ValueError("evidence CSV exceeds the 5 MB local-app limit")
-        return value
-
-
 class AppRunRequest(WebModel):
     selected_place_ids: tuple[str, ...] = Field(min_length=2)
     purchase_budget_max: float = Field(ge=50_000, le=100_000_000)
     future_self_age: int = Field(ge=40, le=110)
     household: Literal["solo", "couple", "family"] = "couple"
-    evidence_csv: str | None = None
+    evidence_token: str | None = Field(default=None, pattern=r"^[a-f0-9]{12}$")
 
     @field_validator("selected_place_ids")
     @classmethod
@@ -102,13 +95,6 @@ class AppRunRequest(WebModel):
         if len(values) != len(set(values)):
             raise ValueError("selected places must be unique")
         return values
-
-    @field_validator("evidence_csv")
-    @classmethod
-    def evidence_is_bounded(cls, value: str | None) -> str | None:
-        if value is not None and len(value.encode("utf-8")) > MAX_EVIDENCE_BYTES:
-            raise ValueError("evidence CSV exceeds the 5 MB local-app limit")
-        return value
 
 
 class CatalogPlace(TypedDict):
@@ -122,14 +108,17 @@ class CatalogPlace(TypedDict):
 def _read_evidence(
     csv_text: str, metric_ids: tuple[str, ...]
 ) -> tuple[list[str], list[dict[str, str]]]:
-    reader = csv.DictReader(io.StringIO(csv_text))
-    if reader.fieldnames is None:
-        raise ValueError("evidence CSV has no header")
-    required = {"place_id", "place_name", "state", *metric_ids}
-    missing = sorted(required - set(reader.fieldnames))
-    if missing:
-        raise ValueError(f"evidence CSV is missing columns: {missing}")
-    rows = [dict(row) for row in reader]
+    try:
+        reader = csv.DictReader(io.StringIO(csv_text))
+        if reader.fieldnames is None:
+            raise ValueError("evidence CSV has no header")
+        required = {"place_id", "place_name", "state", *metric_ids}
+        missing = sorted(required - set(reader.fieldnames))
+        if missing:
+            raise ValueError(f"evidence CSV is missing columns: {missing}")
+        rows = [dict(row) for row in reader]
+    except csv.Error as exc:
+        raise ValueError(f"evidence CSV is malformed: {exc}") from exc
     if not rows:
         raise ValueError("evidence CSV has no rows")
     return list(reader.fieldnames), rows
@@ -295,6 +284,7 @@ def create_app(output_dir: Path | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=package_dir / "static"), name="static")
     root_output = (output_dir or Path("outputs/app")).resolve()
     run_directories: dict[str, Path] = {}
+    imported_evidence: OrderedDict[str, str] = OrderedDict()
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
@@ -321,16 +311,25 @@ def create_app(output_dir: Path | None = None) -> FastAPI:
         }
 
     @app.post("/api/evidence/inspect")
-    def inspect_evidence(payload: EvidenceInspectRequest, request: Request) -> dict[str, object]:
+    async def inspect_evidence(request: Request) -> dict[str, object]:
         _validate_mutation_origin(request)
         try:
+            raw_evidence = await request.body()
+            if not raw_evidence:
+                raise ValueError("evidence CSV is empty")
+            csv_text = raw_evidence.decode("utf-8")
             with bundled_benchmark() as (_, config_dir):
                 metric_ids = tuple(metric.id for metric in load_metrics(config_dir))
-            _, rows = _read_evidence(payload.csv_text, metric_ids)
+            _, rows = _read_evidence(csv_text, metric_ids)
+            evidence_token = uuid4().hex[:12]
+            imported_evidence[evidence_token] = csv_text
+            while len(imported_evidence) > 8:
+                imported_evidence.popitem(last=False)
             return {
                 "places": _catalog(rows, metric_ids),
                 "metric_count": len(metric_ids),
                 "evidence_kind": _evidence_kind(rows),
+                "evidence_token": evidence_token,
             }
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -347,16 +346,21 @@ def create_app(output_dir: Path | None = None) -> FastAPI:
                 staging_dir = Path(staging_name)
                 with bundled_benchmark() as (benchmark_evidence, benchmark_config):
                     metric_ids = tuple(metric.id for metric in load_metrics(benchmark_config))
-                    csv_text = payload.evidence_csv or benchmark_evidence.read_text(
-                        encoding="utf-8"
-                    )
+                    csv_text = benchmark_evidence.read_text(encoding="utf-8")
+                    if payload.evidence_token is not None:
+                        try:
+                            csv_text = imported_evidence[payload.evidence_token]
+                        except KeyError as exc:
+                            raise ValueError(
+                                "imported evidence is no longer available; import it again"
+                            ) from exc
                     fieldnames, rows = _read_evidence(csv_text, metric_ids)
                     evidence_path = staging_dir / "evidence.csv"
                     _filter_evidence(
                         fieldnames, rows, set(payload.selected_place_ids), evidence_path
                     )
                     config_dir = benchmark_config
-                    if payload.evidence_csv is not None:
+                    if payload.evidence_token is not None:
                         config_dir = staging_dir / "config"
                         shutil.copytree(benchmark_config, config_dir)
                         brief_path = config_dir / "research_brief.yaml"
@@ -380,9 +384,10 @@ def create_app(output_dir: Path | None = None) -> FastAPI:
                         database_path=staging_dir / "lifescape.sqlite",
                         output_dir=staging_dir,
                     )
+                response = _response(result, token)
                 staging_dir.replace(run_dir)
             run_directories[token] = run_dir
-            return _response(result, token)
+            return response
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 

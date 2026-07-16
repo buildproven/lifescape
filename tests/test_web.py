@@ -55,8 +55,16 @@ def test_local_app_runs_selected_towns_and_serves_reports(tmp_path: Path) -> Non
 def test_local_app_inspects_imported_evidence(tmp_path: Path) -> None:
     evidence = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
-        response = client.post("/api/evidence/inspect", json={"csv_text": evidence})
-        invalid = client.post("/api/evidence/inspect", json={"csv_text": "place_id\nx\n"})
+        response = client.post(
+            "/api/evidence/inspect",
+            content=evidence.encode(),
+            headers={"content-type": "text/csv"},
+        )
+        invalid = client.post(
+            "/api/evidence/inspect",
+            content=b"place_id\nx\n",
+            headers={"content-type": "text/csv"},
+        )
 
     assert response.status_code == 200
     assert response.json()["places"][0]["total_metrics"] == 17
@@ -69,7 +77,11 @@ def test_local_app_runs_imported_real_evidence_without_synthetic_label(tmp_path:
     evidence = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
     real_evidence = evidence.replace(",true,", ",false,")
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
-        inspection = client.post("/api/evidence/inspect", json={"csv_text": real_evidence}).json()
+        inspection = client.post(
+            "/api/evidence/inspect",
+            content=real_evidence.encode(),
+            headers={"content-type": "text/csv"},
+        ).json()
         selected = [place["place_id"] for place in inspection["places"][:2]]
         response = client.post(
             "/api/run",
@@ -78,7 +90,7 @@ def test_local_app_runs_imported_real_evidence_without_synthetic_label(tmp_path:
                 "purchase_budget_max": 700_000,
                 "future_self_age": 75,
                 "household": "couple",
-                "evidence_csv": real_evidence,
+                "evidence_token": inspection["evidence_token"],
             },
         )
 
@@ -92,7 +104,11 @@ def test_local_app_preserves_mixed_evidence_warning(tmp_path: Path) -> None:
     evidence = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
     mixed_evidence = evidence.replace(",true,", ",false,", 1)
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
-        inspection = client.post("/api/evidence/inspect", json={"csv_text": mixed_evidence}).json()
+        inspection = client.post(
+            "/api/evidence/inspect",
+            content=mixed_evidence.encode(),
+            headers={"content-type": "text/csv"},
+        ).json()
         selected = [place["place_id"] for place in inspection["places"][:2]]
         response = client.post(
             "/api/run",
@@ -101,7 +117,7 @@ def test_local_app_preserves_mixed_evidence_warning(tmp_path: Path) -> None:
                 "purchase_budget_max": 700_000,
                 "future_self_age": 75,
                 "household": "couple",
-                "evidence_csv": mixed_evidence,
+                "evidence_token": inspection["evidence_token"],
             },
         )
 
@@ -135,25 +151,28 @@ def test_local_app_rejects_hostile_host_and_origin(tmp_path: Path) -> None:
         hostile_origin = client.post(
             "/api/evidence/inspect",
             headers={"origin": "http://attacker.example"},
-            json={"csv_text": "not reached"},
+            content=b"not reached",
         )
 
     assert hostile_host.status_code == 400
     assert hostile_origin.status_code == 403
 
 
-def test_local_app_bounds_inspection_before_parsing(tmp_path: Path) -> None:
+def test_local_app_bounds_raw_inspection_before_parsing(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
-        model_limit = client.post("/api/evidence/inspect", json={"csv_text": "x" * 5_000_001})
-        transport_limit = client.post(
+        escaping_heavy_in_limit = client.post(
             "/api/evidence/inspect",
-            content=b'{"csv_text":"' + b"x" * 5_100_001 + b'"}',
-            headers={"content-type": "application/json"},
+            content=b'"' * 5_000_000,
+            headers={"content-type": "text/csv"},
+        )
+        over_limit = client.post(
+            "/api/evidence/inspect",
+            content=b"x" * 5_000_001,
+            headers={"content-type": "text/csv"},
         )
 
-    assert model_limit.status_code == 422
-    assert "5 MB" in model_limit.text
-    assert transport_limit.status_code == 413
+    assert escaping_heavy_in_limit.status_code == 422
+    assert over_limit.status_code == 413
 
 
 def test_local_app_does_not_publish_partial_failed_run(tmp_path: Path) -> None:
@@ -183,4 +202,26 @@ def test_local_app_does_not_publish_partial_failed_run(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"] == "report generation failed"
+    assert list((output / "runs").iterdir()) == []
+
+
+def test_local_app_shapes_response_before_publishing_run(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    with (
+        patch("retirement_engine.web._response", side_effect=ValueError("response mismatch")),
+        TestClient(create_app(output), base_url="http://127.0.0.1") as client,
+    ):
+        places = client.get("/api/bootstrap").json()["places"]
+        response = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": [place["place_id"] for place in places[:2]],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "response mismatch"
     assert list((output / "runs").iterdir()) == []

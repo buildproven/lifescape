@@ -6,13 +6,12 @@ The governing rule is: **gates eliminate, weights rank, evidence decides, uncert
 
 ## Quick start
 
-Requires Python 3.12+.
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-python -m venv .venv
-.venv/bin/pip install -e '.[dev]'
-.venv/bin/playwright install chromium
-.venv/bin/retire app
+uv sync --locked --extra dev --python 3.12
+uv run playwright install chromium
+uv run retire app
 ```
 
 `retire app` opens a guided local workspace at `http://127.0.0.1:8765`. Set your
@@ -23,10 +22,10 @@ contract; the file is processed locally and validated before it reaches scoring.
 For the command-line benchmark and developer checks:
 
 ```bash
-.venv/bin/retire benchmark --output-dir outputs/benchmark
-.venv/bin/pytest
-.venv/bin/ruff check .
-.venv/bin/mypy src
+uv run retire benchmark --output-dir outputs/benchmark
+uv run pytest
+uv run ruff check .
+uv run mypy src
 ```
 
 The installed `retire benchmark` command includes its synthetic evidence and default configuration,
