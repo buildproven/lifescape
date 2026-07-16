@@ -49,6 +49,8 @@ def test_quality_automation_matches_project_contract() -> None:
     assert "npm run security:check" in workflow
     assert package["scripts"]["security:config"].endswith("bash scripts/run-gitleaks.sh")
     assert package["scripts"]["ops:verify:vercel"] == "bash scripts/verify-vercel-firewall.sh"
+    for script in ("test", "test:coverage", "quality:python", "security:python"):
+        assert "uv run --extra dev" in package["scripts"][script]
     assert package["scripts"]["quality:python"].endswith(
         "uv run --extra dev -- uv build --no-build-isolation"
     )
