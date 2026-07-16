@@ -1,0 +1,17 @@
+weights:
+  daily_life: 14
+  healthcare: 14
+  nature: 11
+  cost: 11
+  neighborhood: 9
+  climate: 9
+  community: 8
+  social: 8
+  resilience: 6
+  economic_resilience: 4
+  airport: 3
+  winter_escape: 1
+  water: 1
+  sailing: 1
+missing_noncritical_penalty: 2.0
+

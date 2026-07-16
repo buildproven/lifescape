@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+outputs/*
+!outputs/.gitkeep
+.env
+

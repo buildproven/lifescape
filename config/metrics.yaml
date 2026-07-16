@@ -1,0 +1,18 @@
+metrics:
+  - {id: median_sale_price, name: Median sale price, unit: USD, direction: lower, criterion: cost, critical: true, valid_min: 0, valid_max: 100000000}
+  - {id: er_drive_minutes, name: Emergency department drive time, unit: minutes, direction: lower, criterion: healthcare, critical: true, valid_min: 0, valid_max: 1440}
+  - {id: broadband_mbps_down, name: Broadband download speed, unit: Mbps, direction: higher, criterion: daily_life, critical: true, valid_min: 0, valid_max: 100000}
+  - {id: annual_snowfall, name: Annual snowfall, unit: inches, direction: lower, criterion: climate, critical: true, valid_min: 0, valid_max: 1000}
+  - {id: flood_risk_score, name: Flood risk score, unit: index, direction: lower, criterion: climate, critical: true, valid_min: 0, valid_max: 100}
+  - {id: distress_index, name: Broad distress index, unit: index, direction: lower, criterion: neighborhood, critical: true, valid_min: 0, valid_max: 100}
+  - {id: one_level_inventory_count, name: One-level inventory, unit: listings, direction: higher, criterion: daily_life, critical: true, valid_min: 0, valid_max: 1000000}
+  - {id: trail_miles_within_30, name: Trail miles within 30 minutes, unit: miles, direction: higher, criterion: nature, valid_min: 0, valid_max: 10000}
+  - {id: restaurant_density, name: Restaurant density, unit: per 10000 residents, direction: higher, criterion: daily_life, valid_min: 0, valid_max: 10000}
+  - {id: education_attainment, name: Bachelor's attainment, unit: percent, direction: higher, criterion: community, valid_min: 0, valid_max: 100}
+  - {id: volunteer_org_count, name: Volunteer organizations, unit: count, direction: higher, criterion: social, valid_min: 0, valid_max: 1000000}
+  - {id: median_days_on_market, name: Median days on market, unit: days, direction: lower, criterion: resilience, valid_min: 0, valid_max: 3650}
+  - {id: population_growth_10yr, name: Ten-year population growth, unit: percent, direction: higher, criterion: economic_resilience, valid_min: -100, valid_max: 1000}
+  - {id: airport_drive_minutes, name: Airport drive time, unit: minutes, direction: lower, criterion: airport, valid_min: 0, valid_max: 1440}
+  - {id: winter_escape_score, name: Winter escape flexibility, unit: index, direction: higher, criterion: winter_escape, valid_min: 0, valid_max: 100}
+  - {id: water_access_drive_minutes, name: Water access drive time, unit: minutes, direction: lower, criterion: water, valid_min: 0, valid_max: 1440}
+  - {id: sailing_season_months, name: Sailing season, unit: months, direction: higher, criterion: sailing, valid_min: 0, valid_max: 12}

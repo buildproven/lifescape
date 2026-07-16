@@ -1,0 +1,68 @@
+# Retirement town comparison
+
+{% if all_synthetic -%}
+> **Synthetic benchmark warning:** These fixture values are invented solely to test engine behavior. They are not research and must not support a real purchase decision.
+{% elif has_synthetic -%}
+> **Mixed-evidence warning:** This run contains synthetic observations. Treat affected results as test output, not purchase evidence.
+{% endif %}
+
+- Run ID: `{{ run.run_id }}`
+- Profile version: `{{ run.profile_version }}`
+- Engine version: `{{ run.engine_version }}`
+- Configuration hash: `{{ run.config_hash }}`
+- Evaluated as of: {{ run.evaluated_as_of.isoformat() }}
+- Evidence retrieved through: {{ run.evidence_through.isoformat() }}
+- Sensitivity: {{ run.simulations }} simulations, seed {{ run.sensitivity_seed }}
+- Eligible towns ranked: {{ run.scores | length }}
+- Blocked towns: {{ blocked | length }}
+
+## Ranking
+
+| Rank | Town | Score | Top-3 frequency | Mean rank | Rank variance | Stability |
+|---:|---|---:|---:|---:|---:|---|
+{% for score in run.scores -%}
+{% set sensitivity = sensitivity_by_place[score.place_id] -%}
+| {{ score.rank }} | {{ place_names[score.place_id] }} | {{ '%.1f' | format(score.total_score) }} | {{ '%.1f%%' | format(sensitivity.top_three_frequency * 100) }} | {{ '%.2f' | format(sensitivity.mean_rank) }} | {{ '%.2f' | format(sensitivity.rank_variance) }} | {{ 'Fragile' if sensitivity.fragile else 'Stable' }} |
+{% endfor %}
+
+## Gate status
+
+| Town | Gate | Result | Raw value | Threshold | Source | Notes |
+|---|---|---|---:|---:|---|---|
+{% for gate in run.gate_results -%}
+| {{ place_names[gate.place_id] }} | {{ gate.gate_id }} | {{ gate.result }} | {{ gate.raw_value if gate.raw_value is not none else 'UNKNOWN' }} | {{ gate.threshold }} | {{ gate.source_url or 'NONE' }} | {{ gate.notes }} |
+{% endfor %}
+
+## Raw metrics and provenance
+
+| Town | Metric | Raw value | Period | Observation date | Confidence | Tier | Source |
+|---|---|---:|---|---|---|---|---|
+{% for item in run.observations | sort(attribute='metric_id') | sort(attribute='place.place_id') -%}
+| {{ place_names[item.place.place_id] }} | {{ item.metric_id }} | {{ item.raw_value }} | {{ item.observed_period }} | {{ item.observed_at.isoformat() }} | {{ item.source.confidence }} | {{ item.source.tier }} | {{ item.source.url }} |
+{% endfor %}
+
+## Score breakdown
+
+{% for score in run.scores -%}
+### {{ score.rank }}. {{ place_names[score.place_id] }} — {{ '%.1f' | format(score.total_score) }}
+
+| Criterion | Net score | Weight | Contribution | Missing penalty | Missing critical | Sources |
+|---|---:|---:|---:|---:|---|---|
+{% for item in score.criteria -%}
+| {{ item.criterion }} | {{ '%.1f' | format(item.normalized_score) }} | {{ '%.1f' | format(item.weight) }} | {{ '%.2f' | format(item.weighted_score) }} | {{ '%.1f' | format(item.missing_penalty) }} | {{ 'YES' if item.missing_critical else 'no' }} | {{ item.source_urls | join(', ') or 'MISSING' }} |
+{% endfor %}
+
+{% endfor -%}
+## Blocking unknowns and failures
+
+{% if blocked -%}
+{% for place_id in blocked -%}
+- **{{ place_names[place_id] }}:** {% for gate in blocking_by_place[place_id] %}`{{ gate.gate_id }}`={{ gate.result }}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endfor %}
+{% else -%}
+None.
+{% endif %}
+
+## Evidence and limitations
+
+{% if all_synthetic -%}All fixture observations are explicitly marked synthetic. {% elif has_synthetic -%}Synthetic observations are explicitly identified in the provenance table. {% endif -%}Tier C evidence is prohibited from gates and scores. Missing critical gate evidence remains `UNKNOWN` and blocks ranking. Scores are comparative within this candidate set, not standalone claims about towns.
