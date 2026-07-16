@@ -6,8 +6,10 @@ import csv
 import io
 import shutil
 import threading
+import time
 import webbrowser
-from collections import OrderedDict
+from collections import OrderedDict, deque
+from math import ceil
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated, Literal, TypedDict
@@ -26,14 +28,71 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from retirement_engine.config import load_metrics
+from retirement_engine.evidence import validate_unique_headers
 from retirement_engine.models import GateState, RunResult
 from retirement_engine.pipeline import execute_run
 from retirement_engine.resources import bundled_benchmark
 
 MAX_EVIDENCE_BYTES = 5_000_000
+HOSTED_RUN_LIMIT = 6
+HOSTED_RUN_WINDOW_SECONDS = 60.0
+HOSTED_MAX_CONCURRENT_RUNS = 2
 DOWNLOAD_FILES = frozenset(
     {"comparison.md", "comparison.csv", "sensitivity.csv", "lifescape.sqlite"}
 )
+
+
+class HostedRunGuard:
+    """Bound hosted compute per process and provide an incident kill switch."""
+
+    def __init__(
+        self,
+        *,
+        enabled: bool,
+        run_limit: int = HOSTED_RUN_LIMIT,
+        window_seconds: float = HOSTED_RUN_WINDOW_SECONDS,
+        max_concurrent: int = HOSTED_MAX_CONCURRENT_RUNS,
+    ) -> None:
+        self.enabled = enabled
+        self.run_limit = run_limit
+        self.window_seconds = window_seconds
+        self.max_concurrent = max_concurrent
+        self._active = 0
+        self._requests: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def acquire(self, client_key: str) -> None:
+        if not self.enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="hosted comparisons are temporarily disabled",
+                headers={"Retry-After": "60"},
+            )
+        now = time.monotonic()
+        with self._lock:
+            requests = self._requests.setdefault(client_key, deque())
+            cutoff = now - self.window_seconds
+            while requests and requests[0] <= cutoff:
+                requests.popleft()
+            if len(requests) >= self.run_limit:
+                retry_after = max(1, ceil(self.window_seconds - (now - requests[0])))
+                raise HTTPException(
+                    status_code=429,
+                    detail="hosted comparison limit reached; try again shortly",
+                    headers={"Retry-After": str(retry_after)},
+                )
+            if self._active >= self.max_concurrent:
+                raise HTTPException(
+                    status_code=429,
+                    detail="hosted comparison capacity is busy; try again shortly",
+                    headers={"Retry-After": "5"},
+                )
+            requests.append(now)
+            self._active += 1
+
+    def release(self) -> None:
+        with self._lock:
+            self._active = max(0, self._active - 1)
 
 
 class BodyLimitMiddleware:
@@ -114,6 +173,7 @@ def _read_evidence(
         reader = csv.DictReader(io.StringIO(csv_text), strict=True)
         if reader.fieldnames is None:
             raise ValueError("evidence CSV has no header")
+        validate_unique_headers(reader.fieldnames)
         required = {"place_id", "place_name", "state", *metric_ids}
         missing = sorted(required - set(reader.fieldnames))
         if missing:
@@ -319,9 +379,16 @@ def _observation_evidence_kind(run: RunResult) -> Literal["real", "synthetic", "
     return "mixed"
 
 
-def _validate_mutation_origin(request: Request, *, trust_forwarded_proto: bool = False) -> None:
+def _validate_mutation_origin(
+    request: Request,
+    *,
+    trust_forwarded_proto: bool = False,
+    require_origin: bool = False,
+) -> None:
     origin = request.headers.get("origin")
     if origin is None:
+        if require_origin:
+            raise HTTPException(status_code=403, detail="request origin is required")
         return
     parsed = urlsplit(origin)
     effective_scheme = request.url.scheme
@@ -333,7 +400,24 @@ def _validate_mutation_origin(request: Request, *, trust_forwarded_proto: bool =
         raise HTTPException(status_code=403, detail="request origin is not this local app")
 
 
-def create_app(output_dir: Path | None = None, *, hosted_demo: bool = False) -> FastAPI:
+def _hosted_client_key(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    if forwarded_for:
+        return forwarded_for
+    if request.client is not None:
+        return request.client.host
+    return "unknown"
+
+
+def create_app(
+    output_dir: Path | None = None,
+    *,
+    hosted_demo: bool = False,
+    hosted_runs_enabled: bool | None = None,
+    hosted_run_limit: int = HOSTED_RUN_LIMIT,
+    hosted_run_window_seconds: float = HOSTED_RUN_WINDOW_SECONDS,
+    hosted_max_concurrent: int = HOSTED_MAX_CONCURRENT_RUNS,
+) -> FastAPI:
     """Create the loopback-only browser application."""
     app = FastAPI(title="Lifescape", docs_url=None, redoc_url=None)
     app.add_middleware(BodyLimitMiddleware)
@@ -354,6 +438,12 @@ def create_app(output_dir: Path | None = None, *, hosted_demo: bool = False) -> 
     root_output = (output_dir or Path("outputs/app")).resolve()
     run_directories: dict[str, Path] = {}
     imported_evidence: OrderedDict[str, str] = OrderedDict()
+    hosted_guard = HostedRunGuard(
+        enabled=(not hosted_demo if hosted_runs_enabled is None else hosted_runs_enabled),
+        run_limit=hosted_run_limit,
+        window_seconds=hosted_run_window_seconds,
+        max_concurrent=hosted_max_concurrent,
+    )
 
     @app.get("/", include_in_schema=False)
     def index() -> HTMLResponse:
@@ -421,7 +511,15 @@ def create_app(output_dir: Path | None = None, *, hosted_demo: bool = False) -> 
 
     @app.post("/api/run")
     def run_comparison(payload: AppRunRequest, request: Request) -> dict[str, object]:
-        _validate_mutation_origin(request, trust_forwarded_proto=hosted_demo)
+        _validate_mutation_origin(
+            request,
+            trust_forwarded_proto=hosted_demo,
+            require_origin=hosted_demo,
+        )
+        guarded_run = False
+        if hosted_demo:
+            hosted_guard.acquire(_hosted_client_key(request))
+            guarded_run = True
         token = uuid4().hex[:12]
         runs_root = root_output / "runs"
         run_dir = runs_root / token
@@ -477,6 +575,9 @@ def create_app(output_dir: Path | None = None, *, hosted_demo: bool = False) -> 
             return response
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        finally:
+            if guarded_run:
+                hosted_guard.release()
 
     @app.get("/api/downloads/{token}/{filename}")
     def download(

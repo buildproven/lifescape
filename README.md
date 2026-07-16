@@ -22,7 +22,9 @@ contract; the file is processed locally and validated before it reaches scoring.
 
 The public deployment at `lifescape.buildproven.ai` is intentionally a stateless
 synthetic-data demonstration. It does not accept private CSV imports or promise durable
-reports; use the local app for private evidence and downloadable provenance.
+reports; use the local app for private evidence and downloadable provenance. Hosted runs
+are protected by edge and application limits and can be disabled immediately with
+`LIFESCAPE_HOSTED_RUNS_ENABLED=false`.
 
 For the command-line benchmark and QA Architect checks:
 

@@ -5,6 +5,17 @@
 # Use default gitleaks rules as base
 useDefault = true
 
+[allowlist]
+description = "Generated dependency, cache, build, and test artifacts"
+paths = [
+  '''(^|/)\.cache/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)__pycache__/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)dist/''',
+  '''(^|/)outputs/''',
+]
+
 # Additional custom patterns for common secrets
 [[rules]]
 description = "JWT tokens"

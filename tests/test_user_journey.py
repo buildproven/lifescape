@@ -21,7 +21,11 @@ def running_app(output_dir: Path, *, hosted_demo: bool = False) -> Iterator[str]
         port = probe.getsockname()[1]
     server = uvicorn.Server(
         uvicorn.Config(
-            create_app(output_dir, hosted_demo=hosted_demo),
+            create_app(
+                output_dir,
+                hosted_demo=hosted_demo,
+                hosted_runs_enabled=True if hosted_demo else None,
+            ),
             host="127.0.0.1",
             port=port,
             log_level="error",

@@ -34,4 +34,5 @@ if [ ! -x "$binary" ]; then
 fi
 
 printf "%s  %s\n" "$expected_binary_sha" "$binary" | shasum -a 256 --check
-"$binary" detect --config .gitleaks.toml --no-git
+"$binary" dir --config .gitleaks.toml --redact --verbose .
+"$binary" git --config .gitleaks.toml --redact --verbose .

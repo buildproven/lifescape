@@ -28,7 +28,7 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
 def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
     output = tmp_path / "output"
     with TestClient(
-        create_app(output, hosted_demo=True),
+        create_app(output, hosted_demo=True, hosted_runs_enabled=True),
         base_url="https://lifescape.buildproven.ai",
     ) as client:
         page = client.get("/")
@@ -67,7 +67,11 @@ def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
 def test_hosted_demo_accepts_https_preview_origin(tmp_path: Path) -> None:
     preview_host = "lifescape-example-buildproven.vercel.app"
     with TestClient(
-        create_app(tmp_path / "output", hosted_demo=True),
+        create_app(
+            tmp_path / "output",
+            hosted_demo=True,
+            hosted_runs_enabled=True,
+        ),
         base_url=f"https://{preview_host}",
     ) as client:
         places = client.get("/api/bootstrap").json()["places"]
@@ -95,6 +99,76 @@ def test_vercel_entrypoint_exposes_hosted_demo() -> None:
 
     assert response.status_code == 200
     assert response.json()["mode"] == "hosted-demo"
+
+
+def test_hosted_demo_fails_closed_when_runs_are_disabled(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    with (
+        patch("retirement_engine.web.execute_run") as execute,
+        TestClient(
+            create_app(output, hosted_demo=True),
+            base_url="https://lifescape.buildproven.ai",
+        ) as client,
+    ):
+        places = client.get("/api/bootstrap").json()["places"]
+        response = client.post(
+            "/api/run",
+            headers={"origin": "https://lifescape.buildproven.ai"},
+            json={
+                "selected_place_ids": [place["place_id"] for place in places[:2]],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+            },
+        )
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "60"
+    assert execute.call_count == 0
+    assert not output.exists()
+
+
+def test_hosted_demo_requires_origin_and_rate_limits_runs(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    with TestClient(
+        create_app(
+            output,
+            hosted_demo=True,
+            hosted_runs_enabled=True,
+            hosted_run_limit=1,
+        ),
+        base_url="https://lifescape.buildproven.ai",
+    ) as client:
+        places = client.get("/api/bootstrap").json()["places"]
+        payload = {
+            "selected_place_ids": [place["place_id"] for place in places[:2]],
+            "purchase_budget_max": 700_000,
+            "future_self_age": 75,
+            "household": "couple",
+        }
+        missing_origin = client.post("/api/run", json=payload)
+        first = client.post(
+            "/api/run",
+            headers={
+                "origin": "https://lifescape.buildproven.ai",
+                "x-forwarded-for": "203.0.113.5",
+            },
+            json=payload,
+        )
+        limited = client.post(
+            "/api/run",
+            headers={
+                "origin": "https://lifescape.buildproven.ai",
+                "x-forwarded-for": "203.0.113.5",
+            },
+            json=payload,
+        )
+
+    assert missing_origin.status_code == 403
+    assert first.status_code == 200
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) >= 1
+    assert list((output / "runs").iterdir()) == []
 
 
 def test_local_html_preserves_local_disclosure(tmp_path: Path) -> None:
@@ -170,6 +244,40 @@ def test_local_app_returns_visible_error_for_malformed_quoted_record(tmp_path: P
     assert response.status_code == 422
     assert response.headers["content-type"].startswith("application/json")
     assert "malformed" in response.json()["detail"]
+
+
+def test_local_app_rejects_duplicate_evidence_headers_before_execution(
+    tmp_path: Path,
+) -> None:
+    evidence = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
+    duplicate_identity = evidence.replace("place_id,", "place_id,place_id,", 1).encode()
+    duplicate_metric = evidence.replace(
+        "median_sale_price,",
+        "median_sale_price,median_sale_price,",
+        1,
+    ).encode()
+    output = tmp_path / "output"
+    with (
+        patch("retirement_engine.web.execute_run") as execute,
+        TestClient(create_app(output), base_url="http://127.0.0.1") as client,
+    ):
+        identity_response = client.post(
+            "/api/evidence/inspect",
+            content=duplicate_identity,
+            headers={"content-type": "text/csv"},
+        )
+        metric_response = client.post(
+            "/api/evidence/inspect",
+            content=duplicate_metric,
+            headers={"content-type": "text/csv"},
+        )
+
+    assert identity_response.status_code == 422
+    assert "duplicate columns" in identity_response.json()["detail"]
+    assert metric_response.status_code == 422
+    assert "duplicate columns" in metric_response.json()["detail"]
+    assert execute.call_count == 0
+    assert not output.exists()
 
 
 def test_local_app_rejects_stray_quotes_but_accepts_escaped_quotes(tmp_path: Path) -> None:

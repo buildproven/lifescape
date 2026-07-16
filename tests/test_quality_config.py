@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -10,6 +11,7 @@ def test_quality_automation_matches_project_contract() -> None:
     package = json.loads((repository / "package.json").read_text(encoding="utf-8"))
     quality = json.loads((repository / ".qualityrc.json").read_text(encoding="utf-8"))
     workflow = (repository / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+    vercel = json.loads((repository / "vercel.json").read_text(encoding="utf-8"))
     pre_commit = (repository / ".husky/pre-commit").read_text(encoding="utf-8")
     pre_push = (repository / ".husky/pre-push").read_text(encoding="utf-8")
 
@@ -22,12 +24,24 @@ def test_quality_automation_matches_project_contract() -> None:
         "threshold": 90,
     }
     assert "uv sync --locked --extra dev" in workflow
+    assert "fetch-depth: 0" in workflow
     assert "pull_request:\n" in workflow
     assert "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd" in workflow
     assert "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e" in workflow
     assert "npm run quality:check" in workflow
     assert "npm run security:check" in workflow
     assert package["scripts"]["security:config"].endswith("bash scripts/run-gitleaks.sh")
+    assert package["scripts"]["quality:python"].endswith(
+        "uv run --extra dev -- uv build --no-build-isolation"
+    )
+    assert 'requires = ["hatchling==1.31.0"]' in (repository / "pyproject.toml").read_text(
+        encoding="utf-8"
+    )
+    gitleaks_runner = (repository / "scripts/run-gitleaks.sh").read_text(encoding="utf-8")
+    assert '"$binary" dir' in gitleaks_runner
+    assert '"$binary" git' in gitleaks_runner
+    assert "--no-git" not in gitleaks_runner
+    assert vercel["functions"]["api/index.py"]["maxDuration"] == 30
     assert "lint-staged" in pre_commit
     assert "npm run quality:check" in pre_push
     assert "npm run security:check" in pre_push
@@ -50,3 +64,67 @@ def test_gitleaks_runner_rejects_poisoned_cached_binary(tmp_path: Path) -> None:
 
     assert completed.returncode != 0
     assert "FAILED" in completed.stdout + completed.stderr
+
+
+def test_gitleaks_runner_detects_secret_removed_from_worktree(tmp_path: Path) -> None:
+    repository = Path(__file__).resolve().parents[1]
+    runner = repository / "scripts/run-gitleaks.sh"
+    subprocess.run(
+        ["bash", str(runner)],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "quality@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Quality Test"],
+        cwd=tmp_path,
+        check=True,
+    )
+    shutil.copy2(repository / ".gitleaks.toml", tmp_path / ".gitleaks.toml")
+    secret_path = tmp_path / "temporary.env"
+    secret_path.write_text(
+        "api_key='" + "test-secret-value-123" + "'\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["git", "add", ".gitleaks.toml", "temporary.env"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "test: add temporary credential"],
+        cwd=tmp_path,
+        check=True,
+    )
+    secret_path.unlink()
+    subprocess.run(["git", "add", "-u"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "test: remove temporary credential"],
+        cwd=tmp_path,
+        check=True,
+    )
+    shutil.copytree(
+        repository / ".cache/tools/gitleaks",
+        tmp_path / ".cache/tools/gitleaks",
+    )
+
+    completed = subprocess.run(
+        ["bash", str(runner)],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+
+    assert completed.returncode != 0
+    assert "temporary.env" in completed.stdout + completed.stderr

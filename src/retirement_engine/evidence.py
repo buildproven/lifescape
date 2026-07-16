@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+from collections import Counter
+from collections.abc import Sequence
 from datetime import date
 from math import isfinite
 from pathlib import Path
@@ -48,6 +50,13 @@ IDENTITY_COLUMNS = {
     "confidence",
     "synthetic",
 }
+
+
+def validate_unique_headers(fieldnames: Sequence[str]) -> None:
+    """Reject ambiguous CSV schemas before DictReader can discard values."""
+    duplicates = sorted(name for name, count in Counter(fieldnames).items() if count > 1)
+    if duplicates:
+        raise EvidenceError(f"evidence CSV has duplicate columns: {duplicates}")
 
 
 def _parse_boolean(value: str, *, row_number: int, field: str) -> bool:
@@ -134,6 +143,7 @@ def ingest_csv(
             reader = csv.DictReader(handle)
             if reader.fieldnames is None:
                 raise EvidenceError("evidence CSV has no header")
+            validate_unique_headers(reader.fieldnames)
             missing = IDENTITY_COLUMNS - set(reader.fieldnames)
             if missing:
                 raise EvidenceError(f"evidence CSV missing columns: {sorted(missing)}")
