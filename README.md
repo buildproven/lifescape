@@ -11,6 +11,7 @@ Requires Python 3.12+.
 ```bash
 python -m venv .venv
 .venv/bin/pip install -e '.[dev]'
+.venv/bin/playwright install chromium
 .venv/bin/retire app
 ```
 

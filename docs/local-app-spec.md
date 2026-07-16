@@ -1,0 +1,79 @@
+# Local app specification
+
+## Outcome
+
+A person can start Lifescape with one command, complete a guided retirement-town comparison in a
+local browser, understand why towns ranked or failed, and download the underlying reports without
+learning the engine's file layout or CLI pipeline.
+
+## Requirements
+
+| ID | Requirement | Acceptance |
+|---|---|---|
+| U1 | Start the workspace with one command. | `retire app` serves the workspace and opens a browser by default. |
+| U2 | Capture the decision frame before scoring. | The user can set maximum purchase budget, planning age, and household. Budget changes the purchase gate. |
+| U3 | Control the comparison field. | The user can search and select two or more towns; unknown or duplicate IDs are rejected. |
+| U4 | Make evidence quality visible. | The workspace shows metric completeness and never hides missing values. Imported CSVs are classified as real, synthetic, or mixed. |
+| U5 | Produce an explainable decision. | Eligible towns are ranked; failed/unknown gates remain visible; criterion and stability detail is available. |
+| U6 | Preserve usable outputs. | Markdown, ranking CSV, sensitivity CSV, and SQLite provenance are written locally and downloadable. |
+| S1 | Keep the app local by default. | The command binds to `127.0.0.1`; no CDN, analytics, or external runtime request is required. |
+| S2 | Keep one decision implementation. | The web layer calls `execute_run`; it does not reproduce gates, scoring, sensitivity, or persistence in JavaScript. |
+| S3 | Ship a complete installable artifact. | Wheel contains templates/static assets and works outside the checkout. |
+| S4 | Fail visibly and safely. | Invalid files, selections, ranges, geography, dates, and source policy return actionable errors; two-place minimum and 5 MB import cap are enforced. |
+| N1 | Work across common viewports and input modes. | Full journey works at desktop and mobile widths with keyboard-addressable controls and no browser console errors. |
+
+## Design
+
+```text
+retire app
+   │
+   ▼
+FastAPI loopback server ── packaged HTML/CSS/JS workspace
+   │                         │
+   │  validated JSON/CSV ◀───┘
+   ▼
+temporary run inputs ── execute_run (existing engine)
+                           │
+              gates → scoring → sensitivity → SQLite/reports
+                           │
+                           ▼
+                 explainable JSON + downloads
+```
+
+- `cli.py` exposes the one-command entry point and keeps the network host fixed to loopback.
+- `web.py` owns request validation, evidence inspection, run-input preparation, response shaping,
+  and session-scoped downloads.
+- `pipeline.py` remains the only decision orchestrator.
+- `resources.py` resolves identical benchmark assets in editable and installed-wheel contexts.
+- `templates/app.html` plus `static/` provide a dependency-free browser client; no separate Node
+  build is required at runtime.
+
+### Failure behavior
+
+- File and engine validation failures return HTTP 422 with the concrete cause and are surfaced in
+  the interface.
+- Synthetic and mixed imports retain a visible non-research warning.
+- Unknown critical evidence blocks a town instead of imputing a score.
+- Downloads are limited to an allowlist and the current local app session.
+
+### Non-goals
+
+- Automated acquisition of real evidence.
+- Hosted multi-user accounts or remote persistence.
+- Treating the bundled synthetic benchmark as purchase research.
+
+## Requirements traceability
+
+| Requirement | Design evidence | Automated verification |
+|---|---|---|
+| U1 | CLI → `serve` | `tests/test_cli.py::test_cli_help_builds_all_commands`; `tests/test_user_journey.py::test_user_completes_guided_comparison`; installed command in `tests/test_packaging.py` |
+| U2 | Profile controls → generated validated profile | `tests/test_user_journey.py::test_user_completes_guided_comparison`; budget/profile engine coverage in `tests/test_reports.py` |
+| U3 | Town selector + `AppRunRequest` | `tests/test_web.py::test_local_app_rejects_unknown_town_selection`; `tests/test_user_journey.py::test_user_completes_guided_comparison` |
+| U4 | Inspect endpoint + readiness stage | `tests/test_web.py::test_local_app_inspects_imported_evidence`; `tests/test_web.py::test_local_app_runs_imported_real_evidence_without_synthetic_label` |
+| U5 | `_response` over `RunResult` | `tests/test_web.py::test_local_app_runs_selected_towns_and_serves_reports`; `tests/test_user_journey.py::test_user_completes_guided_comparison` |
+| U6 | report allowlist + local output root | `tests/test_web.py::test_local_app_runs_selected_towns_and_serves_reports`; installed benchmark in `tests/test_packaging.py` |
+| S1 | fixed loopback URL; self-contained assets | `tests/test_user_journey.py::test_user_completes_guided_comparison` asserts zero browser errors; static assets tested in `tests/test_packaging.py` |
+| S2 | web route invokes `execute_run` | API integration and SQLite assertions in `tests/test_web.py`; engine suites under `tests/test_gates.py`, `test_scoring.py`, and `test_reports.py` |
+| S3 | Hatch wheel includes web and benchmark resources | `tests/test_packaging.py::test_installed_wheel_runs_benchmark_outside_checkout` |
+| S4 | strict request models + existing ingestion policy | rejection tests in `tests/test_web.py`, `tests/test_connectors.py`, and `tests/test_source_policy.py` |
+| N1 | responsive CSS and semantic controls | `tests/test_user_journey.py::test_user_completes_guided_comparison`; Playwright desktop/mobile review |

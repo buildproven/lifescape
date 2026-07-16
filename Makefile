@@ -2,6 +2,7 @@
 
 install:
 	python -m pip install -e '.[dev]'
+	playwright install chromium
 
 test:
 	pytest
