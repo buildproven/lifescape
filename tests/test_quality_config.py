@@ -15,6 +15,7 @@ def test_quality_automation_matches_project_contract() -> None:
     vercel = json.loads((repository / "vercel.json").read_text(encoding="utf-8"))
     pre_commit = (repository / ".husky/pre-commit").read_text(encoding="utf-8")
     pre_push = (repository / ".husky/pre-push").read_text(encoding="utf-8")
+    commitlint = (repository / "commitlint.config.js").read_text(encoding="utf-8")
 
     assert package["scripts"]["quality:check"]
     assert package["scripts"]["security:check"]
@@ -62,6 +63,8 @@ def test_quality_automation_matches_project_contract() -> None:
     }
     assert firewall["emergencyDeny"]["status"] == "Disabled"
     assert 'emergency_status="${VERCEL_EMERGENCY_STATUS:-Disabled}"' in firewall_verifier
+    assert '"body-max-line-length": [0]' in commitlint
+    assert '"footer-max-line-length": [0]' in commitlint
     assert "lint-staged" in pre_commit
     assert "npm run quality:check" in pre_push
     assert "npm run security:check" in pre_push

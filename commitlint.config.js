@@ -21,6 +21,9 @@ module.exports = {
     ],
     // Subject line max length
     "subject-max-length": [2, "always", 100],
+    // Review evidence trailers contain full commit SHAs and are intentionally long.
+    "body-max-line-length": [0],
+    "footer-max-line-length": [0],
     // Subject must not be empty
     "subject-empty": [2, "never"],
     // Type must not be empty
