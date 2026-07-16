@@ -18,8 +18,9 @@ import uvicorn
 import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi import Path as ApiPath
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -344,14 +345,28 @@ def create_app(output_dir: Path | None = None, *, hosted_demo: bool = False) -> 
         allowed_hosts=allowed_hosts,
     )
     package_dir = Path(__file__).resolve().parent
+    template_environment = Environment(
+        loader=FileSystemLoader(package_dir / "templates"),
+        autoescape=select_autoescape(("html",)),
+    )
+    app_template = template_environment.get_template("app.html")
     app.mount("/static", StaticFiles(directory=package_dir / "static"), name="static")
     root_output = (output_dir or Path("outputs/app")).resolve()
     run_directories: dict[str, Path] = {}
     imported_evidence: OrderedDict[str, str] = OrderedDict()
 
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(package_dir / "templates/app.html")
+    def index() -> HTMLResponse:
+        if hosted_demo:
+            title = "Public demo"
+            body = (
+                "CSV uploads are disabled. Your selected constraints are processed "
+                "temporarily; no durable record is promised."
+            )
+        else:
+            title = "Local by design"
+            body = "Your evidence and outputs stay on this computer."
+        return HTMLResponse(app_template.render(rail_note_title=title, rail_note_body=body))
 
     @app.get("/api/bootstrap")
     def bootstrap() -> dict[str, object]:

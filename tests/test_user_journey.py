@@ -161,3 +161,18 @@ def test_hosted_user_completes_synthetic_demo_without_private_controls(
         browser.close()
 
     assert list((output / "runs").iterdir()) == []
+
+
+def test_hosted_disclosure_survives_without_javascript(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(java_script_enabled=False, viewport={"width": 1440, "height": 1000})
+        page.goto(url)
+
+        assert page.get_by_text("Public demo").is_visible()
+        assert page.get_by_text(
+            "CSV uploads are disabled. Your selected constraints are processed "
+            "temporarily; no durable record is promised."
+        ).is_visible()
+        assert page.get_by_text("Your evidence and outputs stay on this computer.").count() == 0
+        browser.close()

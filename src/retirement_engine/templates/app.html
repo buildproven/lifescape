@@ -8,6 +8,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2314221b%22/><path d=%22M18 16v32h29v-7H26V16z%22 fill=%22%2378aa8d%22/></svg>">
     <link rel="stylesheet" href="/static/app.css">
     <script src="/static/app.js" defer></script>
+    <noscript><style>.loading-screen { display: none; }</style></noscript>
   </head>
   <body>
     <div class="app-shell">
@@ -34,7 +35,7 @@
 
         <div class="rail-note">
           <span class="status-dot" aria-hidden="true"></span>
-          <p id="rail-note-copy"><strong>Local by design</strong>Your evidence and outputs stay on this computer.</p>
+          <p id="rail-note-copy"><strong>{{ rail_note_title }}</strong>{{ rail_note_body }}</p>
         </div>
       </aside>
 

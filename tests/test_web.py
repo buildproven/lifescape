@@ -19,6 +19,8 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
     assert "Lifescape" in page.text
     assert "Shape the decision" in page.text
     assert bootstrap.status_code == 200
+    assert "Your evidence and outputs stay on this computer." in page.text
+    assert "CSV uploads are disabled." not in page.text
     assert len(bootstrap.json()["places"]) == 10
     assert bootstrap.json()["metric_count"] == 17
 
@@ -29,6 +31,7 @@ def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
         create_app(output, hosted_demo=True),
         base_url="https://lifescape.buildproven.ai",
     ) as client:
+        page = client.get("/")
         bootstrap = client.get("/api/bootstrap")
         places = bootstrap.json()["places"]
         imported = client.post(
@@ -49,6 +52,8 @@ def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
         download = client.get("/api/downloads/000000000000/comparison.md")
 
     assert bootstrap.status_code == 200
+    assert "CSV uploads are disabled." in page.text
+    assert "stay on this computer" not in page.text
     assert bootstrap.json()["mode"] == "hosted-demo"
     assert bootstrap.json()["allow_imports"] is False
     assert bootstrap.json()["persistent_outputs"] is False
@@ -90,6 +95,14 @@ def test_vercel_entrypoint_exposes_hosted_demo() -> None:
 
     assert response.status_code == 200
     assert response.json()["mode"] == "hosted-demo"
+
+
+def test_local_html_preserves_local_disclosure(tmp_path: Path) -> None:
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        response = client.get("/")
+
+    assert "Your evidence and outputs stay on this computer." in response.text
+    assert "CSV uploads are disabled." not in response.text
 
 
 def test_local_app_runs_selected_towns_and_serves_reports(tmp_path: Path) -> None:
