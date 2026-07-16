@@ -109,14 +109,23 @@ def _read_evidence(
     csv_text: str, metric_ids: tuple[str, ...]
 ) -> tuple[list[str], list[dict[str, str]]]:
     try:
-        reader = csv.DictReader(io.StringIO(csv_text))
+        reader = csv.DictReader(io.StringIO(csv_text), strict=True)
         if reader.fieldnames is None:
             raise ValueError("evidence CSV has no header")
         required = {"place_id", "place_name", "state", *metric_ids}
         missing = sorted(required - set(reader.fieldnames))
         if missing:
             raise ValueError(f"evidence CSV is missing columns: {missing}")
-        rows = [dict(row) for row in reader]
+        rows: list[dict[str, str]] = []
+        for row_number, row in enumerate(reader, start=2):
+            if None in row:
+                raise ValueError(f"evidence CSV row {row_number} has extra columns")
+            missing_values = sorted(name for name, value in row.items() if value is None)
+            if missing_values:
+                raise ValueError(
+                    f"evidence CSV row {row_number} is missing values for: {missing_values}"
+                )
+            rows.append({name: value for name, value in row.items() if value is not None})
     except csv.Error as exc:
         raise ValueError(f"evidence CSV is malformed: {exc}") from exc
     if not rows:

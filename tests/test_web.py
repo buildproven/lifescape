@@ -73,6 +73,22 @@ def test_local_app_inspects_imported_evidence(tmp_path: Path) -> None:
     assert "missing columns" in invalid.json()["detail"]
 
 
+def test_local_app_returns_visible_error_for_malformed_quoted_record(tmp_path: Path) -> None:
+    evidence = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
+    header, valid_row, *_ = evidence.splitlines()
+    malformed = f'{header}\n{valid_row}\n"unterminated'.encode()
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        response = client.post(
+            "/api/evidence/inspect",
+            content=malformed,
+            headers={"content-type": "text/csv"},
+        )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("application/json")
+    assert "malformed" in response.json()["detail"]
+
+
 def test_local_app_runs_imported_real_evidence_without_synthetic_label(tmp_path: Path) -> None:
     evidence = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
     real_evidence = evidence.replace(",true,", ",false,")
