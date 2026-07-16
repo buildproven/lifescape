@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import runpy
 import sqlite3
+from html.parser import HTMLParser
+from inspect import signature
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,11 +11,15 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from retirement_engine.pipeline import execute_run
 from retirement_engine.web import HostedRunGuard, create_app
 
 
-def test_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> None:
-    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+def test_hosted_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
+    ) as client:
         page = client.get("/")
 
     assert page.status_code == 200
@@ -26,7 +32,7 @@ def test_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> 
 
 def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
-        page = client.get("/demo")
+        page = client.get("/")
         bootstrap = client.get("/api/bootstrap")
 
     assert page.status_code == 200
@@ -42,12 +48,11 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
 def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
     output = tmp_path / "output"
     with TestClient(
-        create_app(output, hosted_demo=True, hosted_runs_enabled=True),
+        create_app(output, hosted_demo=True),
         base_url="https://lifescape.buildproven.ai",
     ) as client:
         page = client.get("/demo")
         bootstrap = client.get("/api/bootstrap")
-        places = bootstrap.json()["places"]
         imported = client.post(
             "/api/evidence/inspect",
             content=b"private evidence",
@@ -57,7 +62,7 @@ def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
             "/api/run",
             headers={"origin": "https://lifescape.buildproven.ai"},
             json={
-                "selected_place_ids": [place["place_id"] for place in places[:4]],
+                "selected_place_ids": ["williamsburg_va", "maryville_tn"],
                 "purchase_budget_max": 700_000,
                 "future_self_age": 75,
                 "household": "couple",
@@ -65,124 +70,55 @@ def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
         )
         download = client.get("/api/downloads/000000000000/comparison.md")
 
-    assert bootstrap.status_code == 200
-    assert "CSV uploads are disabled." in page.text
+    assert bootstrap.status_code == 404
+    assert "Williamsburg leads this field." in page.text
     assert "stay on this computer" not in page.text
-    assert bootstrap.json()["mode"] == "hosted-demo"
-    assert bootstrap.json()["allow_imports"] is False
-    assert bootstrap.json()["persistent_outputs"] is False
-    assert imported.status_code == 403
-    assert response.status_code == 200
-    assert response.json()["downloads"] == {}
+    assert imported.status_code == 404
+    assert response.status_code == 404
     assert download.status_code == 404
-    assert list((output / "runs").iterdir()) == []
+    assert not output.exists()
 
 
-def test_hosted_demo_accepts_https_preview_origin(tmp_path: Path) -> None:
-    preview_host = "lifescape-example-buildproven.vercel.app"
+@pytest.mark.parametrize(
+    ("method", "path", "content"),
+    [
+        ("POST", "/api/run", b"{"),
+        ("GET", "/api/run", None),
+        ("OPTIONS", "/api/run", None),
+        ("POST", "/api/bootstrap", None),
+        ("GET", "/api/downloads/not-a-token/comparison.md", None),
+        ("GET", "/openapi.json", None),
+    ],
+)
+def test_hosted_api_boundary_precedes_routing_and_validation(
+    tmp_path: Path,
+    method: str,
+    path: str,
+    content: bytes | None,
+) -> None:
     with TestClient(
-        create_app(
-            tmp_path / "output",
-            hosted_demo=True,
-            hosted_runs_enabled=True,
-        ),
-        base_url=f"https://{preview_host}",
+        create_app(tmp_path / "output", hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
     ) as client:
-        places = client.get("/api/bootstrap").json()["places"]
-        response = client.post(
-            "/api/run",
-            headers={
-                "origin": f"https://{preview_host}",
-                "x-forwarded-proto": "https",
-            },
-            json={
-                "selected_place_ids": [place["place_id"] for place in places[:2]],
-                "purchase_budget_max": 700_000,
-                "future_self_age": 75,
-                "household": "couple",
-            },
+        response = client.request(
+            method,
+            path,
+            content=content,
+            headers={"content-type": "application/json"} if content else None,
         )
 
-    assert response.status_code == 200
+    assert response.status_code == 404
+    assert response.json() == {"detail": "the hosted site has no application API"}
+    assert not (tmp_path / "output").exists()
 
 
 def test_vercel_entrypoint_exposes_hosted_demo() -> None:
     vercel_app = runpy.run_path("api/index.py")["app"]
     with TestClient(vercel_app, base_url="https://lifescape.buildproven.ai") as client:
-        response = client.get("/api/bootstrap")
+        response = client.get("/")
 
     assert response.status_code == 200
-    assert response.json()["mode"] == "hosted-demo"
-
-
-def test_hosted_demo_fails_closed_when_runs_are_disabled(tmp_path: Path) -> None:
-    output = tmp_path / "output"
-    with (
-        patch("retirement_engine.web.execute_run") as execute,
-        TestClient(
-            create_app(output, hosted_demo=True),
-            base_url="https://lifescape.buildproven.ai",
-        ) as client,
-    ):
-        places = client.get("/api/bootstrap").json()["places"]
-        response = client.post(
-            "/api/run",
-            headers={"origin": "https://lifescape.buildproven.ai"},
-            json={
-                "selected_place_ids": [place["place_id"] for place in places[:2]],
-                "purchase_budget_max": 700_000,
-                "future_self_age": 75,
-                "household": "couple",
-            },
-        )
-
-    assert response.status_code == 503
-    assert response.headers["retry-after"] == "60"
-    assert execute.call_count == 0
-    assert not output.exists()
-
-
-def test_hosted_demo_requires_origin_and_rate_limits_runs(tmp_path: Path) -> None:
-    output = tmp_path / "output"
-    with TestClient(
-        create_app(
-            output,
-            hosted_demo=True,
-            hosted_runs_enabled=True,
-            hosted_run_limit=1,
-        ),
-        base_url="https://lifescape.buildproven.ai",
-    ) as client:
-        places = client.get("/api/bootstrap").json()["places"]
-        payload = {
-            "selected_place_ids": [place["place_id"] for place in places[:2]],
-            "purchase_budget_max": 700_000,
-            "future_self_age": 75,
-            "household": "couple",
-        }
-        missing_origin = client.post("/api/run", json=payload)
-        first = client.post(
-            "/api/run",
-            headers={
-                "origin": "https://lifescape.buildproven.ai",
-                "x-forwarded-for": "203.0.113.5",
-            },
-            json=payload,
-        )
-        limited = client.post(
-            "/api/run",
-            headers={
-                "origin": "https://lifescape.buildproven.ai",
-                "x-forwarded-for": "203.0.113.5",
-            },
-            json=payload,
-        )
-
-    assert missing_origin.status_code == 403
-    assert first.status_code == 200
-    assert limited.status_code == 429
-    assert int(limited.headers["retry-after"]) >= 1
-    assert list((output / "runs").iterdir()) == []
+    assert "Decide where retirement still works." in response.text
 
 
 def test_hosted_guard_rejects_rotating_clients_without_retaining_them() -> None:
@@ -200,10 +136,156 @@ def test_hosted_guard_rejects_rotating_clients_without_retaining_them() -> None:
 
 def test_local_html_preserves_local_disclosure(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
-        response = client.get("/demo")
+        response = client.get("/")
 
     assert "Your evidence and outputs stay on this computer." in response.text
     assert "CSV uploads are disabled." not in response.text
+
+
+def test_finished_demo_shows_a_completed_decision(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
+    ) as client:
+        response = client.get("/demo")
+
+    assert response.status_code == 200
+    assert "Williamsburg leads this field." in response.text
+    assert "Ranked after the non-negotiables." in response.text
+    assert "Blocked, not hidden" in response.text
+    assert "Get Lifescape on GitHub" in response.text
+    assert 'href="/"' in response.text
+
+
+def test_local_demo_bookmark_redirects_to_workspace(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output"),
+        base_url="http://127.0.0.1",
+        follow_redirects=False,
+    ) as client:
+        response = client.get("/demo")
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/"
+
+
+class DemoDataParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.rows: list[dict[str, str]] = []
+        self.active: list[tuple[str, dict[str, str], list[str]]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        for _, _, text in self.active:
+            text.append(" ")
+        values = {key: value for key, value in attrs if value is not None}
+        if any(
+            key in values
+            for key in ("data-place-id", "data-criterion", "data-profile", "data-gates-passed")
+        ):
+            self.active.append((tag, values, []))
+
+    def handle_data(self, data: str) -> None:
+        for _, _, text in self.active:
+            text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.active and self.active[-1][0] == tag:
+            _, values, text = self.active.pop()
+            values["visible-text"] = " ".join("".join(text).split())
+            self.rows.append(values)
+        for _, _, text in self.active:
+            text.append(" ")
+
+
+def test_finished_demo_tracks_canonical_benchmark(tmp_path: Path) -> None:
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        bootstrap = client.get("/api/bootstrap").json()
+        places = bootstrap["places"]
+        result = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": [place["place_id"] for place in places],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+            },
+        ).json()
+    with TestClient(
+        create_app(tmp_path / "hosted", hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
+    ) as hosted_client:
+        page = hosted_client.get("/demo")
+
+    parser = DemoDataParser()
+    parser.feed(page.text)
+    ranked = {
+        row["data-place-id"]: row
+        for row in parser.rows
+        if "data-place-id" in row and "data-score" in row
+    }
+    blocked = {row["data-place-id"]: row for row in parser.rows if "data-gates" in row}
+    criteria = {
+        row["data-criterion"]: row["data-score"] for row in parser.rows if "data-criterion" in row
+    }
+    profile = {
+        row["data-profile"]: row["data-value"] for row in parser.rows if "data-profile" in row
+    }
+
+    assert profile["household"] == bootstrap["defaults"]["household"]
+    assert profile["future_self_age"] == str(bootstrap["defaults"]["future_self_age"])
+    assert profile["purchase_budget_max"] == str(bootstrap["defaults"]["purchase_budget_max"])
+    assert profile["field_count"] == str(len(places))
+    assert profile["metric_count"] == str(bootstrap["metric_count"])
+    assert profile["sensitivity_simulations"] == str(
+        signature(execute_run).parameters["simulations"].default
+    )
+    profile_rows = {row["data-profile"]: row for row in parser.rows if "data-profile" in row}
+    assert profile_rows["household"]["visible-text"] == "Couple"
+    assert profile_rows["future_self_age"]["visible-text"] == "75"
+    assert profile_rows["purchase_budget_max"]["visible-text"] == "$700,000"
+    assert profile_rows["field_count"]["visible-text"] == "10 towns"
+    assert profile_rows["metric_count"]["visible-text"] == "17 synthetic metrics"
+    assert profile_rows["sensitivity_simulations"]["visible-text"] == "1,000 simulations"
+    gate_summary = next(row for row in parser.rows if "data-gates-passed" in row)
+    assert gate_summary["data-gates-passed"] == str(len(result["rankings"][0]["gates"]))
+    assert gate_summary["visible-text"] == (
+        "Gates passed 7 / 7 Composite score 6.4 Top-three frequency 100%"
+    )
+    for place in result["rankings"]:
+        row = ranked[place["place_id"]]
+        assert row["data-score"] == str(place["score"])
+        assert row["data-top-three"] == str(place["top_three_frequency"])
+        assert row["data-fragile"] == str(place["fragile"]).lower()
+        stability = "Fragile" if place["fragile"] else "Stable"
+        assert row["visible-text"] == (
+            f"{place['rank']:02} {place['name']}, {place['state']} {stability} · "
+            f"{place['top_three_frequency']}% top three {place['score']}"
+        )
+    leader_criteria = {
+        item["name"]: str(item["score"]) for item in result["rankings"][0]["criteria"]
+    }
+    assert criteria == {name: leader_criteria[name] for name in criteria}
+    criterion_rows = {row["data-criterion"]: row for row in parser.rows if "data-criterion" in row}
+    for name, score in criteria.items():
+        assert criterion_rows[name]["visible-text"].casefold() == f"{name} {score}".casefold()
+    for place in result["blocked"]:
+        expected = "|".join(
+            f"{gate['name']}:{gate['state']}:{gate['value']}:{gate['threshold']}"
+            for gate in place["gates"]
+        )
+        assert blocked[place["place_id"]]["data-gates"] == expected
+    assert blocked["beaufort_sc"]["visible-text"] == "Beaufort, SC Hazard profile 8 exceeds 7"
+    assert blocked["charleston_sc"]["visible-text"] == (
+        "Charleston, SC Purchase feasibility $720k exceeds $700k"
+    )
+    assert blocked["erie_pa"]["visible-text"] == (
+        "Erie, PA Broadband + winter Unknown evidence · 89 exceeds 65"
+    )
+    assert blocked["muskegon_mi"]["visible-text"] == "Muskegon, MI Winter severity 95 exceeds 65"
+    assert blocked["traverse_city_mi"]["visible-text"] == (
+        "Traverse City, MI Winter severity 125 exceeds 65"
+    )
 
 
 def test_local_app_runs_selected_towns_and_serves_reports(tmp_path: Path) -> None:
@@ -400,6 +482,15 @@ def test_local_app_preserves_mixed_evidence_warning(tmp_path: Path) -> None:
 
 def test_local_app_rejects_unknown_town_selection(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        duplicate = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": ["williamsburg_va", "williamsburg_va"],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+            },
+        )
         response = client.post(
             "/api/run",
             json={
@@ -410,6 +501,8 @@ def test_local_app_rejects_unknown_town_selection(tmp_path: Path) -> None:
             },
         )
 
+    assert duplicate.status_code == 422
+    assert "selected places must be unique" in duplicate.text
     assert response.status_code == 422
     assert "unknown selected places" in response.json()["detail"]
     assert list((tmp_path / "output/runs").iterdir()) == []

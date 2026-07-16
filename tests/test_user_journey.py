@@ -87,7 +87,7 @@ def test_user_completes_guided_comparison(tmp_path: Path, viewport: dict[str, in
                 browser_errors.append(message.text) if message.type == "error" else None
             ),
         )
-        page.goto(f"{url}/demo")
+        page.goto(url)
 
         page.get_by_role("heading", name="Shape the decision").wait_for()
         page.get_by_role("button", name="Choose towns →").click()
@@ -118,7 +118,7 @@ def test_user_keeps_mixed_evidence_warning_after_scoring(tmp_path: Path) -> None
                 browser_errors.append(message.text) if message.type == "error" else None
             ),
         )
-        page.goto(f"{url}/demo")
+        page.goto(url)
         page.get_by_role("heading", name="Shape the decision").wait_for()
         page.locator("#evidence-file").set_input_files(
             {
@@ -153,55 +153,16 @@ def test_user_keeps_mixed_evidence_warning_after_scoring(tmp_path: Path) -> None
         browser.close()
 
 
-def test_hosted_user_completes_synthetic_demo_without_private_controls(
-    tmp_path: Path,
-) -> None:
-    browser_errors: list[str] = []
-    output = tmp_path / "output"
-    with running_app(output, hosted_demo=True) as url, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 1000})
-        page.on(
-            "console",
-            lambda message: (
-                browser_errors.append(message.text) if message.type == "error" else None
-            ),
-        )
-        page.goto(f"{url}/demo")
-        page.get_by_role("heading", name="Shape the decision").wait_for()
-        assert page.get_by_role("button", name="Import CSV").is_hidden()
-        assert page.get_by_text(
-            "CSV uploads are disabled. Your selected constraints are processed "
-            "temporarily; no durable record is promised."
-        ).is_visible()
-        page.get_by_role("button", name="Choose towns →").click()
-        page.get_by_role("button", name="Review evidence →").click()
-        page.get_by_role("button", name="Run comparison →").click()
-        page.get_by_role("heading", name="Williamsburg leads this field.").wait_for()
-        assert page.get_by_text("Hosted demonstration").is_visible()
-        assert page.get_by_text(
-            "Install Lifescape locally to import private evidence and save provenance."
-        ).is_visible()
-        assert page.get_by_text(
-            "This synthetic run is temporary. Adjust the inputs to explore another field."
-        ).is_visible()
-        assert page.get_by_role("link", name="Markdown report").count() == 0
-        assert browser_errors == []
-        browser.close()
-
-    assert list((output / "runs").iterdir()) == []
-
-
 def test_hosted_disclosure_survives_without_javascript(tmp_path: Path) -> None:
     with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(java_script_enabled=False, viewport={"width": 1440, "height": 1000})
         page.goto(f"{url}/demo")
 
-        assert page.get_by_text("Public demo").is_visible()
+        assert page.get_by_text("Finished synthetic demonstration").is_visible()
+        assert page.get_by_text("Completed synthetic outcome").is_visible()
         assert page.get_by_text(
-            "CSV uploads are disabled. Your selected constraints are processed "
-            "temporarily; no durable record is promised."
+            "This finished run shows the shape of a Lifescape answer"
         ).is_visible()
         assert page.get_by_text("Your evidence and outputs stay on this computer.").count() == 0
         browser.close()
@@ -216,10 +177,10 @@ def test_landing_disclosures_survive_without_javascript(tmp_path: Path) -> None:
         assert page.get_by_role(
             "heading", name="From “maybe there” to a decision you can inspect."
         ).is_visible()
-        assert page.get_by_text("Synthetic example").is_visible()
+        assert page.get_by_text("Synthetic example", exact=True).is_visible()
         assert page.get_by_text(
-            "The hosted experience accepts only bundled synthetic evidence and keeps no durable "
-            "run record."
+            "The hosted site accepts no inputs: it explains the method and shows a finished "
+            "synthetic example."
         ).is_visible()
         assert page.get_by_text("Use the web demo to learn it.").is_visible()
         browser.close()
@@ -262,9 +223,12 @@ def test_visitor_understands_product_and_opens_demo(
                 return box.left >= 0 && box.right <= document.documentElement.clientWidth;
             })"""
         )
-        page.get_by_role("link", name="Try the synthetic demo").click()
-        page.get_by_role("heading", name="Shape the decision").wait_for()
-        assert page.url.endswith("/demo")
+        page.get_by_role("link", name="See the finished demo").first.click()
+        page.get_by_role("heading", name="Williamsburg leads this field.").wait_for()
+        assert page.get_by_text("03 / Blocked, not hidden").is_visible()
+        page.get_by_role("link", name="How Lifescape works →").click()
+        page.get_by_role("heading", name="Decide where retirement still works.").wait_for()
+        assert page.url.rstrip("/") == url
         assert browser_errors == []
         browser.close()
 
@@ -316,4 +280,42 @@ def test_landing_keyboard_focus_and_disclosure_contrast(tmp_path: Path) -> None:
             )
             >= 4.5
         )
+        browser.close()
+
+
+@pytest.mark.parametrize("width", [320, 390, 768, 1440])
+def test_finished_demo_reflows_without_horizontal_overflow(tmp_path: Path, width: int) -> None:
+    with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": width, "height": 1000})
+        page.goto(f"{url}/demo")
+
+        page.get_by_role("heading", name="Williamsburg leads this field.").wait_for()
+        assert page.get_by_text("Completed synthetic outcome").is_visible()
+        assert page.evaluate(
+            "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+        )
+        browser.close()
+
+
+def test_finished_demo_small_text_meets_contrast_requirement(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page.goto(f"{url}/demo")
+
+        for selector in [
+            ".ranking li:not(.is-leader) .rank",
+            ".ranking li:not(.is-leader) small",
+            ".blocked-ledger b",
+        ]:
+            color = page.locator(selector).first.evaluate(
+                """element => {
+                    const match = getComputedStyle(element).color.match(/[\\d.]+/g);
+                    return match ? match.map(Number) : [];
+                }"""
+            )
+            assert len(color) >= 3
+            foreground = tuple(int(channel) for channel in color[:3])
+            assert contrast_ratio(foreground, (241, 238, 229)) >= 4.5
         browser.close()

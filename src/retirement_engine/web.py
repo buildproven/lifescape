@@ -18,9 +18,9 @@ from uuid import uuid4
 
 import uvicorn
 import yaml
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi import Path as ApiPath
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -177,6 +177,25 @@ class BodyLimitMiddleware:
             return {"type": "http.request", "body": bytes(body), "more_body": False}
 
         await self.app(scope, replay, send)
+
+
+class HostedStaticBoundaryMiddleware:
+    """Keep the public site outside the local application's API surface."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and (
+            scope["path"].startswith("/api/") or scope["path"] == "/openapi.json"
+        ):
+            response = JSONResponse(
+                {"detail": "the hosted site has no application API"},
+                status_code=404,
+            )
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
 
 
 class WebModel(BaseModel):
@@ -462,7 +481,12 @@ def create_app(
     hosted_max_tracked_clients: int = HOSTED_MAX_TRACKED_CLIENTS,
 ) -> FastAPI:
     """Create the loopback-only browser application."""
-    app = FastAPI(title="Lifescape", docs_url=None, redoc_url=None)
+    app = FastAPI(
+        title="Lifescape",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None if hosted_demo else "/openapi.json",
+    )
     app.add_middleware(BodyLimitMiddleware)
     allowed_hosts = ["127.0.0.1", "localhost", "[::1]"]
     if hosted_demo:
@@ -471,12 +495,15 @@ def create_app(
         TrustedHostMiddleware,
         allowed_hosts=allowed_hosts,
     )
+    if hosted_demo:
+        app.add_middleware(HostedStaticBoundaryMiddleware)
     package_dir = Path(__file__).resolve().parent
     template_environment = Environment(
         loader=FileSystemLoader(package_dir / "templates"),
         autoescape=select_autoescape(("html",)),
     )
     landing_template = template_environment.get_template("landing.html")
+    demo_template = template_environment.get_template("demo.html")
     app_template = template_environment.get_template("app.html")
     app.mount("/static", StaticFiles(directory=package_dir / "static"), name="static")
     root_output = (output_dir or Path("outputs/app")).resolve()
@@ -493,23 +520,25 @@ def create_app(
 
     @app.get("/", include_in_schema=False)
     def index() -> HTMLResponse:
-        return HTMLResponse(landing_template.render())
+        if hosted_demo:
+            return HTMLResponse(landing_template.render())
+        return HTMLResponse(
+            app_template.render(
+                rail_note_title="Local by design",
+                rail_note_body="Your evidence and outputs stay on this computer.",
+            )
+        )
 
     @app.get("/demo", include_in_schema=False)
-    def demo() -> HTMLResponse:
-        if hosted_demo:
-            title = "Public demo"
-            body = (
-                "CSV uploads are disabled. Your selected constraints are processed "
-                "temporarily; no durable record is promised."
-            )
-        else:
-            title = "Local by design"
-            body = "Your evidence and outputs stay on this computer."
-        return HTMLResponse(app_template.render(rail_note_title=title, rail_note_body=body))
+    def finished_demo() -> Response:
+        if not hosted_demo:
+            return RedirectResponse("/")
+        return HTMLResponse(demo_template.render())
 
     @app.get("/api/bootstrap")
     def bootstrap() -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
         with bundled_benchmark() as (evidence_path, config_dir):
             metric_ids = tuple(metric.id for metric in load_metrics(config_dir))
             fieldnames, rows = _read_evidence(evidence_path.read_text(encoding="utf-8"), metric_ids)
@@ -533,10 +562,7 @@ def create_app(
     @app.post("/api/evidence/inspect")
     async def inspect_evidence(request: Request) -> dict[str, object]:
         if hosted_demo:
-            raise HTTPException(
-                status_code=403,
-                detail="the hosted demo accepts only its bundled synthetic evidence",
-            )
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
         _validate_mutation_origin(request, trust_forwarded_proto=hosted_demo)
         try:
             raw_evidence = await request.body()
@@ -561,6 +587,8 @@ def create_app(
 
     @app.post("/api/run")
     def run_comparison(payload: AppRunRequest, request: Request) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
         _validate_mutation_origin(
             request,
             trust_forwarded_proto=hosted_demo,
@@ -660,7 +688,7 @@ def serve(
     open_browser: bool = True,
 ) -> None:
     """Launch the local app and optionally open its browser tab."""
-    url = f"http://{host}:{port}/demo"
+    url = f"http://{host}:{port}"
     if open_browser:
         threading.Timer(0.8, webbrowser.open, args=(url,)).start()
     uvicorn.run(create_app(output_dir), host=host, port=port, log_level="warning")

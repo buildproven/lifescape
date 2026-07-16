@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#13251d" />
+    <meta
+      name="description"
+      content="A completed synthetic Lifescape retirement-town decision, showing ranked, blocked, and uncertain outcomes."
+    />
+    <title>Lifescape demo — a finished retirement decision</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2314221b%22/><path d=%22M18 16v32h29v-7H26V16z%22 fill=%22%2378aa8d%22/></svg>"
+    />
+    <link rel="stylesheet" href="/static/demo.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#decision">Skip to decision</a>
+
+    <header class="demo-header">
+      <a class="wordmark" href="/">Lifescape</a>
+      <p>Finished synthetic demonstration</p>
+      <a class="try-link" href="/">How Lifescape works <span>→</span></a>
+    </header>
+
+    <main id="decision">
+      <section class="decision-hero" aria-labelledby="decision-title">
+        <div class="decision-context">
+          <p class="eyebrow">Decision 01 · retirement location</p>
+          <dl>
+            <div>
+              <dt>Household</dt>
+              <dd data-profile="household" data-value="couple">Couple</dd>
+            </div>
+            <div>
+              <dt>Planning age</dt>
+              <dd data-profile="future_self_age" data-value="75">75</dd>
+            </div>
+            <div>
+              <dt>Purchase ceiling</dt>
+              <dd data-profile="purchase_budget_max" data-value="700000">$700,000</dd>
+            </div>
+            <div>
+              <dt>Field</dt>
+              <dd data-profile="field_count" data-value="10">10 towns</dd>
+            </div>
+            <div>
+              <dt>Evidence</dt>
+              <dd data-profile="metric_count" data-value="17">17 synthetic metrics</dd>
+            </div>
+            <div>
+              <dt>Sensitivity</dt>
+              <dd data-profile="sensitivity_simulations" data-value="1000">1,000 simulations</dd>
+            </div>
+          </dl>
+        </div>
+        <div class="decision-answer">
+          <p class="eyebrow">Completed synthetic outcome</p>
+          <h1 id="decision-title">Williamsburg leads this field.</h1>
+          <p class="answer-summary">
+            Five towns cleared every hard gate. Williamsburg ranked first with a stable top-three
+            position across every simulation; five other towns remain visible but unranked.
+          </p>
+          <div class="answer-rule" data-gates-passed="7">
+            <span>Gates passed</span><strong>7 / 7</strong> <span>Composite score</span
+            ><strong>6.4</strong> <span>Top-three frequency</span><strong>100%</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="ranking" aria-labelledby="ranking-title">
+        <header>
+          <p class="section-label">01 / Eligible field</p>
+          <h2 id="ranking-title">Ranked after the non-negotiables.</h2>
+          <p>Only towns that cleared every hard gate receive a score.</p>
+        </header>
+        <ol>
+          <li
+            class="is-leader"
+            data-place-id="williamsburg_va"
+            data-score="6.4"
+            data-top-three="100"
+            data-fragile="false"
+          >
+            <span class="rank">01</span>
+            <div><strong>Williamsburg, VA</strong><small>Stable · 100% top three</small></div>
+            <span class="score">6.4</span>
+          </li>
+          <li
+            data-place-id="hendersonville_nc"
+            data-score="5.8"
+            data-top-three="100"
+            data-fragile="false"
+          >
+            <span class="rank">02</span>
+            <div><strong>Hendersonville, NC</strong><small>Stable · 100% top three</small></div>
+            <span class="score">5.8</span>
+          </li>
+          <li
+            data-place-id="maryville_tn"
+            data-score="5.6"
+            data-top-three="100"
+            data-fragile="false"
+          >
+            <span class="rank">03</span>
+            <div><strong>Maryville, TN</strong><small>Stable · 100% top three</small></div>
+            <span class="score">5.6</span>
+          </li>
+          <li
+            data-place-id="libertyville_il"
+            data-score="4.8"
+            data-top-three="0"
+            data-fragile="true"
+          >
+            <span class="rank">04</span>
+            <div><strong>Libertyville, IL</strong><small>Fragile · 0% top three</small></div>
+            <span class="score">4.8</span>
+          </li>
+          <li data-place-id="new_bern_nc" data-score="4.3" data-top-three="0" data-fragile="true">
+            <span class="rank">05</span>
+            <div><strong>New Bern, NC</strong><small>Fragile · 0% top three</small></div>
+            <span class="score">4.3</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="why-williamsburg" aria-labelledby="why-title">
+        <div class="why-copy">
+          <p class="section-label">02 / Why it leads</p>
+          <h2 id="why-title">Strength where the benchmark puts weight.</h2>
+          <p>
+            Williamsburg did not win every criterion. Under the benchmark’s fixed weights, its
+            strongest evidence produced the highest total while it still cleared every
+            non-negotiable.
+          </p>
+        </div>
+        <div class="criteria" aria-label="Williamsburg criterion scores">
+          <div data-criterion="Neighborhood" data-score="10.0">
+            <span>Neighborhood</span><i style="--value: 100%"></i><strong>10.0</strong>
+          </div>
+          <div data-criterion="Social" data-score="10.0">
+            <span>Social</span><i style="--value: 100%"></i><strong>10.0</strong>
+          </div>
+          <div data-criterion="Community" data-score="9.0">
+            <span>Community</span><i style="--value: 90%"></i><strong>9.0</strong>
+          </div>
+          <div data-criterion="Daily Life" data-score="7.4">
+            <span>Daily life</span><i style="--value: 74%"></i><strong>7.4</strong>
+          </div>
+          <div data-criterion="Climate" data-score="6.8">
+            <span>Climate</span><i style="--value: 68%"></i><strong>6.8</strong>
+          </div>
+          <div data-criterion="Healthcare" data-score="6.4">
+            <span>Healthcare</span><i style="--value: 64%"></i><strong>6.4</strong>
+          </div>
+          <div class="is-weak" data-criterion="Nature" data-score="2.3">
+            <span>Nature</span><i style="--value: 23%"></i><strong>2.3</strong>
+          </div>
+          <div class="is-weak" data-criterion="Cost" data-score="2.0">
+            <span>Cost</span><i style="--value: 20%"></i><strong>2.0</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="blocked" aria-labelledby="blocked-title">
+        <header>
+          <p class="section-label">03 / Blocked, not hidden</p>
+          <h2 id="blocked-title">The rejected field still matters.</h2>
+          <p>
+            A failed or unknown gate cannot be offset by a strong lifestyle score. Each blocked town
+            stays in the decision record with its reason.
+          </p>
+        </header>
+        <div class="blocked-ledger">
+          <div data-place-id="beaufort_sc" data-gates="Hazard Profile:FAIL:8.0:7.0">
+            <strong>Beaufort, SC</strong><span>Hazard profile</span><b>8 exceeds 7</b>
+          </div>
+          <div
+            data-place-id="charleston_sc"
+            data-gates="Purchase Feasibility:FAIL:720000.0:700000.0"
+          >
+            <strong>Charleston, SC</strong><span>Purchase feasibility</span
+            ><b>$720k exceeds $700k</b>
+          </div>
+          <div
+            data-place-id="erie_pa"
+            data-gates="Broadband:UNKNOWN:None:100.0|Winter Severity:FAIL:89.0:65.0"
+          >
+            <strong>Erie, PA</strong><span>Broadband + winter</span
+            ><b>Unknown evidence · 89 exceeds 65</b>
+          </div>
+          <div data-place-id="muskegon_mi" data-gates="Winter Severity:FAIL:95.0:65.0">
+            <strong>Muskegon, MI</strong><span>Winter severity</span><b>95 exceeds 65</b>
+          </div>
+          <div data-place-id="traverse_city_mi" data-gates="Winter Severity:FAIL:125.0:65.0">
+            <strong>Traverse City, MI</strong><span>Winter severity</span><b>125 exceeds 65</b>
+          </div>
+        </div>
+      </section>
+
+      <section class="interpretation" aria-labelledby="interpretation-title">
+        <p class="section-label">04 / What the answer means</p>
+        <h2 id="interpretation-title">A decision to investigate—not a purchase recommendation.</h2>
+        <div>
+          <p>
+            This finished run shows the shape of a Lifescape answer: ranked survivors, explicit
+            trade-offs, stability, and visible eliminations.
+          </p>
+          <p>
+            The evidence here is invented. In the local app, replace it with sourced research and
+            keep the resulting reports and SQLite provenance on your own computer.
+          </p>
+        </div>
+      </section>
+
+      <section class="demo-cta">
+        <p class="eyebrow">Want to make the decision yours?</p>
+        <h2>Run Lifescape locally with your own sourced evidence.</h2>
+        <a href="https://github.com/buildproven/lifescape-engine"
+          >Get Lifescape on GitHub <span>↗</span></a
+        >
+      </section>
+    </main>
+
+    <footer class="demo-footer">
+      <a class="wordmark" href="/">Lifescape</a>
+      <p>Synthetic demonstration · not purchase research</p>
+      <a href="/">How it works →</a>
+    </footer>
+  </body>
+</html>
