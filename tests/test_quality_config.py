@@ -80,6 +80,13 @@ def test_commitlint_limits_prose_but_accepts_revision_bound_review_trailers() ->
         f"base={reviewed_base})\n"
     )
     long_prose = "fix: valid subject\n\n" + ("ordinary prose " * 10)
+    misplaced_trailer = (
+        "fix: valid subject\n\n"
+        "Reviewed-By: quality "
+        f"(tier=critical, reviewer=codex, findings=0, head={reviewed_head}, "
+        f"base={reviewed_base})\n\n"
+        "ordinary body after the purported trailer\n"
+    )
 
     trailer = subprocess.run(
         ["npx", "--no", "--", "commitlint"],
@@ -105,12 +112,22 @@ def test_commitlint_limits_prose_but_accepts_revision_bound_review_trailers() ->
         capture_output=True,
         text=True,
     )
+    misplaced = subprocess.run(
+        ["npx", "--no", "--", "commitlint"],
+        cwd=repository,
+        input=misplaced_trailer,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
     assert trailer.returncode == 0, trailer.stdout + trailer.stderr
     assert prose.returncode != 0
     assert "line-length-except-review-trailers" in prose.stdout + prose.stderr
     assert invalid_type.returncode != 0
     assert "type-enum" in invalid_type.stdout + invalid_type.stderr
+    assert misplaced.returncode != 0
+    assert "line-length-except-review-trailers" in misplaced.stdout + misplaced.stderr
 
 
 def test_gitleaks_runner_rejects_poisoned_cached_binary(tmp_path: Path) -> None:

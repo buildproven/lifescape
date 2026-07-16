@@ -1,14 +1,18 @@
 const REVIEW_TRAILER_PREFIXES = ["Reviewed-By:", "Break-Glass-Approval:", "Quality-Skip:"];
 
 const lineLengthExceptReviewTrailers = (parsed, when = "always", maxLength = 100) => {
-  const invalidLine = parsed.raw
-    .split(/\r?\n/)
-    .slice(1)
-    .find(
-      (line) =>
-        line.length > maxLength &&
-        !REVIEW_TRAILER_PREFIXES.some((prefix) => line.startsWith(prefix))
-    );
+  const lines = parsed.raw.split(/\r?\n/).slice(1);
+  while (lines.at(-1) === "") {
+    lines.pop();
+  }
+  const finalBlankLine = lines.lastIndexOf("");
+  const trailerBlockStart = finalBlankLine + 1;
+  const invalidLine = lines.find((line, index) => {
+    const recognizedTrailer =
+      index >= trailerBlockStart &&
+      REVIEW_TRAILER_PREFIXES.some((prefix) => line.startsWith(prefix));
+    return line.length > maxLength && !recognizedTrailer;
+  });
   const valid = invalidLine === undefined;
   return [
     when === "never" ? !valid : valid,
