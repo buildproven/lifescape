@@ -3,6 +3,7 @@ from __future__ import annotations
 import runpy
 import sqlite3
 from html.parser import HTMLParser
+from inspect import signature
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from retirement_engine.pipeline import execute_run
 from retirement_engine.web import HostedRunGuard, create_app
 
 
@@ -77,6 +79,39 @@ def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
     assert not output.exists()
 
 
+@pytest.mark.parametrize(
+    ("method", "path", "content"),
+    [
+        ("POST", "/api/run", b"{"),
+        ("GET", "/api/run", None),
+        ("OPTIONS", "/api/run", None),
+        ("POST", "/api/bootstrap", None),
+        ("GET", "/api/downloads/not-a-token/comparison.md", None),
+        ("GET", "/openapi.json", None),
+    ],
+)
+def test_hosted_api_boundary_precedes_routing_and_validation(
+    tmp_path: Path,
+    method: str,
+    path: str,
+    content: bytes | None,
+) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
+    ) as client:
+        response = client.request(
+            method,
+            path,
+            content=content,
+            headers={"content-type": "application/json"} if content else None,
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "the hosted site has no application API"}
+    assert not (tmp_path / "output").exists()
+
+
 def test_vercel_entrypoint_exposes_hosted_demo() -> None:
     vercel_app = runpy.run_path("api/index.py")["app"]
     with TestClient(vercel_app, base_url="https://lifescape.buildproven.ai") as client:
@@ -138,14 +173,29 @@ class DemoDataParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.rows: list[dict[str, str]] = []
+        self.active: list[tuple[str, dict[str, str], list[str]]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        for _, _, text in self.active:
+            text.append(" ")
         values = {key: value for key, value in attrs if value is not None}
         if any(
             key in values
             for key in ("data-place-id", "data-criterion", "data-profile", "data-gates-passed")
         ):
+            self.active.append((tag, values, []))
+
+    def handle_data(self, data: str) -> None:
+        for _, _, text in self.active:
+            text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.active and self.active[-1][0] == tag:
+            _, values, text = self.active.pop()
+            values["visible-text"] = " ".join("".join(text).split())
             self.rows.append(values)
+        for _, _, text in self.active:
+            text.append(" ")
 
 
 def test_finished_demo_tracks_canonical_benchmark(tmp_path: Path) -> None:
@@ -187,23 +237,55 @@ def test_finished_demo_tracks_canonical_benchmark(tmp_path: Path) -> None:
     assert profile["purchase_budget_max"] == str(bootstrap["defaults"]["purchase_budget_max"])
     assert profile["field_count"] == str(len(places))
     assert profile["metric_count"] == str(bootstrap["metric_count"])
+    assert profile["sensitivity_simulations"] == str(
+        signature(execute_run).parameters["simulations"].default
+    )
+    profile_rows = {row["data-profile"]: row for row in parser.rows if "data-profile" in row}
+    assert profile_rows["household"]["visible-text"] == "Couple"
+    assert profile_rows["future_self_age"]["visible-text"] == "75"
+    assert profile_rows["purchase_budget_max"]["visible-text"] == "$700,000"
+    assert profile_rows["field_count"]["visible-text"] == "10 towns"
+    assert profile_rows["metric_count"]["visible-text"] == "17 synthetic metrics"
+    assert profile_rows["sensitivity_simulations"]["visible-text"] == "1,000 simulations"
     gate_summary = next(row for row in parser.rows if "data-gates-passed" in row)
     assert gate_summary["data-gates-passed"] == str(len(result["rankings"][0]["gates"]))
+    assert gate_summary["visible-text"] == (
+        "Gates passed 7 / 7 Composite score 6.4 Top-three frequency 100%"
+    )
     for place in result["rankings"]:
         row = ranked[place["place_id"]]
         assert row["data-score"] == str(place["score"])
         assert row["data-top-three"] == str(place["top_three_frequency"])
         assert row["data-fragile"] == str(place["fragile"]).lower()
+        stability = "Fragile" if place["fragile"] else "Stable"
+        assert row["visible-text"] == (
+            f"{place['rank']:02} {place['name']}, {place['state']} {stability} · "
+            f"{place['top_three_frequency']}% top three {place['score']}"
+        )
     leader_criteria = {
         item["name"]: str(item["score"]) for item in result["rankings"][0]["criteria"]
     }
     assert criteria == {name: leader_criteria[name] for name in criteria}
+    criterion_rows = {row["data-criterion"]: row for row in parser.rows if "data-criterion" in row}
+    for name, score in criteria.items():
+        assert criterion_rows[name]["visible-text"].casefold() == f"{name} {score}".casefold()
     for place in result["blocked"]:
         expected = "|".join(
             f"{gate['name']}:{gate['state']}:{gate['value']}:{gate['threshold']}"
             for gate in place["gates"]
         )
         assert blocked[place["place_id"]]["data-gates"] == expected
+    assert blocked["beaufort_sc"]["visible-text"] == "Beaufort, SC Hazard profile 8 exceeds 7"
+    assert blocked["charleston_sc"]["visible-text"] == (
+        "Charleston, SC Purchase feasibility $720k exceeds $700k"
+    )
+    assert blocked["erie_pa"]["visible-text"] == (
+        "Erie, PA Broadband + winter Unknown evidence · 89 exceeds 65"
+    )
+    assert blocked["muskegon_mi"]["visible-text"] == "Muskegon, MI Winter severity 95 exceeds 65"
+    assert blocked["traverse_city_mi"]["visible-text"] == (
+        "Traverse City, MI Winter severity 125 exceeds 65"
+    )
 
 
 def test_local_app_runs_selected_towns_and_serves_reports(tmp_path: Path) -> None:

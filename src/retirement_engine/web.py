@@ -179,6 +179,25 @@ class BodyLimitMiddleware:
         await self.app(scope, replay, send)
 
 
+class HostedStaticBoundaryMiddleware:
+    """Keep the public site outside the local application's API surface."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and (
+            scope["path"].startswith("/api/") or scope["path"] == "/openapi.json"
+        ):
+            response = JSONResponse(
+                {"detail": "the hosted site has no application API"},
+                status_code=404,
+            )
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
 class WebModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -462,7 +481,12 @@ def create_app(
     hosted_max_tracked_clients: int = HOSTED_MAX_TRACKED_CLIENTS,
 ) -> FastAPI:
     """Create the loopback-only browser application."""
-    app = FastAPI(title="Lifescape", docs_url=None, redoc_url=None)
+    app = FastAPI(
+        title="Lifescape",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None if hosted_demo else "/openapi.json",
+    )
     app.add_middleware(BodyLimitMiddleware)
     allowed_hosts = ["127.0.0.1", "localhost", "[::1]"]
     if hosted_demo:
@@ -471,6 +495,8 @@ def create_app(
         TrustedHostMiddleware,
         allowed_hosts=allowed_hosts,
     )
+    if hosted_demo:
+        app.add_middleware(HostedStaticBoundaryMiddleware)
     package_dir = Path(__file__).resolve().parent
     template_environment = Environment(
         loader=FileSystemLoader(package_dir / "templates"),
