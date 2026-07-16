@@ -160,6 +160,7 @@ def test_hosted_disclosure_survives_without_javascript(tmp_path: Path) -> None:
         page.goto(f"{url}/demo")
 
         assert page.get_by_text("Finished synthetic demonstration").is_visible()
+        assert page.get_by_text("Completed synthetic outcome").is_visible()
         assert page.get_by_text(
             "This finished run shows the shape of a Lifescape answer"
         ).is_visible()
@@ -176,10 +177,10 @@ def test_landing_disclosures_survive_without_javascript(tmp_path: Path) -> None:
         assert page.get_by_role(
             "heading", name="From “maybe there” to a decision you can inspect."
         ).is_visible()
-        assert page.get_by_text("Synthetic example").is_visible()
+        assert page.get_by_text("Synthetic example", exact=True).is_visible()
         assert page.get_by_text(
-            "The hosted experience accepts only bundled synthetic evidence and keeps no durable "
-            "run record."
+            "The hosted site accepts no inputs: it explains the method and shows a finished "
+            "synthetic example."
         ).is_visible()
         assert page.get_by_text("Use the web demo to learn it.").is_visible()
         browser.close()
@@ -279,4 +280,42 @@ def test_landing_keyboard_focus_and_disclosure_contrast(tmp_path: Path) -> None:
             )
             >= 4.5
         )
+        browser.close()
+
+
+@pytest.mark.parametrize("width", [320, 390, 768, 1440])
+def test_finished_demo_reflows_without_horizontal_overflow(tmp_path: Path, width: int) -> None:
+    with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": width, "height": 1000})
+        page.goto(f"{url}/demo")
+
+        page.get_by_role("heading", name="Williamsburg leads this field.").wait_for()
+        assert page.get_by_text("Completed synthetic outcome").is_visible()
+        assert page.evaluate(
+            "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+        )
+        browser.close()
+
+
+def test_finished_demo_small_text_meets_contrast_requirement(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page.goto(f"{url}/demo")
+
+        for selector in [
+            ".ranking li:not(.is-leader) .rank",
+            ".ranking li:not(.is-leader) small",
+            ".blocked-ledger b",
+        ]:
+            color = page.locator(selector).first.evaluate(
+                """element => {
+                    const match = getComputedStyle(element).color.match(/[\\d.]+/g);
+                    return match ? match.map(Number) : [];
+                }"""
+            )
+            assert len(color) >= 3
+            foreground = tuple(int(channel) for channel in color[:3])
+            assert contrast_ratio(foreground, (241, 238, 229)) >= 4.5
         browser.close()

@@ -21,10 +21,10 @@ learning the engine's file layout or CLI pipeline.
 | S3 | Ship a complete installable artifact. | Wheel contains templates/static assets and works outside the checkout. |
 | S4 | Fail visibly and safely. | Invalid files, selections, ranges, geography, dates, and source policy return actionable errors; two-place minimum and 5 MB import cap are enforced. |
 | N1 | Work across common viewports and input modes. | Full journey works at desktop and mobile widths with keyboard-addressable controls and no browser console errors. |
-| H1 | Offer a safe public demonstration. | Hosted mode uses only bundled synthetic evidence and rejects CSV imports. |
-| H2 | Make hosted data handling and persistence limits explicit. | Hosted mode discloses that selected constraints are processed temporarily, creates no durable run directory, and offers no report or SQLite download. |
-| H3 | Preserve one product implementation. | Hosted mode uses the same UI and `execute_run` engine as the local app. |
-| H4 | Bound and disable public compute safely. | Hosted runs require a same-origin browser request, fail closed on deployment, enforce bounded per-process safeguards, use a deployment-wide Vercel edge limit, and have a disabled emergency-deny rule ready for immediate publication. |
+| H1 | Offer a safe public demonstration. | Hosted mode serves only explanatory and finished-example pages; application APIs return 404. |
+| H2 | Make hosted data handling explicit. | Hosted pages disclose that the example is synthetic and accept no user inputs. |
+| H3 | Keep the finished example truthful. | CI traces every displayed ranking, stability result, criterion score, and blocked gate to the canonical engine benchmark. |
+| H4 | Eliminate public compute exposure. | Hosted bootstrap, evidence, run, and download APIs are unavailable. |
 | H5 | Explain and demonstrate the hosted product before asking for installation. | Hosted `/` explains the product and `/demo` shows a completed synthetic decision; the local app opens its workspace at `/`. |
 | Q1 | Keep local and CI quality gates aligned. | `npm run quality:check` runs locked frontend, Python, coverage, browser, and package checks locally and in GitHub Actions; the package build uses the locked Hatchling backend. |
 | Q2 | Reject vulnerable dependencies and leaked secrets. | npm and Python dependency audits plus Gitleaks working-tree and full-history scans run through `npm run security:check` and CI. |
@@ -66,10 +66,7 @@ temporary run inputs ── execute_run (existing engine)
   the interface.
 - Runs are staged with their own SQLite provenance database and atomically published only after all
   reports succeed; failed staging directories are removed.
-- Hosted runs are disabled unless `LIFESCAPE_HOSTED_RUNS_ENABLED=true`; enabled deployments apply
-  same-origin, bounded per-process safeguards and a verified deployment-wide Vercel edge limit
-  before invoking the engine. A published, disabled emergency-deny rule provides the immediate
-  incident switch.
+- Hosted application APIs return 404 before reading inputs or invoking the engine.
 - Synthetic and mixed imports retain a visible non-research warning.
 - Unknown critical evidence blocks a town instead of imputing a score.
 - Downloads are limited to an allowlist and the current local app session.
@@ -95,10 +92,10 @@ temporary run inputs ── execute_run (existing engine)
 | S3 | Hatch wheel includes web and benchmark resources | `tests/test_packaging.py::test_installed_wheel_runs_benchmark_outside_checkout` |
 | S4 | transport limit + strict request models + atomic staging + ingestion policy | size and partial-failure tests in `tests/test_web.py`; `tests/test_connectors.py`; `tests/test_source_policy.py` |
 | N1 | responsive CSS and semantic controls | parameterized Playwright desktop/mobile journey in `tests/test_user_journey.py::test_user_completes_guided_comparison` |
-| H1 | `hosted_demo` capability boundary + hidden import control | `tests/test_web.py::test_hosted_demo_is_synthetic_and_stateless`; `tests/test_user_journey.py::test_hosted_user_completes_synthetic_demo_without_private_controls` |
-| H2 | temporary staging without publication + empty downloads | hosted API and browser tests above |
-| H3 | same `create_app`, browser assets, and `execute_run` path | hosted API integration test; Vercel entry point in `api/index.py` |
-| H4 | `HostedRunGuard`, required Origin, fail-closed deployment switch, live rate-limit rule, and disabled emergency-deny rule | hosted API and bounded-state tests in `tests/test_web.py`; `ops/vercel-firewall.json`; `npm run ops:verify:vercel` |
+| H1 | `hosted_demo` static capability boundary | `tests/test_web.py::test_hosted_demo_is_synthetic_and_stateless`; no-JavaScript disclosure test in `tests/test_user_journey.py` |
+| H2 | static synthetic disclosure and zero hosted inputs | hosted API and browser tests above |
+| H3 | data attributes attached to visible demo rows | `tests/test_web.py::test_finished_demo_tracks_canonical_benchmark` |
+| H4 | early hosted API 404 responses | `tests/test_web.py::test_hosted_demo_is_synthetic_and_stateless`; Vercel entry point in `api/index.py` |
 | H5 | hosted explanatory `/`, completed `/demo`, and local workspace `/` | landing and finished-demo tests in `tests/test_web.py`; desktop/tablet/mobile `tests/test_user_journey.py::test_visitor_understands_product_and_opens_demo` |
 | Q1 | `package.json` scripts + `.github/workflows/quality.yml` | `tests/test_quality_config.py::test_quality_automation_matches_project_contract`; full `npm run quality:check` |
 | Q2 | security scripts + `.gitleaks.toml` + full-history checkout | quality-config and deleted-secret regression tests; `npm run security:check` |

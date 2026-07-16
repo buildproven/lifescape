@@ -9,6 +9,7 @@
   --sage: #8eb098;
   --lime: #d8e991;
   --rust: #ad6846;
+  --rust-text: #995536;
   --line: rgba(20, 34, 27, 0.17);
   --page: min(1380px, calc(100vw - 72px));
   font-family: "Avenir Next", Avenir, ui-sans-serif, system-ui, sans-serif;
@@ -265,6 +266,10 @@ a:focus-visible {
 }
 
 .rank {
+  color: #52705f;
+}
+
+.ranking li.is-leader .rank {
   color: var(--sage);
 }
 
@@ -286,9 +291,13 @@ a:focus-visible {
 
 .ranking li small {
   margin-top: 7px;
-  color: currentColor;
+  color: var(--muted);
   font-size: 10px;
-  opacity: 0.62;
+}
+
+.ranking li.is-leader small {
+  color: currentColor;
+  opacity: 0.72;
 }
 
 .why-williamsburg {
@@ -391,7 +400,7 @@ a:focus-visible {
 }
 
 .blocked-ledger b {
-  color: var(--rust);
+  color: var(--rust-text);
   font-size: 11px;
   font-weight: 700;
   text-align: right;
@@ -513,6 +522,11 @@ a:focus-visible {
     position: static;
   }
 
+  .ranking li.is-leader {
+    margin: 0;
+    padding: 0 20px;
+  }
+
   .why-copy {
     border-right: 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.14);
@@ -548,7 +562,17 @@ a:focus-visible {
   }
 
   .decision-answer h1 {
-    font-size: 59px;
+    font-size: clamp(44px, 14.5vw, 59px);
+    overflow-wrap: anywhere;
+  }
+
+  .ranking h2,
+  .why-williamsburg h2,
+  .blocked h2,
+  .interpretation h2,
+  .demo-cta h2 {
+    font-size: clamp(40px, 12.5vw, 58px);
+    overflow-wrap: anywhere;
   }
 
   .answer-summary {

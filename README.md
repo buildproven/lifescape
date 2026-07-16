@@ -20,20 +20,9 @@ budget and planning age, choose towns, review evidence completeness, then run an
 download the comparison. You can also import a CSV matching the documented evidence
 contract; the file is processed locally and validated before it reaches scoring.
 
-The public deployment at `lifescape.buildproven.ai` is intentionally a stateless
-synthetic-data demonstration. It does not accept private CSV imports or promise durable
-reports; use the local app for private evidence and downloadable provenance. Hosted runs
-are protected by deployment-wide Vercel edge limits and bounded application safeguards.
-`LIFESCAPE_HOSTED_RUNS_ENABLED=false` fails closed on new deployments.
-
-For an immediate incident stop, enable the disabled Vercel rule recorded in
-`ops/vercel-firewall.json`, publish the firewall draft, and verify the live controls:
-
-```bash
-vercel firewall rules enable rule_emergency_disable_lifescape_hosted_runs_s3mPXu --scope buildproven
-vercel firewall publish --yes --scope buildproven
-VERCEL_EMERGENCY_STATUS=Enabled npm run ops:verify:vercel
-```
+The public deployment at `lifescape.buildproven.ai` is a static explanation and finished
+synthetic example. It exposes no comparison API, accepts no inputs, and stores no user data.
+Use the local app for your own evidence, computation, reports, and downloadable provenance.
 
 For the command-line benchmark and QA Architect checks:
 

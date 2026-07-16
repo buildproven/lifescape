@@ -31,23 +31,23 @@
           <dl>
             <div>
               <dt>Household</dt>
-              <dd>Couple</dd>
+              <dd data-profile="household" data-value="couple">Couple</dd>
             </div>
             <div>
               <dt>Planning age</dt>
-              <dd>75</dd>
+              <dd data-profile="future_self_age" data-value="75">75</dd>
             </div>
             <div>
               <dt>Purchase ceiling</dt>
-              <dd>$700,000</dd>
+              <dd data-profile="purchase_budget_max" data-value="700000">$700,000</dd>
             </div>
             <div>
               <dt>Field</dt>
-              <dd>10 towns</dd>
+              <dd data-profile="field_count" data-value="10">10 towns</dd>
             </div>
             <div>
               <dt>Evidence</dt>
-              <dd>17 synthetic metrics</dd>
+              <dd data-profile="metric_count" data-value="17">17 synthetic metrics</dd>
             </div>
             <div>
               <dt>Sensitivity</dt>
@@ -56,13 +56,13 @@
           </dl>
         </div>
         <div class="decision-answer">
-          <p class="eyebrow">Completed outcome</p>
+          <p class="eyebrow">Completed synthetic outcome</p>
           <h1 id="decision-title">Williamsburg leads this field.</h1>
           <p class="answer-summary">
             Five towns cleared every hard gate. Williamsburg ranked first with a stable top-three
             position across every simulation; five other towns remain visible but unranked.
           </p>
-          <div class="answer-rule">
+          <div class="answer-rule" data-gates-passed="7">
             <span>Gates passed</span><strong>7 / 7</strong> <span>Composite score</span
             ><strong>6.4</strong> <span>Top-three frequency</span><strong>100%</strong>
           </div>
@@ -76,27 +76,48 @@
           <p>Only towns that cleared every hard gate receive a score.</p>
         </header>
         <ol>
-          <li class="is-leader">
+          <li
+            class="is-leader"
+            data-place-id="williamsburg_va"
+            data-score="6.4"
+            data-top-three="100"
+            data-fragile="false"
+          >
             <span class="rank">01</span>
             <div><strong>Williamsburg, VA</strong><small>Stable · 100% top three</small></div>
             <span class="score">6.4</span>
           </li>
-          <li>
+          <li
+            data-place-id="hendersonville_nc"
+            data-score="5.8"
+            data-top-three="100"
+            data-fragile="false"
+          >
             <span class="rank">02</span>
             <div><strong>Hendersonville, NC</strong><small>Stable · 100% top three</small></div>
             <span class="score">5.8</span>
           </li>
-          <li>
+          <li
+            data-place-id="maryville_tn"
+            data-score="5.6"
+            data-top-three="100"
+            data-fragile="false"
+          >
             <span class="rank">03</span>
             <div><strong>Maryville, TN</strong><small>Stable · 100% top three</small></div>
             <span class="score">5.6</span>
           </li>
-          <li>
+          <li
+            data-place-id="libertyville_il"
+            data-score="4.8"
+            data-top-three="0"
+            data-fragile="true"
+          >
             <span class="rank">04</span>
             <div><strong>Libertyville, IL</strong><small>Fragile · 0% top three</small></div>
             <span class="score">4.8</span>
           </li>
-          <li>
+          <li data-place-id="new_bern_nc" data-score="4.3" data-top-three="0" data-fragile="true">
             <span class="rank">05</span>
             <div><strong>New Bern, NC</strong><small>Fragile · 0% top three</small></div>
             <span class="score">4.3</span>
@@ -107,23 +128,36 @@
       <section class="why-williamsburg" aria-labelledby="why-title">
         <div class="why-copy">
           <p class="section-label">02 / Why it leads</p>
-          <h2 id="why-title">Strength where this profile puts weight.</h2>
+          <h2 id="why-title">Strength where the benchmark puts weight.</h2>
           <p>
-            Williamsburg did not win every criterion. It led because its strongest evidence aligned
-            with the profile while still clearing every non-negotiable.
+            Williamsburg did not win every criterion. Under the benchmark’s fixed weights, its
+            strongest evidence produced the highest total while it still cleared every
+            non-negotiable.
           </p>
         </div>
         <div class="criteria" aria-label="Williamsburg criterion scores">
-          <div><span>Neighborhood</span><i style="--value: 100%"></i><strong>10.0</strong></div>
-          <div><span>Social</span><i style="--value: 100%"></i><strong>10.0</strong></div>
-          <div><span>Community</span><i style="--value: 90%"></i><strong>9.0</strong></div>
-          <div><span>Daily life</span><i style="--value: 74%"></i><strong>7.4</strong></div>
-          <div><span>Climate</span><i style="--value: 68%"></i><strong>6.8</strong></div>
-          <div><span>Healthcare</span><i style="--value: 64%"></i><strong>6.4</strong></div>
-          <div class="is-weak">
+          <div data-criterion="Neighborhood" data-score="10.0">
+            <span>Neighborhood</span><i style="--value: 100%"></i><strong>10.0</strong>
+          </div>
+          <div data-criterion="Social" data-score="10.0">
+            <span>Social</span><i style="--value: 100%"></i><strong>10.0</strong>
+          </div>
+          <div data-criterion="Community" data-score="9.0">
+            <span>Community</span><i style="--value: 90%"></i><strong>9.0</strong>
+          </div>
+          <div data-criterion="Daily Life" data-score="7.4">
+            <span>Daily life</span><i style="--value: 74%"></i><strong>7.4</strong>
+          </div>
+          <div data-criterion="Climate" data-score="6.8">
+            <span>Climate</span><i style="--value: 68%"></i><strong>6.8</strong>
+          </div>
+          <div data-criterion="Healthcare" data-score="6.4">
+            <span>Healthcare</span><i style="--value: 64%"></i><strong>6.4</strong>
+          </div>
+          <div class="is-weak" data-criterion="Nature" data-score="2.3">
             <span>Nature</span><i style="--value: 23%"></i><strong>2.3</strong>
           </div>
-          <div class="is-weak">
+          <div class="is-weak" data-criterion="Cost" data-score="2.0">
             <span>Cost</span><i style="--value: 20%"></i><strong>2.0</strong>
           </div>
         </div>
@@ -139,17 +173,27 @@
           </p>
         </header>
         <div class="blocked-ledger">
-          <div><strong>Beaufort, SC</strong><span>Hazard profile</span><b>8 exceeds 7</b></div>
-          <div>
+          <div data-place-id="beaufort_sc" data-gates="Hazard Profile:FAIL:8.0:7.0">
+            <strong>Beaufort, SC</strong><span>Hazard profile</span><b>8 exceeds 7</b>
+          </div>
+          <div
+            data-place-id="charleston_sc"
+            data-gates="Purchase Feasibility:FAIL:720000.0:700000.0"
+          >
             <strong>Charleston, SC</strong><span>Purchase feasibility</span
             ><b>$720k exceeds $700k</b>
           </div>
-          <div>
+          <div
+            data-place-id="erie_pa"
+            data-gates="Broadband:UNKNOWN:None:100.0|Winter Severity:FAIL:89.0:65.0"
+          >
             <strong>Erie, PA</strong><span>Broadband + winter</span
             ><b>Unknown evidence · 89 exceeds 65</b>
           </div>
-          <div><strong>Muskegon, MI</strong><span>Winter severity</span><b>95 exceeds 65</b></div>
-          <div>
+          <div data-place-id="muskegon_mi" data-gates="Winter Severity:FAIL:95.0:65.0">
+            <strong>Muskegon, MI</strong><span>Winter severity</span><b>95 exceeds 65</b>
+          </div>
+          <div data-place-id="traverse_city_mi" data-gates="Winter Severity:FAIL:125.0:65.0">
             <strong>Traverse City, MI</strong><span>Winter severity</span><b>125 exceeds 65</b>
           </div>
         </div>

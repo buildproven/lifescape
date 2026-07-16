@@ -18,9 +18,9 @@ from uuid import uuid4
 
 import uvicorn
 import yaml
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi import Path as ApiPath
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -504,11 +504,15 @@ def create_app(
         )
 
     @app.get("/demo", include_in_schema=False)
-    def finished_demo() -> HTMLResponse:
+    def finished_demo() -> Response:
+        if not hosted_demo:
+            return RedirectResponse("/")
         return HTMLResponse(demo_template.render())
 
     @app.get("/api/bootstrap")
     def bootstrap() -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
         with bundled_benchmark() as (evidence_path, config_dir):
             metric_ids = tuple(metric.id for metric in load_metrics(config_dir))
             fieldnames, rows = _read_evidence(evidence_path.read_text(encoding="utf-8"), metric_ids)
@@ -532,10 +536,7 @@ def create_app(
     @app.post("/api/evidence/inspect")
     async def inspect_evidence(request: Request) -> dict[str, object]:
         if hosted_demo:
-            raise HTTPException(
-                status_code=403,
-                detail="the hosted demo accepts only its bundled synthetic evidence",
-            )
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
         _validate_mutation_origin(request, trust_forwarded_proto=hosted_demo)
         try:
             raw_evidence = await request.body()
@@ -560,6 +561,8 @@ def create_app(
 
     @app.post("/api/run")
     def run_comparison(payload: AppRunRequest, request: Request) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
         _validate_mutation_origin(
             request,
             trust_forwarded_proto=hosted_demo,
