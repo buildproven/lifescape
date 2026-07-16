@@ -108,6 +108,7 @@ class CatalogPlace(TypedDict):
 def _read_evidence(
     csv_text: str, metric_ids: tuple[str, ...]
 ) -> tuple[list[str], list[dict[str, str]]]:
+    _validate_csv_quoting(csv_text)
     try:
         reader = csv.DictReader(io.StringIO(csv_text), strict=True)
         if reader.fieldnames is None:
@@ -131,6 +132,47 @@ def _read_evidence(
     if not rows:
         raise ValueError("evidence CSV has no rows")
     return list(reader.fieldnames), rows
+
+
+def _validate_csv_quoting(csv_text: str) -> None:
+    """Enforce RFC-style quote placement before Python's permissive CSV parser."""
+    in_quotes = False
+    at_field_start = True
+    after_closing_quote = False
+    index = 0
+    while index < len(csv_text):
+        character = csv_text[index]
+        if in_quotes:
+            if character == '"':
+                if index + 1 < len(csv_text) and csv_text[index + 1] == '"':
+                    index += 2
+                    continue
+                in_quotes = False
+                after_closing_quote = True
+            index += 1
+            continue
+        if after_closing_quote:
+            if character == "," or character in "\r\n":
+                at_field_start = True
+                after_closing_quote = False
+            else:
+                raise ValueError(
+                    "evidence CSV is malformed: unexpected character after closing quote"
+                )
+            index += 1
+            continue
+        if character == '"':
+            if not at_field_start:
+                raise ValueError("evidence CSV is malformed: quote inside an unquoted field")
+            in_quotes = True
+            at_field_start = False
+        elif character == "," or character in "\r\n":
+            at_field_start = True
+        else:
+            at_field_start = False
+        index += 1
+    if in_quotes:
+        raise ValueError("evidence CSV is malformed: unterminated quoted field")
 
 
 def _catalog(rows: list[dict[str, str]], metric_ids: tuple[str, ...]) -> list[CatalogPlace]:

@@ -89,6 +89,43 @@ def test_local_app_returns_visible_error_for_malformed_quoted_record(tmp_path: P
     assert "malformed" in response.json()["detail"]
 
 
+def test_local_app_rejects_stray_quotes_but_accepts_escaped_quotes(tmp_path: Path) -> None:
+    evidence = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
+    header, first_row, *_ = evidence.splitlines()
+    malformed_header = evidence.replace("place_id,", 'place_id",', 1).encode()
+    malformed_row = (
+        f"{header}\n{first_row.replace('libertyville_il', 'libertyville_il"oops')}".encode()
+    )
+    escaped_quote = evidence.replace(",Libertyville,", ',"Libertyville ""North""",', 1).encode()
+
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        header_response = client.post(
+            "/api/evidence/inspect",
+            content=malformed_header,
+            headers={"content-type": "text/csv"},
+        )
+        row_response = client.post(
+            "/api/evidence/inspect",
+            content=malformed_row,
+            headers={"content-type": "text/csv"},
+        )
+        valid_response = client.post(
+            "/api/evidence/inspect",
+            content=escaped_quote,
+            headers={"content-type": "text/csv"},
+        )
+
+    assert header_response.status_code == 422
+    assert "quote inside an unquoted field" in header_response.json()["detail"]
+    assert row_response.status_code == 422
+    assert "quote inside an unquoted field" in row_response.json()["detail"]
+    assert valid_response.status_code == 200
+    libertyville = next(
+        place for place in valid_response.json()["places"] if place["place_id"] == "libertyville_il"
+    )
+    assert libertyville["name"] == 'Libertyville "North"'
+
+
 def test_local_app_runs_imported_real_evidence_without_synthetic_label(tmp_path: Path) -> None:
     evidence = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
     real_evidence = evidence.replace(",true,", ",false,")
