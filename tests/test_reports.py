@@ -174,7 +174,7 @@ def test_place_identity_change_is_rejected_across_runs(tmp_path: Path) -> None:
     evidence = tmp_path / "renamed.csv"
     benchmark = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
     evidence.write_text(
-        benchmark.replace("libertyville_il,Libertyville,IL", "libertyville_il,Renamed,IL"),
+        benchmark.replace("lake_geneva_wi,Lake Geneva,WI", "lake_geneva_wi,Renamed,WI"),
         encoding="utf-8",
     )
 

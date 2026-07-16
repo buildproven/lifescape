@@ -252,6 +252,8 @@ def test_finished_demo_tracks_canonical_benchmark(tmp_path: Path) -> None:
     assert gate_summary["visible-text"] == (
         "Gates passed 7 / 7 Composite score 6.4 Top-three frequency 100%"
     )
+    assert "lake_geneva_wi" in ranked
+    assert "Libertyville" not in page.text
     for place in result["rankings"]:
         row = ranked[place["place_id"]]
         assert row["data-score"] == str(place["score"])
@@ -394,9 +396,9 @@ def test_local_app_rejects_stray_quotes_but_accepts_escaped_quotes(tmp_path: Pat
     header, first_row, *_ = evidence.splitlines()
     malformed_header = evidence.replace("place_id,", 'place_id",', 1).encode()
     malformed_row = (
-        f"{header}\n{first_row.replace('libertyville_il', 'libertyville_il"oops')}".encode()
+        f"{header}\n{first_row.replace('lake_geneva_wi', 'lake_geneva_wi"oops')}".encode()
     )
-    escaped_quote = evidence.replace(",Libertyville,", ',"Libertyville ""North""",', 1).encode()
+    escaped_quote = evidence.replace(",Lake Geneva,", ',"Lake Geneva ""North""",', 1).encode()
 
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
         header_response = client.post(
@@ -420,10 +422,10 @@ def test_local_app_rejects_stray_quotes_but_accepts_escaped_quotes(tmp_path: Pat
     assert row_response.status_code == 422
     assert "quote inside an unquoted field" in row_response.json()["detail"]
     assert valid_response.status_code == 200
-    libertyville = next(
-        place for place in valid_response.json()["places"] if place["place_id"] == "libertyville_il"
+    lake_geneva = next(
+        place for place in valid_response.json()["places"] if place["place_id"] == "lake_geneva_wi"
     )
-    assert libertyville["name"] == 'Libertyville "North"'
+    assert lake_geneva["name"] == 'Lake Geneva "North"'
 
 
 def test_local_app_runs_imported_real_evidence_without_synthetic_label(tmp_path: Path) -> None:
@@ -462,7 +464,7 @@ def test_local_app_preserves_mixed_evidence_warning(tmp_path: Path) -> None:
             content=mixed_evidence.encode(),
             headers={"content-type": "text/csv"},
         ).json()
-        selected = [place["place_id"] for place in inspection["places"][:2]]
+        selected = ["lake_geneva_wi", "new_bern_nc"]
         response = client.post(
             "/api/run",
             json={
