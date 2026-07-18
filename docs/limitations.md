@@ -1,7 +1,7 @@
 # Known limitations
 
 - All benchmark values are synthetic; no real town conclusion is supported.
-- Public data connectors, retries, and integration tests begin in Milestone 2.
+- Public data connectors, retries, and integration tests are Milestone 2 work. One connector (Census ACS, `education_attainment`) exists but is not yet wired into `retire benchmark`; no connector output has influenced a gate or score.
 - Candidate discovery and research agents are not implemented.
 - Confidence aggregation and contradiction tracking are deferred to Milestone 3; Milestone 1 enforces high confidence at gates.
 - Neighborhood, property, mapping, scouting, future-self, and regret workflows are deferred to later milestones.
