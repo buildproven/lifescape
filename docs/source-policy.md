@@ -9,3 +9,7 @@
 - Synthetic benchmark evidence is always labeled and must never be represented as research.
 
 Perplexity, forums, tourism sites, real-estate blogs, ranking sites, and AI summaries are Tier C. A primary or approved secondary source must independently verify a discovered claim before it can enter a score or gate.
+
+## Locally derived composite metrics
+
+A metric can be computed by this codebase from multiple Tier A/B component values (for example, `distress_index`: an unweighted average of three Census ACS rates — see `retirement_engine.connectors.census_acs`). The tier and confidence of such a metric reflect its component evidence, not the combination formula: the underlying data is genuinely official, but the *formula* that combines it into a single value is this project's own construction, with no established methodology, external validation, or peer review. `SourceRecord.title` on any such observation must say explicitly that the value is derived and not an official statistic. A reader of a comparison report should not treat a locally derived composite's PASS/FAIL on a gate as carrying the same evidentiary weight as a directly sourced official statistic, even though both currently satisfy the same tier/confidence thresholds.

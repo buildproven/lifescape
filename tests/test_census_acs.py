@@ -324,3 +324,34 @@ def test_normalized_distress_index_satisfies_metric_valid_range(
     for observation in observations:
         metric = metrics[observation.metric_id]
         assert metric.valid_min <= observation.raw_value <= metric.valid_max
+
+
+@pytest.mark.parametrize("component_value", ["0.0", "100.0"])
+def test_normalize_distress_index_average_stays_within_bounds_at_extremes(
+    connector: CensusAcsConnector, component_value: str
+) -> None:
+    payload: list[list[str]] = [
+        ["NAME", "DP03_0128PE", "DP03_0009PE", "DP04_0003PE", "state", "place"],
+        [
+            "Lake Geneva city, Wisconsin",
+            component_value,
+            component_value,
+            component_value,
+            "55",
+            "43075",
+        ],
+    ]
+    response = _fetch_distress_index(connector, payload)
+    observations = connector.normalize(response)
+    assert observations[0].raw_value == pytest.approx(float(component_value))
+    assert 0 <= observations[0].raw_value <= 100
+
+
+def test_validate_accepts_well_formed_distress_index_observation(
+    connector: CensusAcsConnector,
+) -> None:
+    response = _fetch_distress_index(connector, DISTRESS_INDEX_PAYLOAD)
+    observations = connector.normalize(response)
+    result = connector.validate(observations)
+    assert result.valid
+    assert result.errors == ()
