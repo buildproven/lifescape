@@ -80,10 +80,15 @@ def _unique(values: list[str], label: str) -> None:
         raise ConfigurationError(f"duplicate {label}: {duplicates}")
 
 
-def load_configuration(config_dir: Path, profile_path: Path | None = None) -> RuntimeConfig:
+def load_configuration(
+    config_dir: Path,
+    profile_path: Path | None = None,
+    research_brief_path: Path | None = None,
+) -> RuntimeConfig:
     """Load and cross-validate the complete versioned decision configuration."""
     resolved_profile = profile_path or config_dir / "user_profile.example.yaml"
-    research_brief = _load(config_dir / "research_brief.yaml", ResearchBrief)
+    resolved_research_brief = research_brief_path or config_dir / "research_brief.yaml"
+    research_brief = _load(resolved_research_brief, ResearchBrief)
     user_profile = _load(resolved_profile, UserProfile)
     regions = _load(config_dir / "regions.yaml", RegionsConfig)
     weights = load_weights(config_dir)
@@ -147,7 +152,7 @@ def load_configuration(config_dir: Path, profile_path: Path | None = None) -> Ru
             f"metrics do not match research scope {research_brief.scope!r}: {scope_mismatches}"
         )
     canonical = {
-        "research_brief.yaml": _read_yaml(config_dir / "research_brief.yaml"),
+        "research_brief.yaml": _read_yaml(resolved_research_brief),
         "user_profile.yaml": _read_yaml(resolved_profile),
         "regions.yaml": _read_yaml(config_dir / "regions.yaml"),
         "weights.default.yaml": _read_yaml(config_dir / "weights.default.yaml"),

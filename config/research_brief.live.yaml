@@ -1,0 +1,5 @@
+name: milestone-2-live
+scope: town
+regions: [US]
+benchmark_only: false
+frozen: false

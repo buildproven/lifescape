@@ -12,7 +12,7 @@ from retirement_engine.config import load_configuration
 from retirement_engine.db import initialize_database, persist_run
 from retirement_engine.evidence import ingest_csv
 from retirement_engine.gates import eligible_places, evaluate_gates
-from retirement_engine.models import RunResult
+from retirement_engine.models import ObservationRecord, RunResult
 from retirement_engine.reports import write_reports
 from retirement_engine.scoring import score_places
 from retirement_engine.sensitivity import analyze_sensitivity
@@ -25,11 +25,13 @@ def execute_run(
     database_path: Path,
     output_dir: Path,
     profile_path: Path | None = None,
+    research_brief_path: Path | None = None,
     simulations: int = 1000,
     sensitivity_seed: int = 20260714,
     as_of: date | None = None,
+    live_observations: tuple[ObservationRecord, ...] = (),
 ) -> RunResult:
-    config = load_configuration(config_dir, profile_path)
+    config = load_configuration(config_dir, profile_path, research_brief_path)
     raw_observations = ingest_csv(
         evidence_path,
         config.metrics,
@@ -37,12 +39,19 @@ def execute_run(
         as_of=as_of,
         required_scope=config.research_brief.scope,
     )
+    # Manual evidence is the trusted baseline; live observations only fill gaps it leaves.
+    manual_keys = {(item.place.place_id, item.metric_id) for item in raw_observations}
+    supplemental_observations = tuple(
+        item
+        for item in live_observations
+        if (item.place.place_id, item.metric_id) not in manual_keys
+    )
+    observations = raw_observations + supplemental_observations
     effective_as_of = as_of or (
-        max(item.source.retrieved_at for item in raw_observations)
-        if raw_observations and all(item.source.synthetic for item in raw_observations)
+        max(item.source.retrieved_at for item in observations)
+        if observations and all(item.source.synthetic for item in observations)
         else date.today()
     )
-    observations = raw_observations
     if not observations:
         raise ValueError("evidence produced no observations")
     selected_regions = {
