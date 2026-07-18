@@ -30,9 +30,7 @@ def connector() -> CensusAcsConnector:
     return CensusAcsConnector(retrieved_at=date(2026, 1, 1), api_key="test-key")
 
 
-def _fetch_with_payload(
-    connector: CensusAcsConnector, payload: list[list[str]]
-) -> RawResponse:
+def _fetch_with_payload(connector: CensusAcsConnector, payload: list[list[str]]) -> RawResponse:
     with patch(
         "retirement_engine.connectors.census_acs.urlopen",
         return_value=_mock_response(payload),
