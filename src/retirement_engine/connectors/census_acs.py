@@ -33,10 +33,22 @@ METRIC_VARIABLES: Final[dict[str, str]] = {
     "education_attainment": "DP02_0068PE",  # percent age 25+ with bachelor's degree or higher
 }
 
+# Component variables for the distress_index proxy: an unweighted average of
+# poverty rate, unemployment rate, and vacant housing rate. This is NOT an
+# official Census statistic — it is a derived proxy documented here and in
+# the resulting SourceRecord.title so reports never present it as such.
+DISTRESS_INDEX_COMPONENT_VARIABLES: Final[tuple[str, ...]] = (
+    "DP03_0128PE",  # percent of people below the poverty level
+    "DP03_0009PE",  # unemployment rate, civilian labor force
+    "DP04_0003PE",  # percent of housing units that are vacant
+)
+
 REQUEST_TIMEOUT_SECONDS: Final = 10
 API_KEY_ENV_VAR: Final = "CENSUS_API_KEY"
 # ACS marks a suppressed or unreliable estimate with this sentinel instead of null.
 ACS_MISSING_VALUE_SENTINEL: Final = -666666666
+
+DISTRESS_INDEX_METRIC_ID: Final = "distress_index"
 
 
 class CensusAcsError(ValueError):
@@ -52,7 +64,7 @@ class CensusAcsConnector:
     """
 
     name = "census_acs"
-    supported_metric_ids = tuple(METRIC_VARIABLES)
+    supported_metric_ids = (*METRIC_VARIABLES, DISTRESS_INDEX_METRIC_ID)
 
     def __init__(self, *, retrieved_at: date | None = None, api_key: str | None = None) -> None:
         self._retrieved_at = retrieved_at or date.today()
@@ -64,7 +76,7 @@ class CensusAcsConnector:
                 f"census_acs requires an API key; set {API_KEY_ENV_VAR} or pass api_key= "
                 "(sign up free at https://api.census.gov/data/key_signup.html)"
             )
-        unknown = sorted(set(request.metric_ids) - set(METRIC_VARIABLES))
+        unknown = sorted(set(request.metric_ids) - set(self.supported_metric_ids))
         if unknown:
             raise CensusAcsError(f"census_acs does not support metrics: {unknown}")
         try:
@@ -74,7 +86,13 @@ class CensusAcsConnector:
                 f"geography must be '{{state_fips}}:{{place_fips}}', got {request.geography!r}"
             ) from exc
 
-        variables = [METRIC_VARIABLES[metric_id] for metric_id in request.metric_ids]
+        variables = sorted(
+            {
+                variable
+                for metric_id in request.metric_ids
+                for variable in _acs_variables_for(metric_id)
+            }
+        )
         query = {
             "get": ",".join(["NAME", *variables]),
             "for": f"place:{place_fips}",
@@ -119,38 +137,70 @@ class CensusAcsConnector:
                 f"census_acs returned an unexpected response shape: {exc}"
             ) from exc
 
-        source = SourceRecord(
-            url=response.source_url,
-            title=f"American Community Survey {ACS_YEAR} 5-Year Estimates, Data Profile",
-            publisher="U.S. Census Bureau",
-            tier=SourceTier.A,
-            retrieved_at=self._retrieved_at,
-            geography="town",
-            confidence=Confidence.HIGH,
-            synthetic=False,
-        )
         place = PlaceRecord(
             place_id=f"census_{state_fips}_{place_fips}",
             name=place_name,
             state=_state_abbreviation(state_fips),
             geography_type="town",
         )
+        observed_period = f"{ACS_YEAR - 4}-{ACS_YEAR}"
+        observed_at = date(ACS_YEAR, 12, 31)
 
         observations: list[ObservationRecord] = []
         for metric_id, variable in METRIC_VARIABLES.items():
-            if variable not in record or record[variable] is None:
-                continue
-            raw_value = float(record[variable])
-            if raw_value == ACS_MISSING_VALUE_SENTINEL:
+            raw_value = _read_acs_value(record, variable)
+            if raw_value is None:
                 continue
             observations.append(
                 ObservationRecord(
                     place=place,
                     metric_id=metric_id,
                     raw_value=raw_value,
-                    observed_period=f"{ACS_YEAR - 4}-{ACS_YEAR}",
-                    observed_at=date(ACS_YEAR, 12, 31),
-                    source=source,
+                    observed_period=observed_period,
+                    observed_at=observed_at,
+                    source=SourceRecord(
+                        url=response.source_url,
+                        title=(
+                            f"American Community Survey {ACS_YEAR} 5-Year Estimates, Data Profile"
+                        ),
+                        publisher="U.S. Census Bureau",
+                        tier=SourceTier.A,
+                        retrieved_at=self._retrieved_at,
+                        geography="town",
+                        confidence=Confidence.HIGH,
+                        synthetic=False,
+                    ),
+                )
+            )
+
+        component_values = [
+            value
+            for variable in DISTRESS_INDEX_COMPONENT_VARIABLES
+            if (value := _read_acs_value(record, variable)) is not None
+        ]
+        if len(component_values) == len(DISTRESS_INDEX_COMPONENT_VARIABLES):
+            observations.append(
+                ObservationRecord(
+                    place=place,
+                    metric_id=DISTRESS_INDEX_METRIC_ID,
+                    raw_value=sum(component_values) / len(component_values),
+                    observed_period=observed_period,
+                    observed_at=observed_at,
+                    source=SourceRecord(
+                        url=response.source_url,
+                        title=(
+                            f"Derived from American Community Survey {ACS_YEAR} 5-Year "
+                            "Estimates, Data Profile: unweighted average of poverty rate, "
+                            "unemployment rate, and vacant housing rate (not an official "
+                            "Census statistic)"
+                        ),
+                        publisher="U.S. Census Bureau",
+                        tier=SourceTier.A,
+                        retrieved_at=self._retrieved_at,
+                        geography="town",
+                        confidence=Confidence.HIGH,
+                        synthetic=False,
+                    ),
                 )
             )
         return observations
@@ -183,3 +233,19 @@ def _state_abbreviation(state_fips: str) -> str:
         return _STATE_FIPS_TO_ABBREVIATION[state_fips]
     except KeyError as exc:
         raise CensusAcsError(f"unknown state FIPS code: {state_fips!r}") from exc
+
+
+def _acs_variables_for(metric_id: str) -> tuple[str, ...]:
+    if metric_id == DISTRESS_INDEX_METRIC_ID:
+        return DISTRESS_INDEX_COMPONENT_VARIABLES
+    return (METRIC_VARIABLES[metric_id],)
+
+
+def _read_acs_value(record: dict[str, str | None], variable: str) -> float | None:
+    value = record.get(variable)
+    if value is None:
+        return None
+    raw_value = float(value)
+    if raw_value == ACS_MISSING_VALUE_SENTINEL:
+        return None
+    return raw_value
