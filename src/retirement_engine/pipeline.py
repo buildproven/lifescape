@@ -12,7 +12,7 @@ from retirement_engine.config import load_configuration
 from retirement_engine.db import initialize_database, persist_run
 from retirement_engine.evidence import ingest_csv
 from retirement_engine.gates import eligible_places, evaluate_gates
-from retirement_engine.models import ObservationRecord, RunResult
+from retirement_engine.models import ObservationRecord, PlaceRecord, RunResult
 from retirement_engine.reports import write_reports
 from retirement_engine.scoring import score_places
 from retirement_engine.sensitivity import analyze_sensitivity
@@ -80,7 +80,15 @@ def execute_run(
         not observation.source.synthetic for observation in observations
     ):
         raise ValueError("benchmark-only research brief cannot process non-synthetic evidence")
-    places_by_id = {item.place.place_id: item.place for item in observations}
+    places_by_id: dict[str, PlaceRecord] = {}
+    for item in observations:
+        existing = places_by_id.get(item.place.place_id)
+        if existing is not None and existing != item.place:
+            raise ValueError(
+                f"inconsistent identity for place {item.place.place_id!r}: "
+                f"{existing!r} vs {item.place!r}"
+            )
+        places_by_id[item.place.place_id] = item.place
     place_ids = tuple(sorted(places_by_id))
     effective_gates = tuple(
         gate.model_copy(

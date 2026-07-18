@@ -1,3 +1,7 @@
+# scope and regions must be kept in sync with research_brief.yaml by hand --
+# nothing cross-validates the two files, so a scope/region change to one must
+# be mirrored to the other or `retire benchmark` and `retire live-run` will
+# silently diverge in what they accept.
 name: milestone-2-live
 scope: town
 regions: [US]

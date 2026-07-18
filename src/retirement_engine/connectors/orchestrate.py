@@ -11,19 +11,16 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Sequence
 
 from retirement_engine.connectors.base import Connector, DataRequest
-from retirement_engine.models import ObservationRecord, PlaceRecord
+from retirement_engine.models import ObservationRecord, PlaceRecord, StrictModel
 
 EventSink = Callable[[str, dict[str, object]], None]
 
 
-class PlaceRequest:
+class PlaceRequest(StrictModel):
     """A place to fetch live evidence for, identified by this engine's place_id."""
 
-    __slots__ = ("geography", "place_id")
-
-    def __init__(self, place_id: str, geography: str) -> None:
-        self.place_id = place_id
-        self.geography = geography
+    place_id: str
+    geography: str
 
 
 def fetch_live_observations(

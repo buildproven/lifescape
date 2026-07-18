@@ -221,3 +221,42 @@ def test_live_run_manual_evidence_takes_precedence_over_live(tmp_path: Path, mon
     report = (output_dir / "comparison.md").read_text(encoding="utf-8")
     assert "55.0" in report
     assert "42.1" not in report
+
+
+def test_live_run_rejects_place_identity_conflict_between_manual_and_live(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A live connector's derived place name/state must not silently overwrite a manual entry."""
+    monkeypatch.setenv("CENSUS_API_KEY", "test-key")
+    places = tmp_path / "places.yaml"
+    places.write_text('lake_geneva_wi: "55:43075"\n', encoding="utf-8")
+    evidence = tmp_path / "evidence.csv"
+    evidence.write_text(
+        EVIDENCE_HEADER.rstrip("\n") + ",median_sale_price\n"
+        "lake_geneva_wi,Lake Geneva,WI,town,https://example.gov,Manual survey,Operator,A,"
+        "2026-01-01,2025,2025-12-31,town,high,true,500000\n",
+        encoding="utf-8",
+    )
+
+    with patch(
+        "retirement_engine.connectors.census_acs.urlopen",
+        return_value=_mock_urlopen_response(CENSUS_PAYLOAD),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "live-run",
+                "--places",
+                str(places),
+                "--evidence",
+                str(evidence),
+                "--database",
+                str(tmp_path / "live.sqlite"),
+                "--output-dir",
+                str(tmp_path / "output"),
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert result.exception is not None
+    assert "inconsistent identity for place" in str(result.exception)
