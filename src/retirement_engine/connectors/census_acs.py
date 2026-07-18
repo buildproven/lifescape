@@ -35,9 +35,11 @@ METRIC_VARIABLES: Final[dict[str, str]] = {
 
 REQUEST_TIMEOUT_SECONDS: Final = 10
 API_KEY_ENV_VAR: Final = "CENSUS_API_KEY"
+# ACS marks a suppressed or unreliable estimate with this sentinel instead of null.
+ACS_MISSING_VALUE_SENTINEL: Final = -666666666
 
 
-class CensusAcsError(RuntimeError):
+class CensusAcsError(ValueError):
     """Raised when the Census ACS API cannot be fetched or returns an unexpected shape."""
 
 
@@ -85,7 +87,7 @@ class CensusAcsConnector:
         except (HTTPError, URLError) as exc:
             raise CensusAcsError(f"census_acs request failed: {exc}") from exc
 
-        redacted_url = url.replace(self._api_key, "REDACTED")
+        redacted_url = url.replace(urlencode({"key": self._api_key}), "key=REDACTED")
         return RawResponse(
             source_url=redacted_url,
             payload=payload,
@@ -106,10 +108,15 @@ class CensusAcsConnector:
             raise CensusAcsError(f"census_acs returned no data rows: {rows!r}")
 
         header, data_row = rows[0], rows[1]
-        record = dict(zip(header, data_row, strict=True))
-        place_name = record["NAME"].split(",")[0].strip()
-        state_fips = record["state"]
-        place_fips = record["place"]
+        try:
+            record = dict(zip(header, data_row, strict=True))
+            place_name = record["NAME"].split(",")[0].strip()
+            state_fips = record["state"]
+            place_fips = record["place"]
+        except (ValueError, KeyError) as exc:
+            raise CensusAcsError(
+                f"census_acs returned an unexpected response shape: {exc}"
+            ) from exc
 
         source = SourceRecord(
             url=response.source_url,
@@ -130,9 +137,11 @@ class CensusAcsConnector:
 
         observations: list[ObservationRecord] = []
         for metric_id, variable in METRIC_VARIABLES.items():
-            if variable not in record:
+            if variable not in record or record[variable] is None:
                 continue
             raw_value = float(record[variable])
+            if raw_value == ACS_MISSING_VALUE_SENTINEL:
+                continue
             observations.append(
                 ObservationRecord(
                     place=place,
