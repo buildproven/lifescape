@@ -52,6 +52,7 @@ class CensusAcsConnector:
     """
 
     name = "census_acs"
+    supported_metric_ids = tuple(METRIC_VARIABLES)
 
     def __init__(self, *, retrieved_at: date | None = None, api_key: str | None = None) -> None:
         self._retrieved_at = retrieved_at or date.today()

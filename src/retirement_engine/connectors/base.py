@@ -30,6 +30,7 @@ class ValidationResult(BaseModel):
 
 class Connector(Protocol):
     name: str
+    supported_metric_ids: tuple[str, ...]
 
     def fetch(self, request: DataRequest) -> RawResponse: ...
 

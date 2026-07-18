@@ -8,8 +8,11 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
 
-from retirement_engine.config import load_sources
+from retirement_engine.config import ConfigurationError, load_sources
+from retirement_engine.connectors.census_acs import CensusAcsConnector
+from retirement_engine.connectors.orchestrate import PlaceRequest, fetch_live_observations
 from retirement_engine.evidence import SourcePolicyError, validate_source
 from retirement_engine.models import Confidence, SourceRecord, SourceTier
 from retirement_engine.pipeline import execute_run
@@ -61,6 +64,79 @@ def run_command(
         run_id=result.run_id,
         eligible=len(result.scores),
         total_places=len(result.places),
+        persisted=result.persisted,
+        output_dir=str(output_dir),
+    )
+    typer.echo(result.run_id)
+
+
+def _load_place_requests(path: Path) -> tuple[PlaceRequest, ...]:
+    """Load a {place_id: "state_fips:place_fips"} mapping used to fetch live evidence."""
+    try:
+        with path.open(encoding="utf-8") as handle:
+            raw = yaml.safe_load(handle)
+    except (OSError, yaml.YAMLError) as exc:
+        raise ConfigurationError(f"cannot load {path}: {exc}") from exc
+    if not isinstance(raw, dict) or not raw:
+        raise ConfigurationError(f"{path} must map place_id to a 'state_fips:place_fips' string")
+    return tuple(
+        PlaceRequest(place_id=place_id, geography=geography)
+        for place_id, geography in sorted(raw.items())
+    )
+
+
+@app.command("live-run")
+def live_run_command(
+    places: Annotated[Path, typer.Option(exists=True, dir_okay=False)],
+    evidence: Annotated[Path, typer.Option(exists=True, dir_okay=False)],
+    config_dir: Annotated[Path, typer.Option(exists=True, file_okay=False)] = Path("config"),
+    research_brief: Annotated[Path, typer.Option(exists=True, dir_okay=False)] = Path(
+        "config/research_brief.live.yaml"
+    ),
+    database: Annotated[Path, typer.Option()] = Path("outputs/live-run.sqlite"),
+    output_dir: Annotated[Path, typer.Option()] = Path("outputs/live-run"),
+    profile: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
+    simulations: Annotated[int, typer.Option(min=1000)] = 1000,
+    sensitivity_seed: Annotated[int, typer.Option()] = 20260714,
+    as_of: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """Fetch live connector evidence, merge it with a manual CSV, and write reports.
+
+    --evidence may point to a headers-only CSV for a purely connector-driven run;
+    manual rows always take precedence over live-fetched values for the same
+    (place, metric). A connector failure for a place degrades that metric to
+    UNKNOWN evidence rather than aborting the run.
+    """
+    place_requests = _load_place_requests(places)
+    connectors = [CensusAcsConnector()]
+    _event(
+        "live_run_started",
+        places=len(place_requests),
+        connectors=[connector.name for connector in connectors],
+    )
+    live_observations = fetch_live_observations(
+        connectors,
+        place_requests,
+        on_event=lambda event, fields: _event(event, **fields),
+    )
+    result = execute_run(
+        evidence_path=evidence,
+        config_dir=config_dir,
+        research_brief_path=research_brief,
+        database_path=database,
+        output_dir=output_dir,
+        profile_path=profile,
+        simulations=simulations,
+        sensitivity_seed=sensitivity_seed,
+        as_of=_parse_optional_date(as_of, "--as-of"),
+        live_observations=live_observations,
+    )
+    _event(
+        "live_run_completed",
+        run_id=result.run_id,
+        eligible=len(result.scores),
+        total_places=len(result.places),
+        live_observations=len(live_observations),
         persisted=result.persisted,
         output_dir=str(output_dir),
     )
