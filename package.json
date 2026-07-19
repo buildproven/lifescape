@@ -2,7 +2,7 @@
   "name": "lifescape-engine",
   "version": "0.1.0",
   "private": true,
-  "description": "Quality automation for the Lifescape retirement decision engine",
+  "description": "Quality automation for Lifescape retirement planning",
   "scripts": {
     "prepare": "[ \"$CI\" = \"true\" ] && echo 'Skipping Husky in CI' || husky",
     "format": "prettier --write .",

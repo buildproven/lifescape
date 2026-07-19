@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#13251d" />
+    <meta name="theme-color" content="#f3efe3" />
     <meta
       name="description"
       content="Lifescape makes retirement-town decisions explainable: hard constraints eliminate, weighted evidence ranks, and uncertainty stays visible."
@@ -11,7 +11,7 @@
     <title>Lifescape — decide where retirement still works</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2314221b%22/><path d=%22M18 16v32h29v-7H26V16z%22 fill=%22%2378aa8d%22/></svg>"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%226%22 fill=%22%23f3efe3%22/><path d=%22M15 14v36h34%22 fill=%22none%22 stroke=%22%23172c22%22 stroke-width=%226%22/><circle cx=%2246%22 cy=%2218%22 r=%226%22 fill=%22%23bd5f3b%22/></svg>"
     />
     <link rel="stylesheet" href="/static/landing.css" />
     <script src="/static/landing.js" defer></script>
@@ -21,17 +21,24 @@
 
     <header class="site-header">
       <a class="wordmark" href="/" aria-label="Lifescape home">Lifescape</a>
+      <p class="header-note">Field notes for a consequential move</p>
       <nav aria-label="Primary navigation">
         <a href="#method">Method</a>
         <a href="#how-it-works">How it works</a>
-        <a class="nav-cta" href="/demo">See demo <span aria-hidden="true">↗</span></a>
+        <a class="nav-cta" href="/demo">Open decision 01 <span aria-hidden="true">↗</span></a>
       </nav>
     </header>
 
     <main id="main">
       <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-index" aria-hidden="true">
+          <span>LS / 01</span>
+          <span>Retirement location</span>
+          <span>United States</span>
+        </div>
+
         <div class="hero-copy">
-          <p class="kicker">An evidence-backed retirement decision engine</p>
+          <p class="kicker">Evidence-backed retirement planning</p>
           <h1 id="hero-title">Decide where retirement still works.</h1>
           <p class="hero-intro">
             Lifescape turns your non-negotiables, town evidence, and future-life priorities into an
@@ -41,7 +48,7 @@
             <a class="button button-primary" href="/demo"
               >See the finished demo <span aria-hidden="true">→</span></a
             >
-            <a class="text-link" href="#how-it-works">See how it decides</a>
+            <a class="text-link" href="#how-it-works">Trace the method</a>
           </div>
           <p class="demo-disclosure">
             The public demo uses invented evidence. It is for exploring the method, not choosing a
@@ -49,44 +56,75 @@
           </p>
         </div>
 
-        <div class="decision-field" aria-label="Illustration of an explainable town comparison">
-          <div class="field-label">
-            <span>Synthetic field</span>
-            <strong>10 towns · 17 metrics</strong>
-          </div>
-          <svg class="field-lines" viewBox="0 0 720 620" aria-hidden="true">
-            <path d="M-40 70 C 155 80, 92 280, 322 279 S 490 520, 770 482"></path>
-            <path d="M58 -30 C 100 155, 315 92, 344 300 S 559 409, 684 650"></path>
-            <path d="M-20 490 C 138 380, 258 565, 428 453 S 566 206, 760 216"></path>
+        <figure class="decision-map" aria-label="A field map of the synthetic town comparison">
+          <svg class="map-drawing" viewBox="0 0 680 760" role="img">
+            <title>Candidate towns connected through an evidence-backed decision route</title>
+            <path
+              class="state-line"
+              d="M92 94 C170 55 222 85 274 132 C332 185 414 145 490 187 C558 225 586 306 532 352 C477 399 442 448 455 515 C466 580 403 653 316 642 C230 632 196 576 128 550 C61 524 49 442 91 385 C130 331 103 271 69 218 C39 171 46 121 92 94Z"
+            />
+            <path
+              class="route-line"
+              d="M138 151 C229 198 191 278 292 315 S435 364 508 430 S404 558 325 604"
+            />
+            <path class="route-spur" d="M292 315 C358 270 431 258 522 285" />
+            <path class="route-spur" d="M508 430 C406 445 316 454 223 493" />
+
+            <g class="town town-ranked" transform="translate(138 151)">
+              <circle r="9" />
+              <circle r="18" />
+              <text x="24" y="-5">Williamsburg, VA</text>
+              <text class="town-note" x="24" y="15">01 · cleared 7 / 7 gates</text>
+            </g>
+            <g class="town town-ranked" transform="translate(292 315)">
+              <circle r="7" />
+              <text x="18" y="-5">Hendersonville, NC</text>
+              <text class="town-note" x="18" y="15">02 · stable top three</text>
+            </g>
+            <g class="town town-ranked" transform="translate(508 430)">
+              <circle r="7" />
+              <text x="18" y="-5">Maryville, TN</text>
+              <text class="town-note" x="18" y="15">03 · eligible</text>
+            </g>
+            <g class="town town-blocked" transform="translate(522 285)">
+              <path d="M-7 -7 7 7 M7 -7 -7 7" />
+              <text x="18" y="-5">Charleston, SC</text>
+              <text class="town-note" x="18" y="15">purchase gate failed</text>
+            </g>
+            <g class="town town-blocked" transform="translate(223 493)">
+              <path d="M-7 -7 7 7 M7 -7 -7 7" />
+              <text x="18" y="-5">Erie, PA</text>
+              <text class="town-note" x="18" y="15">unknown + winter gate</text>
+            </g>
+            <g class="town town-ranked" transform="translate(325 604)">
+              <circle r="6" />
+              <text x="17" y="-5">New Bern, NC</text>
+              <text class="town-note" x="17" y="15">05 · eligible</text>
+            </g>
           </svg>
-          <div class="result-stack" aria-hidden="true">
-            <div class="result-row result-lead">
-              <span class="result-rank">01</span>
-              <div><strong>Williamsburg</strong><small>Cleared every hard gate</small></div>
-              <span class="result-state">ranked</span>
-            </div>
-            <div class="result-row">
-              <span class="result-rank">02</span>
-              <div><strong>Roanoke</strong><small>Eligible · stability tested</small></div>
-              <span class="result-state">ranked</span>
-            </div>
-            <div class="result-row">
-              <span class="result-rank">—</span>
-              <div><strong>Asheville</strong><small>Purchase gate failed</small></div>
-              <span class="result-state is-blocked">blocked</span>
-            </div>
+          <figcaption>
+            <span>Decision field / synthetic</span>
+            <strong>10 towns · 17 metrics · 1,000 sensitivity runs</strong>
+          </figcaption>
+          <div class="map-key" aria-hidden="true">
+            <span><i class="key-ranked"></i>Ranked</span>
+            <span><i class="key-blocked"></i>Blocked</span>
           </div>
-          <div class="field-rule">
-            <span>Gates eliminate</span>
-            <span>Weights rank</span>
-            <span>Evidence decides</span>
+          <div class="field-stamp" aria-hidden="true">
+            <span>Lead candidate</span>
+            <strong>Williamsburg</strong>
+            <small>Stable in the synthetic field</small>
           </div>
-        </div>
+        </figure>
       </section>
 
-      <section class="premise reveal" id="method" aria-labelledby="premise-title">
-        <p class="section-number">01 / The difference</p>
-        <div>
+      <section class="premise" id="method" aria-labelledby="premise-title">
+        <aside class="margin-note">
+          <span>Working rule</span>
+          <p>What cannot work should never be averaged away.</p>
+        </aside>
+        <div class="premise-copy">
+          <p class="section-number">01 / The difference</p>
           <h2 id="premise-title">A shortlist is only useful when you can see why it exists.</h2>
           <p>
             Most comparison tools collapse everything into one score. Lifescape separates the
@@ -96,102 +134,129 @@
         </div>
       </section>
 
-      <section class="method-strip reveal" aria-label="Lifescape decision method">
-        <div>
-          <span>Hard gates</span>
-          <strong>Non-negotiables can eliminate a town.</strong>
-          <p>Budget, critical access, and missing essential evidence stay decisive.</p>
+      <section class="method-ledger" aria-label="Lifescape decision method">
+        <div class="ledger-heading">
+          <span>Decision ledger</span>
+          <span>Rule</span>
+          <span>What stays visible</span>
         </div>
-        <div>
-          <span>Weighted ranking</span>
-          <strong>Only eligible towns compete on preferences.</strong>
-          <p>Comparable evidence is normalized before priorities shape the ranking.</p>
+        <div class="ledger-row">
+          <span class="ledger-mark mark-gate">Gate</span>
+          <div>
+            <strong>Non-negotiables eliminate.</strong>
+            <p>Budget, critical access, and missing essential evidence stay decisive.</p>
+          </div>
+          <small>Pass · fail · unknown</small>
         </div>
-        <div>
-          <span>Visible uncertainty</span>
-          <strong>A rank is tested, not presented as destiny.</strong>
-          <p>Sensitivity runs show whether the leading group is stable or fragile.</p>
+        <div class="ledger-row">
+          <span class="ledger-mark mark-rank">Rank</span>
+          <div>
+            <strong>Only eligible towns compete.</strong>
+            <p>Comparable evidence is normalized before your priorities shape the order.</p>
+          </div>
+          <small>Criterion detail</small>
+        </div>
+        <div class="ledger-row">
+          <span class="ledger-mark mark-test">Test</span>
+          <div>
+            <strong>A rank is challenged.</strong>
+            <p>Sensitivity runs reveal whether the leading group is stable or fragile.</p>
+          </div>
+          <small>Uncertainty retained</small>
         </div>
       </section>
 
       <section class="process" id="how-it-works" aria-labelledby="process-title">
-        <div class="process-heading reveal">
-          <p class="section-number">02 / How it works</p>
+        <div class="process-heading">
+          <p class="section-number">02 / Follow the route</p>
           <h2 id="process-title">From “maybe there” to a decision you can inspect.</h2>
+          <p>
+            The path stays legible from the first constraint to the final report. Nothing important
+            disappears behind a composite score.
+          </p>
           <a class="text-link" href="/demo">See the finished decision <span>→</span></a>
         </div>
         <ol class="process-list">
-          <li class="reveal">
-            <span>01</span>
+          <li>
+            <span class="route-number">01</span>
             <div>
-              <h3>Set the decision frame</h3>
+              <small>Frame</small>
+              <h3>Set the edges of the map.</h3>
               <p>
                 Define the purchase ceiling, planning age, household, and the towns worth comparing.
                 These inputs remain visible and editable.
               </p>
             </div>
           </li>
-          <li class="reveal">
-            <span>02</span>
+          <li>
+            <span class="route-number">02</span>
             <div>
-              <h3>Inspect the evidence</h3>
+              <small>Inspect</small>
+              <h3>Read the evidence before the score.</h3>
               <p>
-                Review completeness before scoring. Blank critical fields remain unknown; the engine
+                Review completeness before scoring. Blank critical fields remain unknown; Lifescape
                 does not invent a value to keep a candidate alive.
               </p>
             </div>
           </li>
-          <li class="reveal">
-            <span>03</span>
+          <li>
+            <span class="route-number">03</span>
             <div>
-              <h3>Read ranked and blocked outcomes</h3>
+              <small>Decide</small>
+              <h3>Keep the survivors and rejections together.</h3>
               <p>
-                See the eligible ranking, the criteria behind each result, stability across 1,000
-                simulations, and every town that failed or could not clear a gate.
+                See the eligible ranking, criteria, stability across 1,000 simulations, and every
+                town that failed or could not clear a gate.
               </p>
             </div>
           </li>
         </ol>
       </section>
 
-      <section class="proof reveal" aria-labelledby="proof-title">
+      <section class="proof" aria-labelledby="proof-title">
         <div class="proof-copy">
-          <p class="section-number">03 / The output</p>
+          <p class="section-number">03 / The decision folio</p>
           <h2 id="proof-title">The answer is not just a winner.</h2>
           <p>
             It is a decision record: what qualified, what failed, which criteria mattered, how
             stable the result was, and where the evidence still needs work.
           </p>
+          <a class="text-link" href="/demo">Open the full folio <span>↗</span></a>
         </div>
         <div class="proof-output">
-          <div class="proof-heading">
-            <span>Synthetic example</span>
+          <div class="folio-tab">Synthetic example</div>
+          <header>
+            <span>Decision 01 / retirement location</span>
             <strong>Williamsburg leads this field.</strong>
-          </div>
+          </header>
           <dl>
             <div>
-              <dt>Eligible</dt>
-              <dd>Ranked with criterion detail</dd>
+              <dt>01</dt>
+              <dd><strong>Eligible</strong><span>Ranked with criterion detail</span></dd>
             </div>
             <div>
-              <dt>Blocked</dt>
-              <dd>Still shown with gate reasons</dd>
+              <dt>02</dt>
+              <dd><strong>Blocked</strong><span>Still shown with gate reasons</span></dd>
             </div>
             <div>
-              <dt>Uncertain</dt>
-              <dd>Missing evidence remains explicit</dd>
+              <dt>03</dt>
+              <dd><strong>Uncertain</strong><span>Missing evidence remains explicit</span></dd>
             </div>
             <div>
-              <dt>Local app</dt>
-              <dd>Reports and SQLite provenance</dd>
+              <dt>04</dt>
+              <dd><strong>Local</strong><span>Reports and SQLite provenance</span></dd>
             </div>
           </dl>
+          <p class="folio-rule">Gates eliminate / weights rank / evidence decides</p>
         </div>
       </section>
 
-      <section class="local-first reveal" aria-labelledby="local-title">
-        <div>
-          <p class="section-number">04 / Local by design</p>
+      <section class="local-first" aria-labelledby="local-title">
+        <div class="local-label">
+          <span>04</span>
+          <p>Local by design</p>
+        </div>
+        <div class="local-heading">
           <h2 id="local-title">Use the web demo to learn it. Run locally for your real work.</h2>
         </div>
         <div class="local-copy">
@@ -201,8 +266,8 @@
             computer, and produces downloadable reports plus SQLite provenance.
           </p>
           <div class="install-command" aria-label="Local installation commands">
-            <code>uv sync --locked --extra dev</code>
-            <code>uv run retire app</code>
+            <span>01</span><code>uv sync --locked --extra dev</code> <span>02</span
+            ><code>uv run retire app</code>
           </div>
           <a
             class="text-link"
@@ -213,9 +278,11 @@
         </div>
       </section>
 
-      <section class="final-cta reveal" aria-labelledby="cta-title">
-        <p class="kicker">Start with the method</p>
-        <h2 id="cta-title">See what changes when failed options stay visible.</h2>
+      <section class="final-cta" aria-labelledby="cta-title">
+        <div>
+          <p class="kicker">Decision field 01 is open</p>
+          <h2 id="cta-title">See what changes when failed options stay visible.</h2>
+        </div>
         <a class="button button-light" href="/demo"
           >See the finished demo <span aria-hidden="true">→</span></a
         >

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "retirement-decision-engine"
 version = "0.1.0"
-description = "Local-first, evidence-backed retirement location decision engine"
+description = "Local-first, evidence-backed retirement planning with explainable town comparisons"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
