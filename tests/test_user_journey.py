@@ -290,7 +290,18 @@ def test_finished_demo_reflows_without_horizontal_overflow(tmp_path: Path, width
         page = browser.new_page(viewport={"width": width, "height": 1000})
         page.goto(f"{url}/demo")
 
-        page.get_by_role("heading", name="Williamsburg leads this field.").wait_for()
+        heading = page.get_by_role("heading", name="Williamsburg leads this field.")
+        heading.wait_for()
+        product_frame = page.get_by_text(
+            "Lifescape is an evidence-backed retirement-town decision engine"
+        )
+        assert product_frame.is_visible()
+        heading_box = heading.bounding_box()
+        product_frame_box = product_frame.bounding_box()
+        assert heading_box is not None
+        assert product_frame_box is not None
+        assert heading_box["y"] < 1000
+        assert product_frame_box["y"] < 1000
         assert page.get_by_text("Completed synthetic outcome").is_visible()
         assert page.evaluate(
             "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
