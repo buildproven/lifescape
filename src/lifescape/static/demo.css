@@ -303,7 +303,7 @@ a:focus-visible {
   line-height: 0.96;
 }
 
-.ranking header > p:not(.section-label),
+.ranking header > .ranking-intro,
 .blocked header > p:last-child,
 .why-copy > p:last-child {
   max-width: 490px;
@@ -317,7 +317,7 @@ a:focus-visible {
   padding-top: 17px;
   border-top: 1px solid var(--rule);
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.7;
 }
 
@@ -728,13 +728,8 @@ a:focus-visible {
     border-bottom: 1px solid var(--rule);
   }
 
-  .decision-answer::after {
-    top: 68px;
-  }
-
   .decision-answer h1 {
     max-width: 620px;
-    padding-right: 70px;
   }
 
   .ranking,
@@ -816,13 +811,6 @@ a:focus-visible {
     padding: 88px 0 72px;
   }
 
-  .decision-answer::after {
-    top: 52px;
-    width: 70px;
-    height: 70px;
-    font-size: 7px;
-  }
-
   .decision-answer h1 {
     padding-right: 0;
     font-size: 55px;
@@ -834,7 +822,8 @@ a:focus-visible {
   }
 
   .product-frame,
-  .answer-benefit {
+  .answer-benefit,
+  .ranking header .stability-key {
     max-width: 290px;
     font-size: 12px;
   }

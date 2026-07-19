@@ -283,7 +283,7 @@ def test_landing_keyboard_focus_and_disclosure_contrast(tmp_path: Path) -> None:
         browser.close()
 
 
-@pytest.mark.parametrize("width", [320, 390, 768, 1440])
+@pytest.mark.parametrize("width", [320, 390, 760, 768, 900, 1440])
 def test_finished_demo_reflows_and_prioritizes_the_answer(tmp_path: Path, width: int) -> None:
     viewport_height = 1000
     with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
@@ -309,6 +309,12 @@ def test_finished_demo_reflows_and_prioritizes_the_answer(tmp_path: Path, width:
         assert product_frame_box["y"] < viewport_height
         if width <= 760:
             assert answer_box["y"] < context_box["y"]
+        else:
+            assert context_box["x"] < answer_box["x"]
+        badge_display = page.locator(".decision-answer").evaluate(
+            "element => getComputedStyle(element, '::after').display"
+        )
+        assert (badge_display == "none") == (width <= 1100)
         assert page.get_by_text("Completed synthetic outcome").is_visible()
         assert page.evaluate(
             "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
