@@ -2,9 +2,9 @@ from datetime import date
 
 import pytest
 
-from retirement_engine.connectors.base import DataRequest, RawResponse, ValidationResult
-from retirement_engine.connectors.orchestrate import PlaceRequest, fetch_live_observations
-from retirement_engine.models import (
+from lifescape.connectors.base import DataRequest, RawResponse, ValidationResult
+from lifescape.connectors.orchestrate import PlaceRequest, fetch_live_observations
+from lifescape.models import (
     Confidence,
     ObservationRecord,
     PlaceRecord,

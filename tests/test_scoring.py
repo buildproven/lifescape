@@ -1,5 +1,5 @@
-from retirement_engine.models import Direction, MetricDefinition, WeightsConfig
-from retirement_engine.scoring import score_places
+from lifescape.models import Direction, MetricDefinition, WeightsConfig
+from lifescape.scoring import score_places
 
 
 def test_scoring_ranks_and_penalizes_missing_data(observation_factory) -> None:

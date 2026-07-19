@@ -12,7 +12,7 @@ evidence decides, and uncertainty remains visible.
 - Test: `.venv/bin/pytest`
 - Lint: `.venv/bin/ruff check .`
 - Types: `.venv/bin/mypy src`
-- Benchmark: `.venv/bin/retire benchmark --output-dir outputs/benchmark`
+- Benchmark: `.venv/bin/lifescape benchmark --output-dir outputs/benchmark`
 
 ## Invariants
 

@@ -11,8 +11,8 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from retirement_engine.pipeline import execute_run
-from retirement_engine.web import HostedRunGuard, create_app
+from lifescape.pipeline import execute_run
+from lifescape.web import HostedRunGuard, create_app
 
 
 def test_hosted_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> None:
@@ -369,7 +369,7 @@ def test_local_app_rejects_duplicate_evidence_headers_before_execution(
     ).encode()
     output = tmp_path / "output"
     with (
-        patch("retirement_engine.web.execute_run") as execute,
+        patch("lifescape.web.execute_run") as execute,
         TestClient(create_app(output), base_url="http://127.0.0.1") as client,
     ):
         identity_response = client.post(
@@ -552,7 +552,7 @@ def test_local_app_does_not_publish_partial_failed_run(tmp_path: Path) -> None:
         raise ValueError("report generation failed")
 
     with (
-        patch("retirement_engine.web.execute_run", side_effect=fail_after_partial_write),
+        patch("lifescape.web.execute_run", side_effect=fail_after_partial_write),
         TestClient(create_app(output), base_url="http://127.0.0.1") as client,
     ):
         places = client.get("/api/bootstrap").json()["places"]
@@ -574,7 +574,7 @@ def test_local_app_does_not_publish_partial_failed_run(tmp_path: Path) -> None:
 def test_local_app_shapes_response_before_publishing_run(tmp_path: Path) -> None:
     output = tmp_path / "output"
     with (
-        patch("retirement_engine.web._response", side_effect=ValueError("response mismatch")),
+        patch("lifescape.web._response", side_effect=ValueError("response mismatch")),
         TestClient(create_app(output), base_url="http://127.0.0.1") as client,
     ):
         places = client.get("/api/bootstrap").json()["places"]

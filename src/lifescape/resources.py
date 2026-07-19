@@ -11,7 +11,7 @@ from pathlib import Path
 @contextmanager
 def bundled_benchmark() -> Iterator[tuple[Path, Path]]:
     """Yield the benchmark evidence and configuration as filesystem paths."""
-    package_root = resources.files("retirement_engine").joinpath("resources")
+    package_root = resources.files("lifescape").joinpath("resources")
     package_evidence = package_root.joinpath("benchmark-evidence.csv")
     package_config = package_root.joinpath("config")
     if package_evidence.is_file() and package_config.is_dir():

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from retirement_engine.config import ConfigurationError, load_configuration
+from lifescape.config import ConfigurationError, load_configuration
 
 
 def test_complete_configuration_is_loaded_and_profile_affects_hash(tmp_path: Path) -> None:

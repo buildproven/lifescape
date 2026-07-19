@@ -1,5 +1,5 @@
-from retirement_engine.gates import eligible_places, evaluate_gates
-from retirement_engine.models import (
+from lifescape.gates import eligible_places, evaluate_gates
+from lifescape.models import (
     Confidence,
     GateDefinition,
     GateOperator,

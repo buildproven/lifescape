@@ -1,7 +1,7 @@
 import pytest
 
-from retirement_engine.models import CriterionScore, PlaceScore
-from retirement_engine.sensitivity import analyze_sensitivity
+from lifescape.models import CriterionScore, PlaceScore
+from lifescape.sensitivity import analyze_sensitivity
 
 
 def place(place_id: str, rank: int, first: float, second: float) -> PlaceScore:

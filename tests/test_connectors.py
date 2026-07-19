@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from retirement_engine.config import load_metrics, load_sources
-from retirement_engine.evidence import EvidenceError, GeographyMismatchError, ingest_csv
+from lifescape.config import load_metrics, load_sources
+from lifescape.evidence import EvidenceError, GeographyMismatchError, ingest_csv
 
 
 def test_manual_csv_ingests_benchmark() -> None:

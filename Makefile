@@ -18,7 +18,7 @@ quality:
 	npm run quality:check
 
 benchmark:
-	uv run retire benchmark --output-dir outputs/benchmark
+	uv run lifescape benchmark --output-dir outputs/benchmark
 
 app:
-	uv run retire app
+	uv run lifescape app

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from retirement_engine.models import (
+from lifescape.models import (
     CriterionScore,
     MetricDefinition,
     ObservationRecord,
     PlaceScore,
     WeightsConfig,
 )
-from retirement_engine.normalization import normalize_values
+from lifescape.normalization import normalize_values
 
 
 def score_places(

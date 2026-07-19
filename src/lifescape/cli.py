@@ -10,13 +10,13 @@ from typing import Annotated
 import typer
 import yaml
 
-from retirement_engine.config import ConfigurationError, load_sources
-from retirement_engine.connectors.census_acs import CensusAcsConnector
-from retirement_engine.connectors.orchestrate import PlaceRequest, fetch_live_observations
-from retirement_engine.evidence import SourcePolicyError, validate_source
-from retirement_engine.models import Confidence, SourceRecord, SourceTier
-from retirement_engine.pipeline import execute_run
-from retirement_engine.resources import bundled_benchmark
+from lifescape.config import ConfigurationError, load_sources
+from lifescape.connectors.census_acs import CensusAcsConnector
+from lifescape.connectors.orchestrate import PlaceRequest, fetch_live_observations
+from lifescape.evidence import SourcePolicyError, validate_source
+from lifescape.models import Confidence, SourceRecord, SourceTier
+from lifescape.pipeline import execute_run
+from lifescape.resources import bundled_benchmark
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 
@@ -179,7 +179,7 @@ def app_command(
     no_open: Annotated[bool, typer.Option("--no-open")] = False,
 ) -> None:
     """Open the guided local browser workspace."""
-    from retirement_engine.web import serve
+    from lifescape.web import serve
 
     _event("app_started", url=f"http://127.0.0.1:{port}", output_dir=str(output_dir))
     serve(port=port, output_dir=output_dir, open_browser=not no_open)
