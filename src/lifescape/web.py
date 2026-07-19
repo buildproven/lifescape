@@ -27,11 +27,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from retirement_engine.config import load_metrics
-from retirement_engine.evidence import validate_unique_headers
-from retirement_engine.models import GateState, RunResult
-from retirement_engine.pipeline import execute_run
-from retirement_engine.resources import bundled_benchmark
+from lifescape.config import load_metrics
+from lifescape.evidence import validate_unique_headers
+from lifescape.models import GateState, RunResult
+from lifescape.pipeline import execute_run
+from lifescape.resources import bundled_benchmark
 
 MAX_EVIDENCE_BYTES = 5_000_000
 HOSTED_RUN_LIMIT = 6

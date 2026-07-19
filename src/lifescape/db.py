@@ -21,7 +21,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-from retirement_engine.models import (
+from lifescape.models import (
     GateDefinition,
     GateResult,
     MetricDefinition,

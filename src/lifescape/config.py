@@ -11,7 +11,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel
 
-from retirement_engine.models import (
+from lifescape.models import (
     GatesConfig,
     MetricDefinition,
     RegionsConfig,

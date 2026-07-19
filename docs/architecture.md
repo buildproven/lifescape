@@ -18,5 +18,5 @@ SQLite provenance → hard gates → eligible set → normalization/scoring
 
 Configuration is immutable after validation. The run ID hashes canonical configuration and evidence content. Gates execute before ranking. The reporting path consumes the same evaluated domain records that are persisted, so it cannot silently reinterpret evidence.
 
-The connector protocol is defined under `src/retirement_engine/connectors`; live connector implementations are deferred to Milestone 2.
+The connector protocol is defined under `src/lifescape/connectors`; live connector implementations are deferred to Milestone 2.
 

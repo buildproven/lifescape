@@ -6,7 +6,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from retirement_engine.models import ObservationRecord
+from lifescape.models import ObservationRecord
 
 
 class DataRequest(BaseModel):

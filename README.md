@@ -16,10 +16,10 @@ Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and Node.js 22.9+.
 uv sync --locked --extra dev --python 3.12
 uv run playwright install chromium
 npm ci
-uv run retire app
+uv run lifescape app
 ```
 
-`retire app` opens a guided local workspace at `http://127.0.0.1:8765`. Set your
+`lifescape app` opens a guided local workspace at `http://127.0.0.1:8765`. Set your
 budget and planning age, choose towns, review evidence completeness, then run and
 download the comparison. You can also import a CSV matching the documented evidence
 contract; the file is processed locally and validated before it reaches scoring.
@@ -31,12 +31,12 @@ Use the local app for your own evidence, computation, reports, and downloadable 
 For the command-line benchmark and QA Architect checks:
 
 ```bash
-uv run retire benchmark --output-dir outputs/benchmark
+uv run lifescape benchmark --output-dir outputs/benchmark
 npm run quality:check
 npm run security:check
 ```
 
-The installed `retire benchmark` command includes its synthetic evidence and default configuration,
+The installed `lifescape benchmark` command includes its synthetic evidence and default configuration,
 so it works from any directory. Pass `--config-dir` only to exercise a custom configuration.
 
 The benchmark data is synthetic and exists only to exercise methodology. Generated artifacts include `comparison.md`, `comparison.csv`, and `sensitivity.csv`.
@@ -48,7 +48,7 @@ Use the benchmark CSV as the import contract. Identity and source columns, inclu
 For real evidence, use a config directory whose `research_brief.yaml` sets `benchmark_only: false`.
 
 ```bash
-retire run \
+lifescape run \
   --evidence path/to/evidence.csv \
   --profile path/to/user_profile.yaml \
   --config-dir config \

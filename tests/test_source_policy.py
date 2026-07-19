@@ -2,8 +2,8 @@ from datetime import date
 
 import pytest
 
-from retirement_engine.evidence import SourcePolicyError, validate_source
-from retirement_engine.models import Confidence, SourceRecord, SourcesConfig, SourceTier
+from lifescape.evidence import SourcePolicyError, validate_source
+from lifescape.models import Confidence, SourceRecord, SourcesConfig, SourceTier
 
 
 def source(tier: SourceTier, *, retrieved_at: date = date(2026, 1, 1)) -> SourceRecord:

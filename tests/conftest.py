@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from retirement_engine.models import (
+from lifescape.models import (
     Confidence,
     ObservationRecord,
     PlaceRecord,

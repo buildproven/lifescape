@@ -11,7 +11,7 @@ import pytest
 import uvicorn
 from playwright.sync_api import Page, sync_playwright
 
-from retirement_engine.web import create_app
+from lifescape.web import create_app
 
 
 def contrast_ratio(
@@ -254,7 +254,7 @@ def test_landing_keyboard_focus_and_disclosure_contrast(tmp_path: Path) -> None:
             )
         assert "#method" in focused_links
         assert "/demo" in focused_links
-        assert "https://github.com/buildproven/lifescape-engine" in focused_links
+        assert "https://github.com/buildproven/lifescape" in focused_links
 
         local_source = page.get_by_role("link", name="View the source on GitHub ↗")
         local_source.focus()

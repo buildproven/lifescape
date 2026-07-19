@@ -6,7 +6,7 @@ import random
 from collections import defaultdict
 from statistics import fmean, pvariance
 
-from retirement_engine.models import PlaceScore, SensitivityResult
+from lifescape.models import PlaceScore, SensitivityResult
 
 
 def analyze_sensitivity(

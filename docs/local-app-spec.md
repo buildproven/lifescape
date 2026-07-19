@@ -10,7 +10,7 @@ learning the engine's file layout or CLI pipeline.
 
 | ID | Requirement | Acceptance |
 |---|---|---|
-| U1 | Start the workspace with one command. | `retire app` serves the workspace and opens a browser by default. |
+| U1 | Start the workspace with one command. | `lifescape app` serves the workspace and opens a browser by default. |
 | U2 | Capture the decision frame before scoring. | The user can set maximum purchase budget, planning age, and household. Budget changes the purchase gate. |
 | U3 | Control the comparison field. | The user can search and select two or more towns; unknown or duplicate IDs are rejected. |
 | U4 | Make evidence quality visible. | The workspace shows metric completeness and never hides missing values. Imported CSVs are classified as real, synthetic, or mixed. |
@@ -34,7 +34,7 @@ learning the engine's file layout or CLI pipeline.
 ## Design
 
 ```text
-retire app ── opens /
+lifescape app ── opens /
    │
    ▼
 FastAPI loopback server ── packaged HTML/CSS/JS workspace

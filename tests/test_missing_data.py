@@ -1,5 +1,5 @@
-from retirement_engine.gates import evaluate_gates
-from retirement_engine.models import GateDefinition, GateState
+from lifescape.gates import evaluate_gates
+from lifescape.models import GateDefinition, GateState
 
 
 def test_missing_critical_metric_is_blocking_unknown(policy) -> None:

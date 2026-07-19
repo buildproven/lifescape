@@ -1,7 +1,7 @@
 import pytest
 
-from retirement_engine.models import Direction
-from retirement_engine.normalization import normalize_values, percentile
+from lifescape.models import Direction
+from lifescape.normalization import normalize_values, percentile
 
 
 def test_directionality_and_winsorization() -> None:

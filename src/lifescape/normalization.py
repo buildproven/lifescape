@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from retirement_engine.models import Direction
+from lifescape.models import Direction
 
 
 def percentile(values: list[float], fraction: float) -> float:

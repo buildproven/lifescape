@@ -19,14 +19,14 @@ def test_installed_wheel_runs_benchmark_outside_checkout(tmp_path: Path) -> None
     wheel = next(distribution.glob("*.whl"))
     with zipfile.ZipFile(wheel) as archive:
         packaged_files = set(archive.namelist())
-    assert "retirement_engine/templates/landing.html" in packaged_files
-    assert "retirement_engine/templates/demo.html" in packaged_files
-    assert "retirement_engine/templates/app.html" in packaged_files
-    assert "retirement_engine/static/landing.css" in packaged_files
-    assert "retirement_engine/static/demo.css" in packaged_files
-    assert "retirement_engine/static/landing.js" in packaged_files
-    assert "retirement_engine/static/app.css" in packaged_files
-    assert "retirement_engine/static/app.js" in packaged_files
+    assert "lifescape/templates/landing.html" in packaged_files
+    assert "lifescape/templates/demo.html" in packaged_files
+    assert "lifescape/templates/app.html" in packaged_files
+    assert "lifescape/static/landing.css" in packaged_files
+    assert "lifescape/static/demo.css" in packaged_files
+    assert "lifescape/static/landing.js" in packaged_files
+    assert "lifescape/static/app.css" in packaged_files
+    assert "lifescape/static/app.js" in packaged_files
     outside_checkout = tmp_path / "elsewhere"
     outside_checkout.mkdir()
     output_dir = outside_checkout / "output"
@@ -40,7 +40,7 @@ def test_installed_wheel_runs_benchmark_outside_checkout(tmp_path: Path) -> None
             "--with",
             str(wheel),
             "--",
-            "retire",
+            "lifescape",
             "benchmark",
             "--output-dir",
             str(output_dir),
@@ -64,7 +64,7 @@ def test_installed_wheel_runs_benchmark_outside_checkout(tmp_path: Path) -> None
             "--with",
             str(wheel),
             "--",
-            "retire",
+            "lifescape",
             "app",
             "--help",
         ],

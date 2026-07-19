@@ -15,8 +15,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
-from retirement_engine.connectors.base import DataRequest, RawResponse, ValidationResult
-from retirement_engine.models import (
+from lifescape.connectors.base import DataRequest, RawResponse, ValidationResult
+from lifescape.models import (
     Confidence,
     ObservationRecord,
     PlaceRecord,

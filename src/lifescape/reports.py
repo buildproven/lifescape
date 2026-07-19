@@ -7,7 +7,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from retirement_engine.models import GateState, RunResult
+from lifescape.models import GateState, RunResult
 
 
 def write_reports(run: RunResult, output_dir: Path) -> tuple[Path, Path, Path]:

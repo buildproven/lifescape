@@ -7,15 +7,15 @@ import json
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 
-from retirement_engine import __version__
-from retirement_engine.config import load_configuration
-from retirement_engine.db import initialize_database, persist_run
-from retirement_engine.evidence import ingest_csv
-from retirement_engine.gates import eligible_places, evaluate_gates
-from retirement_engine.models import ObservationRecord, PlaceRecord, RunResult
-from retirement_engine.reports import write_reports
-from retirement_engine.scoring import score_places
-from retirement_engine.sensitivity import analyze_sensitivity
+from lifescape import __version__
+from lifescape.config import load_configuration
+from lifescape.db import initialize_database, persist_run
+from lifescape.evidence import ingest_csv
+from lifescape.gates import eligible_places, evaluate_gates
+from lifescape.models import ObservationRecord, PlaceRecord, RunResult
+from lifescape.reports import write_reports
+from lifescape.scoring import score_places
+from lifescape.sensitivity import analyze_sensitivity
 
 
 def execute_run(

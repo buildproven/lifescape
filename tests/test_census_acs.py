@@ -6,10 +6,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from retirement_engine.config import load_metrics
-from retirement_engine.connectors import DataRequest
-from retirement_engine.connectors.base import RawResponse
-from retirement_engine.connectors.census_acs import CensusAcsConnector, CensusAcsError
+from lifescape.config import load_metrics
+from lifescape.connectors import DataRequest
+from lifescape.connectors.base import RawResponse
+from lifescape.connectors.census_acs import CensusAcsConnector, CensusAcsError
 
 SAMPLE_PAYLOAD: list[list[str]] = [
     ["NAME", "DP02_0068PE", "state", "place"],
@@ -32,7 +32,7 @@ def connector() -> CensusAcsConnector:
 
 def _fetch_with_payload(connector: CensusAcsConnector, payload: list[list[str]]) -> RawResponse:
     with patch(
-        "retirement_engine.connectors.census_acs.urlopen",
+        "lifescape.connectors.census_acs.urlopen",
         return_value=_mock_response(payload),
     ):
         return connector.fetch(
@@ -43,7 +43,7 @@ def _fetch_with_payload(connector: CensusAcsConnector, payload: list[list[str]])
 def test_fetch_builds_request_url_and_checksum(connector: CensusAcsConnector) -> None:
     request = DataRequest(geography="55:43075", metric_ids=("education_attainment",))
     with patch(
-        "retirement_engine.connectors.census_acs.urlopen",
+        "lifescape.connectors.census_acs.urlopen",
         return_value=_mock_response(SAMPLE_PAYLOAD),
     ) as mock_urlopen:
         response = connector.fetch(request)
@@ -62,7 +62,7 @@ def test_fetch_redacts_key_containing_url_unsafe_characters() -> None:
     connector = CensusAcsConnector(retrieved_at=date(2026, 1, 1), api_key="test key/+value")
     request = DataRequest(geography="55:43075", metric_ids=("education_attainment",))
     with patch(
-        "retirement_engine.connectors.census_acs.urlopen",
+        "lifescape.connectors.census_acs.urlopen",
         return_value=_mock_response(SAMPLE_PAYLOAD),
     ):
         response = connector.fetch(request)
@@ -83,7 +83,7 @@ def test_fetch_reads_api_key_from_environment(monkeypatch: pytest.MonkeyPatch) -
     connector = CensusAcsConnector(retrieved_at=date(2026, 1, 1))
     request = DataRequest(geography="55:43075", metric_ids=("education_attainment",))
     with patch(
-        "retirement_engine.connectors.census_acs.urlopen",
+        "lifescape.connectors.census_acs.urlopen",
         return_value=_mock_response(SAMPLE_PAYLOAD),
     ) as mock_urlopen:
         connector.fetch(request)
@@ -224,7 +224,7 @@ DISTRESS_INDEX_PAYLOAD: list[list[str]] = [
 
 def _fetch_distress_index(connector: CensusAcsConnector, payload: list[list[str]]) -> RawResponse:
     with patch(
-        "retirement_engine.connectors.census_acs.urlopen",
+        "lifescape.connectors.census_acs.urlopen",
         return_value=_mock_response(payload),
     ):
         return connector.fetch(DataRequest(geography="55:43075", metric_ids=("distress_index",)))
@@ -235,7 +235,7 @@ def test_fetch_requests_all_distress_index_component_variables(
 ) -> None:
     request = DataRequest(geography="55:43075", metric_ids=("distress_index",))
     with patch(
-        "retirement_engine.connectors.census_acs.urlopen",
+        "lifescape.connectors.census_acs.urlopen",
         return_value=_mock_response(DISTRESS_INDEX_PAYLOAD),
     ) as mock_urlopen:
         connector.fetch(request)
@@ -301,7 +301,7 @@ def test_fetch_requesting_both_metrics_dedupes_and_requests_union_of_variables(
         ["Lake Geneva city, Wisconsin", "42.1", "6.0", "3.0", "9.0", "55", "43075"],
     ]
     with patch(
-        "retirement_engine.connectors.census_acs.urlopen",
+        "lifescape.connectors.census_acs.urlopen",
         return_value=_mock_response(payload),
     ) as mock_urlopen:
         response = connector.fetch(request)

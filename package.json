@@ -1,5 +1,5 @@
 {
-  "name": "lifescape-engine",
+  "name": "lifescape",
   "version": "0.1.0",
   "private": true,
   "description": "Quality automation for Lifescape retirement planning",
@@ -8,17 +8,18 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run lint:js && npm run lint:css",
-    "lint:fix": "eslint \"src/retirement_engine/static/*.js\" --fix && stylelint \"src/retirement_engine/static/**/*.css\" --fix",
-    "lint:js": "eslint \"src/retirement_engine/static/*.js\"",
-    "lint:css": "stylelint \"src/retirement_engine/static/**/*.css\"",
+    "lint:fix": "eslint \"src/lifescape/static/*.js\" --fix && stylelint \"src/lifescape/static/**/*.css\" --fix",
+    "lint:js": "eslint \"src/lifescape/static/*.js\"",
+    "lint:css": "stylelint \"src/lifescape/static/**/*.css\"",
     "test": "uv run --extra dev pytest",
-    "test:coverage": "uv run --extra dev pytest --cov=retirement_engine --cov-report=term-missing --cov-fail-under=90",
+    "test:coverage": "uv run --extra dev pytest --cov=lifescape --cov-report=term-missing --cov-fail-under=90",
     "quality:frontend": "npm run format:check && npm run lint",
     "quality:python": "uv run --extra dev ruff format --check . && uv run --extra dev ruff check . && uv run --extra dev mypy src && npm run test:coverage && uv run --extra dev -- uv build --no-build-isolation",
     "quality:check": "npm run quality:frontend && npm run quality:python",
+    "security": "npm run security:check",
     "security:npm": "npm audit --audit-level=high",
     "security:python": "uv run --extra dev pip-audit --local",
-    "security:config": "eslint \"src/retirement_engine/static/*.js\" && bash scripts/run-gitleaks.sh",
+    "security:config": "eslint \"src/lifescape/static/*.js\" && bash scripts/run-gitleaks.sh",
     "security:check": "npm run security:npm && npm run security:python && npm run security:config",
     "ops:verify:vercel": "bash scripts/verify-vercel-firewall.sh"
   },
@@ -41,11 +42,11 @@
       "uv run ruff format --check",
       "uv run ruff check --fix"
     ],
-    "src/retirement_engine/static/**/*.js": [
+    "src/lifescape/static/**/*.js": [
       "eslint --fix",
       "prettier --write"
     ],
-    "src/retirement_engine/static/**/*.css": [
+    "src/lifescape/static/**/*.css": [
       "stylelint --fix",
       "prettier --write"
     ],

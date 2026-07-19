@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import date
 
-from retirement_engine.evidence import SourcePolicyError, validate_source
-from retirement_engine.models import (
+from lifescape.evidence import SourcePolicyError, validate_source
+from lifescape.models import (
     GateDefinition,
     GateOperator,
     GateResult,

@@ -8,7 +8,7 @@ from typer.core import TyperOption
 from typer.main import get_command
 from typer.testing import CliRunner
 
-from retirement_engine.cli import app
+from lifescape.cli import app
 
 runner = CliRunner()
 
@@ -79,7 +79,7 @@ def test_live_run_fetches_merges_and_writes_reports(tmp_path: Path, monkeypatch)
     output_dir = tmp_path / "output"
 
     with patch(
-        "retirement_engine.connectors.census_acs.urlopen",
+        "lifescape.connectors.census_acs.urlopen",
         return_value=_mock_urlopen_response(CENSUS_PAYLOAD),
     ):
         result = runner.invoke(
@@ -199,7 +199,7 @@ def test_live_run_manual_evidence_takes_precedence_over_live(tmp_path: Path, mon
     output_dir = tmp_path / "output"
 
     with patch(
-        "retirement_engine.connectors.census_acs.urlopen",
+        "lifescape.connectors.census_acs.urlopen",
         return_value=_mock_urlopen_response(CENSUS_PAYLOAD),
     ):
         result = runner.invoke(
@@ -239,7 +239,7 @@ def test_live_run_rejects_place_identity_conflict_between_manual_and_live(
     )
 
     with patch(
-        "retirement_engine.connectors.census_acs.urlopen",
+        "lifescape.connectors.census_acs.urlopen",
         return_value=_mock_urlopen_response(CENSUS_PAYLOAD),
     ):
         result = runner.invoke(

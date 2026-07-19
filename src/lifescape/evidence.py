@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from retirement_engine.models import (
+from lifescape.models import (
     Confidence,
     MetricDefinition,
     ObservationRecord,

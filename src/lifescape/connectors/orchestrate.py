@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 
-from retirement_engine.connectors.base import Connector, DataRequest
-from retirement_engine.models import ObservationRecord, PlaceRecord, StrictModel
+from lifescape.connectors.base import Connector, DataRequest
+from lifescape.models import ObservationRecord, PlaceRecord, StrictModel
 
 EventSink = Callable[[str, dict[str, object]], None]
 

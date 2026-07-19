@@ -7,7 +7,7 @@ from threading import Barrier
 import pytest
 import yaml
 
-from retirement_engine.db import (
+from lifescape.db import (
     GateResultRow,
     MetricRow,
     ResearchRunRow,
@@ -15,7 +15,7 @@ from retirement_engine.db import (
     SourceRow,
     initialize_database,
 )
-from retirement_engine.pipeline import execute_run
+from lifescape.pipeline import execute_run
 
 
 def test_benchmark_vertical_slice_is_reproducible(tmp_path: Path) -> None:

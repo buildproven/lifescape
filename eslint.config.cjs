@@ -9,7 +9,7 @@ module.exports = [
   js.configs.recommended,
   security.configs.recommended,
   {
-    files: ["src/retirement_engine/static/**/*.js"],
+    files: ["src/lifescape/static/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",
