@@ -1,3 +1,3 @@
-"""Retirement Decision Engine."""
+"""Lifescape retirement decision core."""
 
 __version__ = "0.1.0"

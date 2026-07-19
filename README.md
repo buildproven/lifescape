@@ -1,6 +1,10 @@
-# Retirement Decision Engine
+# Lifescape
 
-A local-first, evidence-backed engine for comparing U.S. retirement towns. Milestone 1 implements a tested vertical slice: strict YAML configuration, manual CSV evidence ingestion, SQLite provenance, hard gates, normalized scoring, Monte Carlo sensitivity, source-quality enforcement, and reproducible reports.
+Local-first, evidence-backed retirement planning for comparing U.S. towns. Lifescape turns
+non-negotiables, sourced town evidence, and future-life priorities into an explainable shortlist.
+Its decision engine provides strict YAML configuration, manual CSV evidence ingestion, SQLite
+provenance, hard gates, normalized scoring, Monte Carlo sensitivity, source-quality enforcement,
+and reproducible reports.
 
 The governing rule is: **gates eliminate, weights rank, evidence decides, uncertainty stays visible.** Tier C discovery material cannot affect a gate or score, and unknown critical gates block a candidate.
 
