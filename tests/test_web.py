@@ -150,8 +150,18 @@ def test_finished_demo_shows_a_completed_decision(tmp_path: Path) -> None:
         response = client.get("/demo")
 
     assert response.status_code == 200
+    assert "evidence-backed retirement-town decision engine" in response.text
+    assert "explainable shortlist" in response.text
     assert "Williamsburg leads this field." in response.text
+    assert "focus deeper research" in response.text
+    assert "avoid carrying forward" in response.text
+    assert "fails an essential" in response.text
+    assert "Hard gates cleared" in response.text
+    assert "Overall fit · 0 to 10" in response.text
+    assert "Top-three · 1,000 simulations" in response.text
     assert "Ranked after the non-negotiables." in response.text
+    assert "top-three in at least 60% of sensitivity runs" in response.text
+    assert "means less than 60%" in response.text
     assert "Blocked, not hidden" in response.text
     assert "Get Lifescape on GitHub" in response.text
     assert 'href="/"' in response.text
@@ -250,7 +260,7 @@ def test_finished_demo_tracks_canonical_benchmark(tmp_path: Path) -> None:
     gate_summary = next(row for row in parser.rows if "data-gates-passed" in row)
     assert gate_summary["data-gates-passed"] == str(len(result["rankings"][0]["gates"]))
     assert gate_summary["visible-text"] == (
-        "Gates passed 7 / 7 Composite score 6.4 Top-three frequency 100%"
+        "Hard gates cleared 7 / 7 Overall fit · 0 to 10 6.4 Top-three · 1,000 simulations 100%"
     )
     assert "lake_geneva_wi" in ranked
     assert "Libertyville" not in page.text

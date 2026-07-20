@@ -33,6 +33,7 @@ def test_quality_automation_matches_project_contract() -> None:
     commitlint = (repository / "commitlint.config.js").read_text(encoding="utf-8")
 
     assert package["scripts"]["quality:check"]
+    assert package["scripts"]["security"] == "npm run security:check"
     assert package["scripts"]["security:check"]
     assert quality["maturity"] == "production-ready"
     assert quality["checks"]["coverage"] == {

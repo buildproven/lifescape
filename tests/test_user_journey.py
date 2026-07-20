@@ -283,14 +283,38 @@ def test_landing_keyboard_focus_and_disclosure_contrast(tmp_path: Path) -> None:
         browser.close()
 
 
-@pytest.mark.parametrize("width", [320, 390, 768, 1440])
-def test_finished_demo_reflows_without_horizontal_overflow(tmp_path: Path, width: int) -> None:
+@pytest.mark.parametrize("width", [320, 390, 760, 768, 900, 1440])
+def test_finished_demo_reflows_and_prioritizes_the_answer(tmp_path: Path, width: int) -> None:
+    viewport_height = 1000
     with running_app(tmp_path / "output", hosted_demo=True) as url, sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": width, "height": 1000})
+        page = browser.new_page(viewport={"width": width, "height": viewport_height})
         page.goto(f"{url}/demo")
 
-        page.get_by_role("heading", name="Williamsburg leads this field.").wait_for()
+        heading = page.get_by_role("heading", name="Williamsburg leads this field.")
+        heading.wait_for()
+        product_frame = page.get_by_text(
+            "Lifescape is an evidence-backed retirement-town decision engine"
+        )
+        assert product_frame.is_visible()
+        heading_box = heading.bounding_box()
+        product_frame_box = product_frame.bounding_box()
+        answer_box = page.locator(".decision-answer").bounding_box()
+        context_box = page.locator(".decision-context").bounding_box()
+        assert heading_box is not None
+        assert product_frame_box is not None
+        assert answer_box is not None
+        assert context_box is not None
+        assert heading_box["y"] < viewport_height
+        assert product_frame_box["y"] < viewport_height
+        if width <= 760:
+            assert answer_box["y"] < context_box["y"]
+        else:
+            assert context_box["x"] < answer_box["x"]
+        badge_display = page.locator(".decision-answer").evaluate(
+            "element => getComputedStyle(element, '::after').display"
+        )
+        assert (badge_display == "none") == (width <= 1100)
         assert page.get_by_text("Completed synthetic outcome").is_visible()
         assert page.evaluate(
             "document.documentElement.scrollWidth <= document.documentElement.clientWidth"

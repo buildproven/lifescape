@@ -214,22 +214,41 @@ a:focus-visible {
 
 .decision-answer h1 {
   max-width: 880px;
-  margin-top: 30px;
+  margin-top: 22px;
   font-size: clamp(68px, 7.4vw, 116px);
   line-height: 0.88;
 }
 
+.product-frame {
+  max-width: 720px;
+  margin: 18px 0 0;
+  color: var(--pine);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.65;
+}
+
 .answer-summary {
   max-width: 700px;
-  margin: 38px 0 0;
+  margin: 31px 0 0;
   color: var(--graphite);
   font-size: 17px;
   line-height: 1.75;
 }
 
+.answer-benefit {
+  max-width: 700px;
+  margin: 16px 0 0;
+  padding-left: 18px;
+  border-left: 2px solid var(--clay);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
 .answer-rule {
   max-width: 790px;
-  margin-top: 53px;
+  margin-top: 37px;
   display: grid;
   grid-template-columns: 1fr auto;
   border-top: 2px solid var(--ink);
@@ -284,13 +303,28 @@ a:focus-visible {
   line-height: 0.96;
 }
 
-.ranking header > p:last-child,
+.ranking header > .ranking-intro,
 .blocked header > p:last-child,
 .why-copy > p:last-child {
   max-width: 490px;
   margin: 30px 0 0;
   color: var(--graphite);
   line-height: 1.75;
+}
+
+.ranking header .stability-key {
+  margin-top: 18px;
+  padding-top: 17px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.stability-key strong {
+  color: var(--ink);
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .ranking ol {
@@ -618,14 +652,15 @@ a:focus-visible {
   min-height: 105px;
 }
 
+@media (max-width: 1100px) {
+  .decision-answer::after {
+    display: none;
+  }
+}
+
 @media (max-width: 1000px) {
   :root {
     --page: calc(100vw - 54px);
-  }
-
-  .decision-answer::after {
-    width: 88px;
-    height: 88px;
   }
 
   .decision-answer h1 {
@@ -671,9 +706,15 @@ a:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .decision-answer {
+    order: -1;
+    padding: 100px 0 80px;
+  }
+
   .decision-context {
-    padding: 105px 0 55px;
+    padding: 70px 0 55px;
     border-right: 0;
+    border-top: 1px solid var(--rule);
     border-bottom: 1px solid var(--rule);
   }
 
@@ -687,17 +728,8 @@ a:focus-visible {
     border-bottom: 1px solid var(--rule);
   }
 
-  .decision-answer {
-    padding: 80px 0;
-  }
-
-  .decision-answer::after {
-    top: 62px;
-  }
-
   .decision-answer h1 {
     max-width: 620px;
-    padding-right: 70px;
   }
 
   .ranking,
@@ -762,10 +794,6 @@ a:focus-visible {
     line-height: 1.5;
   }
 
-  .decision-context {
-    padding-top: 90px;
-  }
-
   .decision-context dl {
     margin-top: 38px;
     grid-template-columns: 1fr;
@@ -780,14 +808,7 @@ a:focus-visible {
   }
 
   .decision-answer {
-    padding: 70px 0 80px;
-  }
-
-  .decision-answer::after {
-    top: 35px;
-    width: 70px;
-    height: 70px;
-    font-size: 7px;
+    padding: 88px 0 72px;
   }
 
   .decision-answer h1 {
@@ -798,6 +819,13 @@ a:focus-visible {
   .answer-summary {
     font-size: 15px;
     line-height: 1.65;
+  }
+
+  .product-frame,
+  .answer-benefit,
+  .ranking header .stability-key {
+    max-width: 290px;
+    font-size: 12px;
   }
 
   .ranking h2,
