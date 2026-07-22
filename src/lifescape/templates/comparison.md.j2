@@ -35,10 +35,10 @@
 
 ## Raw metrics and provenance
 
-| Town | Metric | Raw value | Period | Observation date | Confidence | Tier | Source |
-|---|---|---:|---|---|---|---|---|
+| Town | Metric | Raw value | Period | Observation date | Confidence | Tier | Source geography | Source |
+|---|---|---:|---|---|---|---|---|---|
 {% for item in run.observations | sort(attribute='metric_id') | sort(attribute='place.place_id') -%}
-| {{ place_names[item.place.place_id] }} | {{ item.metric_id }} | {{ item.raw_value }} | {{ item.observed_period }} | {{ item.observed_at.isoformat() }} | {{ item.source.confidence }} | {{ item.source.tier }} | {{ item.source.url }} |
+| {{ place_names[item.place.place_id] }} | {{ item.metric_id }} | {{ item.raw_value }} | {{ item.observed_period }} | {{ item.observed_at.isoformat() }} | {{ item.source.confidence }} | {{ item.source.tier }} | {{ item.source.geography }} | {{ item.source.title }} ({{ item.source.publisher }}): {{ item.source.url }} |
 {% endfor %}
 
 ## Score breakdown

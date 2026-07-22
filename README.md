@@ -57,3 +57,25 @@ lifescape run \
 ```
 
 See [the implementation plan](docs/implementation-plan.md), [source policy](docs/source-policy.md), and [limitations](docs/limitations.md).
+
+## Live snowfall evidence
+
+`lifescape live-run` can additionally fetch NOAA NCEI Global Summary of the Year
+(GSOY) snowfall. Because a weather station is not a town-wide aggregate, the
+station selection is explicit in the places YAML and remains visible in source
+provenance. Use a completed calendar year and a station you have independently
+determined represents the town; Lifescape neither finds a nearest station nor
+combines stations or years.
+
+```yaml
+lake_geneva_wi:
+  name: Lake Geneva
+  state: WI
+  census_acs: "55:43075"
+  noaa_gsoy: "USC00218450:2024"
+```
+
+The NOAA observation is GSOY's direct `SNOW` total in inches for that exact
+station-year. Empty, flagged, malformed, or unavailable station records produce
+missing evidence, so the critical winter gate stays UNKNOWN and blocks the
+candidate instead of receiving an inferred value.

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 
+from pydantic import Field
+
 from lifescape.connectors.base import Connector, DataRequest
 from lifescape.models import ObservationRecord, PlaceRecord, StrictModel
 
@@ -20,7 +22,13 @@ class PlaceRequest(StrictModel):
     """A place to fetch live evidence for, identified by this engine's place_id."""
 
     place_id: str
-    geography: str
+    geography: str | None = None
+    connector_geographies: dict[str, str] = Field(default_factory=dict)
+    place: PlaceRecord | None = None
+
+    def geography_for(self, connector_name: str) -> str | None:
+        """Return connector-specific geography, preserving the legacy shared field."""
+        return self.connector_geographies.get(connector_name, self.geography)
 
 
 def fetch_live_observations(
@@ -43,7 +51,10 @@ def fetch_live_observations(
         if not metric_ids:
             continue
         for place in places:
-            request = DataRequest(geography=place.geography, metric_ids=metric_ids)
+            geography = place.geography_for(connector.name)
+            if geography is None:
+                continue
+            request = DataRequest(geography=geography, metric_ids=metric_ids)
             try:
                 response = connector.fetch(request)
                 fetched = connector.normalize(response)
@@ -59,7 +70,7 @@ def fetch_live_observations(
             rebound = [
                 observation.model_copy(
                     update={
-                        "place": _rebind_place(observation.place, place.place_id),
+                        "place": _rebind_place(observation.place, place.place_id, place.place),
                     }
                 )
                 for observation in fetched
@@ -78,7 +89,11 @@ def fetch_live_observations(
     return tuple(observations)
 
 
-def _rebind_place(place: PlaceRecord, place_id: str) -> PlaceRecord:
+def _rebind_place(
+    place: PlaceRecord, place_id: str, configured_place: PlaceRecord | None
+) -> PlaceRecord:
+    if configured_place is not None:
+        return configured_place.model_copy(update={"place_id": place_id})
     return place.model_copy(update={"place_id": place_id})
 
 
