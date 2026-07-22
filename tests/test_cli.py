@@ -16,6 +16,9 @@ CENSUS_PAYLOAD: list[list[str]] = [
     ["NAME", "DP02_0068PE", "state", "place"],
     ["Lake Geneva city, Wisconsin", "42.1", "55", "43075"],
 ]
+CENSUS_CATALOG = {
+    "dataset": [{"c_dataset": ["acs", "acs5", "profile"], "c_isAvailable": True, "c_vintage": 2024}]
+}
 
 EVIDENCE_HEADER = (
     "place_id,place_name,state,geography_type,source_url,source_title,publisher,tier,"
@@ -80,7 +83,10 @@ def test_live_run_fetches_merges_and_writes_reports(tmp_path: Path, monkeypatch)
 
     with patch(
         "lifescape.connectors.census_acs.urlopen",
-        return_value=_mock_urlopen_response(CENSUS_PAYLOAD),
+        side_effect=[
+            _mock_urlopen_response(CENSUS_CATALOG),
+            _mock_urlopen_response(CENSUS_PAYLOAD),
+        ],
     ):
         result = runner.invoke(
             app,
@@ -200,7 +206,10 @@ def test_live_run_manual_evidence_takes_precedence_over_live(tmp_path: Path, mon
 
     with patch(
         "lifescape.connectors.census_acs.urlopen",
-        return_value=_mock_urlopen_response(CENSUS_PAYLOAD),
+        side_effect=[
+            _mock_urlopen_response(CENSUS_CATALOG),
+            _mock_urlopen_response(CENSUS_PAYLOAD),
+        ],
     ):
         result = runner.invoke(
             app,
@@ -240,7 +249,10 @@ def test_live_run_rejects_place_identity_conflict_between_manual_and_live(
 
     with patch(
         "lifescape.connectors.census_acs.urlopen",
-        return_value=_mock_urlopen_response(CENSUS_PAYLOAD),
+        side_effect=[
+            _mock_urlopen_response(CENSUS_CATALOG),
+            _mock_urlopen_response(CENSUS_PAYLOAD),
+        ],
     ):
         result = runner.invoke(
             app,
