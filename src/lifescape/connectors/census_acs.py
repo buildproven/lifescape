@@ -24,9 +24,9 @@ from lifescape.models import (
     SourceTier,
 )
 
-ACS_YEAR: Final = 2023
 ACS_DATASET: Final = "acs/acs5/profile"
-ACS_BASE_URL: Final = f"https://api.census.gov/data/{ACS_YEAR}/{ACS_DATASET}"
+ACS_CATALOG_URL: Final = "https://api.census.gov/data.json"
+ACS_BASE_URL_TEMPLATE: Final = "https://api.census.gov/data/{year}/" + ACS_DATASET
 
 # Maps this engine's metric ids to ACS Data Profile variable codes.
 METRIC_VARIABLES: Final[dict[str, str]] = {
@@ -66,9 +66,20 @@ class CensusAcsConnector:
     name = "census_acs"
     supported_metric_ids = (*METRIC_VARIABLES, DISTRESS_INDEX_METRIC_ID)
 
-    def __init__(self, *, retrieved_at: date | None = None, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        retrieved_at: date | None = None,
+        api_key: str | None = None,
+        acs_year: int | None = None,
+    ) -> None:
         self._retrieved_at = retrieved_at or date.today()
         self._api_key = api_key or os.environ.get(API_KEY_ENV_VAR)
+        if acs_year is not None and (type(acs_year) is not int or acs_year < 2009):
+            raise CensusAcsError(
+                "acs_year must be an ACS 5-Year Data Profile vintage (2009 or later)"
+            )
+        self._acs_year = acs_year
 
     def fetch(self, request: DataRequest) -> RawResponse:
         if not self._api_key:
@@ -85,6 +96,10 @@ class CensusAcsConnector:
             raise CensusAcsError(
                 f"geography must be '{{state_fips}}:{{place_fips}}', got {request.geography!r}"
             ) from exc
+        if not (state_fips.isdigit() and len(state_fips) == 2 and _is_known_state_fips(state_fips)):
+            raise CensusAcsError(f"unknown state FIPS code: {state_fips!r}")
+        if not (place_fips.isdigit() and len(place_fips) == 5):
+            raise CensusAcsError(f"place FIPS code must be five digits, got {place_fips!r}")
 
         variables = sorted(
             {
@@ -99,7 +114,8 @@ class CensusAcsConnector:
             "in": f"state:{state_fips}",
             "key": self._api_key,
         }
-        url = f"{ACS_BASE_URL}?{urlencode(query)}"
+        acs_year = self._resolve_acs_year()
+        url = f"{ACS_BASE_URL_TEMPLATE.format(year=acs_year)}?{urlencode(query)}"
         try:
             with urlopen(url, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                 payload = response.read()
@@ -143,8 +159,9 @@ class CensusAcsConnector:
             state=_state_abbreviation(state_fips),
             geography_type="town",
         )
-        observed_period = f"{ACS_YEAR - 4}-{ACS_YEAR}"
-        observed_at = date(ACS_YEAR, 12, 31)
+        acs_year = self._resolved_acs_year_for_normalization()
+        observed_period = f"{acs_year - 4}-{acs_year}"
+        observed_at = date(acs_year, 12, 31)
 
         observations: list[ObservationRecord] = []
         for metric_id, variable in METRIC_VARIABLES.items():
@@ -161,7 +178,7 @@ class CensusAcsConnector:
                     source=SourceRecord(
                         url=response.source_url,
                         title=(
-                            f"American Community Survey {ACS_YEAR} 5-Year Estimates, Data Profile"
+                            f"American Community Survey {acs_year} 5-Year Estimates, Data Profile"
                         ),
                         publisher="U.S. Census Bureau",
                         tier=SourceTier.A,
@@ -189,7 +206,7 @@ class CensusAcsConnector:
                     source=SourceRecord(
                         url=response.source_url,
                         title=(
-                            f"Derived from American Community Survey {ACS_YEAR} 5-Year "
+                            f"Derived from American Community Survey {acs_year} 5-Year "
                             "Estimates, Data Profile: unweighted average of poverty rate, "
                             "unemployment rate, and vacant housing rate (not an official "
                             "Census statistic)"
@@ -216,15 +233,121 @@ class CensusAcsConnector:
                 errors.append(f"{observation.metric_id}: negative ACS estimate")
         return ValidationResult(valid=not errors, errors=tuple(errors))
 
+    def _resolve_acs_year(self) -> int:
+        """Return an explicitly pinned vintage or discover the newest published one.
 
-# Census "in=state:" FIPS codes for the state abbreviations this engine currently benchmarks.
-# Extend as new states are added to config/regions.yaml.
+        Census's data catalog is the release authority.  We deliberately do not
+        derive a vintage from today's date: an ACS release is published late in
+        the following calendar year, so that would risk requesting an
+        unavailable or not-yet-published dataset.
+        """
+        if self._acs_year is not None:
+            return self._acs_year
+
+        try:
+            with urlopen(ACS_CATALOG_URL, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                payload = response.read()
+        except (HTTPError, URLError) as exc:
+            raise CensusAcsError(
+                f"census_acs could not retrieve the Census data catalog: {exc}"
+            ) from exc
+
+        try:
+            catalog = json.loads(payload)
+            datasets = catalog["dataset"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise CensusAcsError(
+                "census_acs received an invalid Census data catalog response"
+            ) from exc
+        if not isinstance(datasets, list):
+            raise CensusAcsError("census_acs received an invalid Census data catalog response")
+
+        published_vintages = [
+            dataset["c_vintage"]
+            for dataset in datasets
+            if isinstance(dataset, dict)
+            and dataset.get("c_dataset") == ACS_DATASET.split("/")
+            and dataset.get("c_isAvailable") is True
+            and isinstance(dataset.get("c_vintage"), int)
+            and not isinstance(dataset["c_vintage"], bool)
+        ]
+        if not published_vintages:
+            raise CensusAcsError(
+                "census_acs could not find a published ACS 5-Year Data Profile vintage "
+                "in the Census data catalog"
+            )
+        self._acs_year = max(published_vintages)
+        return self._acs_year
+
+    def _resolved_acs_year_for_normalization(self) -> int:
+        if self._acs_year is None:
+            raise CensusAcsError(
+                "census_acs cannot normalize before fetching and resolving an ACS vintage; "
+                "pass acs_year to normalize an independently obtained response"
+            )
+        return self._acs_year
+
+
+# Census "in=state:" FIPS codes and USPS abbreviations for every state,
+# district, and territory whose Census geography is represented by this
+# connector.  The map is deliberately complete rather than tied to the
+# benchmark configuration, so live evidence can be collected nationwide.
 _STATE_FIPS_TO_ABBREVIATION: Final[dict[str, str]] = {
+    "01": "AL",
+    "02": "AK",
+    "04": "AZ",
+    "05": "AR",
+    "06": "CA",
+    "08": "CO",
+    "09": "CT",
+    "10": "DE",
+    "11": "DC",
+    "12": "FL",
+    "13": "GA",
+    "15": "HI",
     "17": "IL",
     "18": "IN",
+    "19": "IA",
+    "20": "KS",
+    "21": "KY",
+    "22": "LA",
+    "23": "ME",
+    "24": "MD",
+    "25": "MA",
+    "26": "MI",
     "27": "MN",
+    "28": "MS",
+    "29": "MO",
+    "30": "MT",
+    "31": "NE",
+    "32": "NV",
+    "33": "NH",
+    "34": "NJ",
+    "35": "NM",
+    "36": "NY",
     "37": "NC",
+    "38": "ND",
+    "39": "OH",
+    "40": "OK",
+    "41": "OR",
+    "42": "PA",
+    "44": "RI",
+    "45": "SC",
+    "46": "SD",
+    "47": "TN",
+    "48": "TX",
+    "49": "UT",
+    "50": "VT",
+    "51": "VA",
+    "53": "WA",
+    "54": "WV",
     "55": "WI",
+    "56": "WY",
+    "60": "AS",
+    "66": "GU",
+    "69": "MP",
+    "72": "PR",
+    "78": "VI",
 }
 
 
@@ -233,6 +356,10 @@ def _state_abbreviation(state_fips: str) -> str:
         return _STATE_FIPS_TO_ABBREVIATION[state_fips]
     except KeyError as exc:
         raise CensusAcsError(f"unknown state FIPS code: {state_fips!r}") from exc
+
+
+def _is_known_state_fips(state_fips: str) -> bool:
+    return state_fips in _STATE_FIPS_TO_ABBREVIATION
 
 
 def _acs_variables_for(metric_id: str) -> tuple[str, ...]:
