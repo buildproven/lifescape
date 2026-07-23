@@ -45,6 +45,16 @@ Milestone 2 has begun: `lifescape.connectors.census_acs.CensusAcsConnector` impl
 
 Researched but not pursued: `median_sale_price`, `flood_risk_score`, and `one_level_inventory_count` have no free, town-level public API as of 2026-07 (Zillow's public API is discontinued, FEMA's flood API requires a paid third-party wrapper, and listing inventory is commercial/MLS-adjacent data) — these stay manual/CSV-sourced. `broadband_mbps_down` has a real source (FCC Broadband Map API) but needs a separate signup token and its place-level aggregation behavior is unverified; lower priority than the metrics already covered.
 
-Remaining Milestone 2 work: connectors for `broadband_mbps_down`, `annual_snowfall` (NOAA NCEI Climate Data Online — verified live and keyless, needs a station-lookup step), `er_drive_minutes` (CMS Hospital General Information dataset — verified live and keyless, needs address-to-drive-time routing), and automated candidate discovery.
+Milestone 2 also includes `lifescape.connectors.noaa_gsoy.NoaaGsoyConnector` for
+`annual_snowfall`. It uses NCEI's public Data Access Service and Global Summary
+of the Year (GSOY) `SNOW` field, requesting NOAA standard units (inches). The
+input is an explicit `<NCEI station id>:<completed calendar year>` selection;
+the connector deliberately does not infer a nearest station, manufacture a
+town-level value, or average multiple years. Its source record identifies the
+station and marks the evidence geography as `station`, so that proxy is visible
+in reports. A missing, flagged, malformed, or unavailable station-year becomes
+missing critical evidence and blocks the candidate normally.
 
 The ACS connector now supports every Census state, district, and territory FIPS code rather than only the benchmark states. By default it resolves the newest *published* ACS 5-Year Data Profile vintage from the [official Census data catalog](https://api.census.gov/data.json), avoiding a date-derived guess before an annual release exists. Its `acs_year` constructor option pins a vintage when a reproducible research run requires one. Catalog failures or an absent published profile are explicit connector failures; the live-run orchestration records the affected evidence as missing, where critical gates remain blocked rather than silently falling back to a prior vintage.
+
+Remaining Milestone 2 work: connectors for `broadband_mbps_down`, `er_drive_minutes` (CMS Hospital General Information dataset — verified live and keyless, needs address-to-drive-time routing), and automated candidate discovery.

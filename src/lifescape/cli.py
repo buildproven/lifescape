@@ -11,10 +11,12 @@ import typer
 import yaml
 
 from lifescape.config import ConfigurationError, load_sources
+from lifescape.connectors.base import Connector
 from lifescape.connectors.census_acs import CensusAcsConnector
+from lifescape.connectors.noaa_gsoy import NoaaGsoyConnector
 from lifescape.connectors.orchestrate import PlaceRequest, fetch_live_observations
 from lifescape.evidence import SourcePolicyError, validate_source
-from lifescape.models import Confidence, SourceRecord, SourceTier
+from lifescape.models import Confidence, PlaceRecord, SourceRecord, SourceTier
 from lifescape.pipeline import execute_run
 from lifescape.resources import bundled_benchmark
 
@@ -71,18 +73,67 @@ def run_command(
 
 
 def _load_place_requests(path: Path) -> tuple[PlaceRequest, ...]:
-    """Load a {place_id: "state_fips:place_fips"} mapping used to fetch live evidence."""
+    """Load legacy or connector-specific geographic identifiers for live evidence.
+
+    Legacy form: ``{place_id: "state_fips:place_fips"}`` (Census ACS only).
+    Connector-specific form supplies ``name``, ``state``, and connector keys, e.g.
+    ``noaa_gsoy: "USC00218450:2024"``.  NOAA station selection is deliberately
+    caller-configured; the connector never chooses or aggregates stations.
+    """
     try:
         with path.open(encoding="utf-8") as handle:
             raw = yaml.safe_load(handle)
     except (OSError, yaml.YAMLError) as exc:
         raise ConfigurationError(f"cannot load {path}: {exc}") from exc
     if not isinstance(raw, dict) or not raw:
-        raise ConfigurationError(f"{path} must map place_id to a 'state_fips:place_fips' string")
-    return tuple(
-        PlaceRequest(place_id=place_id, geography=geography)
-        for place_id, geography in sorted(raw.items())
-    )
+        raise ConfigurationError(
+            f"{path} must map place_id to a geography string or connector-specific mapping"
+        )
+    requests: list[PlaceRequest] = []
+    for place_id, value in sorted(raw.items()):
+        if not isinstance(place_id, str):
+            raise ConfigurationError(f"{path} has a non-string place_id")
+        if isinstance(value, str):
+            requests.append(
+                PlaceRequest(place_id=place_id, connector_geographies={"census_acs": value})
+            )
+            continue
+        if not isinstance(value, dict):
+            raise ConfigurationError(f"{path} entry {place_id!r} must be a string or mapping")
+        name = value.pop("name", None)
+        state = value.pop("state", None)
+        geography_type = value.pop("geography_type", "town")
+        if not (
+            isinstance(name, str) and isinstance(state, str) and isinstance(geography_type, str)
+        ):
+            raise ConfigurationError(
+                f"{path} entry {place_id!r} requires string name and state "
+                "(optional geography_type)"
+            )
+        if not all(
+            isinstance(connector, str) and isinstance(geography, str)
+            for connector, geography in value.items()
+        ):
+            raise ConfigurationError(
+                f"{path} entry {place_id!r} connector geographies must be strings"
+            )
+        if not value:
+            raise ConfigurationError(
+                f"{path} entry {place_id!r} must configure at least one connector"
+            )
+        requests.append(
+            PlaceRequest(
+                place_id=place_id,
+                connector_geographies=value,
+                place=PlaceRecord(
+                    name=name,
+                    state=state,
+                    geography_type=geography_type,
+                    place_id=place_id,
+                ),
+            )
+        )
+    return tuple(requests)
 
 
 @app.command("live-run")
@@ -108,7 +159,7 @@ def live_run_command(
     UNKNOWN evidence rather than aborting the run.
     """
     place_requests = _load_place_requests(places)
-    connectors = [CensusAcsConnector()]
+    connectors: list[Connector] = [CensusAcsConnector(), NoaaGsoyConnector()]
     _event(
         "live_run_started",
         places=len(place_requests),

@@ -111,6 +111,65 @@ def test_live_run_fetches_merges_and_writes_reports(tmp_path: Path, monkeypatch)
     assert (output_dir / "comparison.md").exists()
 
 
+def test_live_run_fetches_explicit_noaa_station_year(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("CENSUS_API_KEY", "test-key")
+    places = tmp_path / "places.yaml"
+    places.write_text(
+        "lake_geneva_wi:\n"
+        "  name: Lake Geneva\n"
+        "  state: WI\n"
+        '  census_acs: "55:43075"\n'
+        '  noaa_gsoy: "USC00218450:2024"\n',
+        encoding="utf-8",
+    )
+    evidence = tmp_path / "evidence.csv"
+    evidence.write_text(EVIDENCE_HEADER, encoding="utf-8")
+    noaa_payload = [
+        {
+            "DATE": "2024",
+            "STATION": "USC00218450",
+            "SNOW": "31.6",
+            "SNOW_ATTRIBUTES": " ,7",
+        }
+    ]
+
+    with (
+        patch(
+            "lifescape.connectors.census_acs.urlopen",
+            side_effect=[
+                _mock_urlopen_response(CENSUS_CATALOG),
+                _mock_urlopen_response(CENSUS_PAYLOAD),
+            ],
+        ),
+        patch(
+            "lifescape.connectors.noaa_gsoy.urlopen",
+            return_value=_mock_urlopen_response(noaa_payload),
+        ),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "live-run",
+                "--places",
+                str(places),
+                "--evidence",
+                str(evidence),
+                "--database",
+                str(tmp_path / "live.sqlite"),
+                "--output-dir",
+                str(tmp_path / "output"),
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    events = [json.loads(line) for line in result.output.splitlines() if line.startswith("{")]
+    completed = next(event for event in events if event["event"] == "live_run_completed")
+    assert completed["live_observations"] == 2
+    assert "station-level evidence" in (tmp_path / "output" / "comparison.md").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_live_run_reports_connector_failures_without_aborting(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CENSUS_API_KEY", "test-key")
     places = tmp_path / "places.yaml"
