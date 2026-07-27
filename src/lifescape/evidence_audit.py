@@ -107,7 +107,7 @@ def audit_manual_evidence(
 
     for row in rows:
         for metric_id, metric in metric_map.items():
-            value = row[metric_id].strip()
+            value = row.get(metric_id, "").strip()
             if not value:
                 continue
             try:
