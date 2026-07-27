@@ -58,6 +58,25 @@ lifescape run \
 
 See [the implementation plan](docs/implementation-plan.md), [source policy](docs/source-policy.md), and [limitations](docs/limitations.md).
 
+### Audit manual provenance
+
+The wide CSV contract has one row-level source block. Before using a manually researched
+CSV for a decision, audit every populated metric against a separate metric-specific evidence
+manifest. The audit does not modify, infer, or score evidence; it writes a deterministic JSON
+ledger and a blank correction template.
+
+```bash
+lifescape audit-evidence \
+  --evidence path/to/evidence.csv \
+  --config-dir config \
+  --output-dir outputs/evidence-audit
+```
+
+Populate the generated `evidence-manifest-template.csv` with the source that supports each
+individual metric, then re-run with `--manifest path/to/evidence-manifest.csv`. A record whose
+source, geography, freshness, confidence, or metric semantics cannot be validated remains
+`action_required` and never changes the strict scoring path.
+
 ## Live snowfall evidence
 
 `lifescape live-run` can additionally fetch NOAA NCEI Global Summary of the Year
