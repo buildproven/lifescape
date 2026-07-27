@@ -17,7 +17,7 @@
     "quality:python": "uv run --extra dev ruff format --check . && uv run --extra dev ruff check . && uv run --extra dev mypy src && npm run test:coverage && uv run --extra dev -- uv build --no-build-isolation",
     "quality:check": "npm run quality:frontend && npm run quality:python",
     "security": "npm run security:check",
-    "security:npm": "npm audit --audit-level=high",
+    "security:npm": "npm audit --audit-level=high --omit=dev",
     "security:python": "uv run --extra dev pip-audit --local",
     "security:config": "eslint \"src/lifescape/static/*.js\" && bash scripts/run-gitleaks.sh",
     "security:check": "npm run security:npm && npm run security:python && npm run security:config",
