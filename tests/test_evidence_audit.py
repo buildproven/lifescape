@@ -111,8 +111,8 @@ def test_audit_accepts_valid_metric_specific_records(tmp_path: Path) -> None:
 
     audit = audit_manual_evidence(
         evidence,
-            load_metrics(CONFIG_DIR),
-            load_sources(CONFIG_DIR),
+        load_metrics(CONFIG_DIR),
+        load_sources(CONFIG_DIR),
         manifest_path=manifest,
         as_of=None,
     )
@@ -138,8 +138,8 @@ def test_audit_flags_zhvi_as_not_median_sale_price(tmp_path: Path) -> None:
 
     audit = audit_manual_evidence(
         evidence,
-            load_metrics(CONFIG_DIR),
-            load_sources(CONFIG_DIR),
+        load_metrics(CONFIG_DIR),
+        load_sources(CONFIG_DIR),
         manifest_path=manifest,
     )
 
@@ -155,8 +155,8 @@ def test_audit_rejects_incomplete_metric_specific_provenance(tmp_path: Path) -> 
 
     audit = audit_manual_evidence(
         evidence,
-            load_metrics(CONFIG_DIR),
-            load_sources(CONFIG_DIR),
+        load_metrics(CONFIG_DIR),
+        load_sources(CONFIG_DIR),
         manifest_path=manifest,
     )
 
@@ -167,9 +167,7 @@ def test_audit_output_is_deterministic_and_preserves_input(tmp_path: Path) -> No
     evidence = tmp_path / "evidence.csv"
     _write_wide_evidence(evidence, {"annual_snowfall": "20"})
     original = evidence.read_bytes()
-    audit = audit_manual_evidence(
-        evidence, load_metrics(CONFIG_DIR), load_sources(CONFIG_DIR)
-    )
+    audit = audit_manual_evidence(evidence, load_metrics(CONFIG_DIR), load_sources(CONFIG_DIR))
 
     first_dir = tmp_path / "first"
     second_dir = tmp_path / "second"
