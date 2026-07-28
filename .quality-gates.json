@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "gates": {
+    "type": {
+      "executable": "uv",
+      "args": ["run", "--extra", "dev", "mypy", "src"]
+    }
+  }
+}
