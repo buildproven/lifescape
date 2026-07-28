@@ -38,16 +38,31 @@ def _run() -> RunResult:
         observations=(),
         gate_results=(
             GateResult(
-                place_id="lead", gate_id="winter", result=GateState.UNKNOWN, raw_value=None,
-                threshold=65, source_url=None, notes="missing"
+                place_id="lead",
+                gate_id="winter",
+                result=GateState.UNKNOWN,
+                raw_value=None,
+                threshold=65,
+                source_url=None,
+                notes="missing",
             ),
             GateResult(
-                place_id="reject", gate_id="winter", result=GateState.FAIL, raw_value=90,
-                threshold=65, source_url="https://example.gov", notes="failed"
+                place_id="reject",
+                gate_id="winter",
+                result=GateState.FAIL,
+                raw_value=90,
+                threshold=65,
+                source_url="https://example.gov",
+                notes="failed",
             ),
             GateResult(
-                place_id="unknown", gate_id="winter", result=GateState.UNKNOWN, raw_value=None,
-                threshold=65, source_url=None, notes="missing"
+                place_id="unknown",
+                gate_id="winter",
+                result=GateState.UNKNOWN,
+                raw_value=None,
+                threshold=65,
+                source_url=None,
+                notes="missing",
             ),
         ),
         scores=(),
@@ -58,12 +73,8 @@ def _run() -> RunResult:
 def _audit() -> EvidenceAudit:
     return EvidenceAudit(
         entries=(
-            AuditEntry(
-                "lead", "Lead", "NC", "annual_snowfall", 20, "https://x", "ready", None
-            ),
-            AuditEntry(
-                "reject", "Reject", "NC", "annual_snowfall", 90, "https://x", "ready", None
-            ),
+            AuditEntry("lead", "Lead", "NC", "annual_snowfall", 20, "https://x", "ready", None),
+            AuditEntry("reject", "Reject", "NC", "annual_snowfall", 90, "https://x", "ready", None),
             AuditEntry(
                 "unknown",
                 "Unknown",
