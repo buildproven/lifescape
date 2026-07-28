@@ -22,6 +22,7 @@ class ResearchCard:
     reason: str
     unresolved_critical_metrics: tuple[str, ...]
     next_action: str | None
+    source_url: str | None
 
 
 def build_research_cards(
@@ -75,6 +76,7 @@ def build_research_cards(
                     ),
                     unresolved_critical_metrics=unresolved,
                     next_action=None,
+                    source_url=audit_by_metric[metric_id].supplied_source_url,
                 )
             )
             continue
@@ -88,6 +90,7 @@ def build_research_cards(
                     reason="User-designated discovery lead; not decision-ready",
                     unresolved_critical_metrics=unresolved,
                     next_action=_next_action(next_metric),
+                    source_url=None,
                 )
             )
             continue
@@ -99,6 +102,7 @@ def build_research_cards(
                 reason="No validated rejection, but critical evidence is unresolved",
                 unresolved_critical_metrics=unresolved,
                 next_action=_next_action(next_metric),
+                source_url=None,
             )
         )
     return tuple(cards)
@@ -129,10 +133,11 @@ def write_research_report(
         for card in bucket_cards:
             markdown_lines.append(f"### {card.town}")
             markdown_lines.append(f"- Reason: {card.reason}")
+            if card.source_url is not None:
+                markdown_lines.append(f"- Source: {card.source_url}")
             if card.unresolved_critical_metrics:
                 markdown_lines.append(
-                    "- Unresolved critical evidence: "
-                    + ", ".join(card.unresolved_critical_metrics)
+                    "- Unresolved critical evidence: " + ", ".join(card.unresolved_critical_metrics)
                 )
             if card.next_action is not None:
                 markdown_lines.append(f"- Next action: {card.next_action}")
@@ -151,6 +156,7 @@ def write_research_report(
                 "reason",
                 "unresolved_critical_metrics",
                 "next_action",
+                "source_url",
             ),
             lineterminator="\n",
         )
@@ -164,6 +170,7 @@ def write_research_report(
                     "reason": card.reason,
                     "unresolved_critical_metrics": ";".join(card.unresolved_critical_metrics),
                     "next_action": card.next_action or "",
+                    "source_url": card.source_url or "",
                 }
             )
     return markdown_path, csv_path

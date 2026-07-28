@@ -109,6 +109,7 @@ def test_research_cards_use_audit_before_known_reject() -> None:
     ]
     assert cards[0].reason.endswith("not decision-ready")
     assert cards[1].reason == "annual_snowfall failed its threshold (90 vs 65)"
+    assert cards[1].source_url == "https://x"
     assert cards[2].next_action == "Record a station/year snowfall observation and source."
 
 
@@ -128,6 +129,7 @@ def test_report_lists_each_town_once_and_omits_ranking_fields(tmp_path: Path) ->
     assert markdown.read_text(encoding="utf-8").count("### ") == 3
     assert "Rank" not in markdown.read_text(encoding="utf-8")
     assert "Score" not in markdown.read_text(encoding="utf-8")
+    assert "- Source: https://x" in markdown.read_text(encoding="utf-8")
     assert "rank" not in csv_path.read_text(encoding="utf-8").splitlines()[0]
     assert "score" not in csv_path.read_text(encoding="utf-8").splitlines()[0]
 
