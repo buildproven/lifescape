@@ -13,6 +13,7 @@
     "lint:css": "stylelint \"src/lifescape/static/**/*.css\"",
     "test": "uv run --extra dev pytest",
     "test:coverage": "uv run --extra dev pytest --cov=lifescape --cov-report=term-missing --cov-fail-under=90",
+    "type": "uv run --extra dev mypy src",
     "quality:frontend": "npm run format:check && npm run lint",
     "quality:python": "uv run --extra dev ruff format --check . && uv run --extra dev ruff check . && uv run --extra dev mypy src && npm run test:coverage && uv run --extra dev -- uv build --no-build-isolation",
     "quality:check": "npm run quality:frontend && npm run quality:python",
