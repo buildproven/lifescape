@@ -13,8 +13,9 @@
     "lint:css": "stylelint \"src/lifescape/static/**/*.css\"",
     "test": "uv run --extra dev pytest",
     "test:coverage": "uv run --extra dev pytest --cov=lifescape --cov-report=term-missing --cov-fail-under=90",
+    "type": "uv run --extra dev mypy src",
     "quality:frontend": "npm run format:check && npm run lint",
-    "quality:python": "uv run --extra dev ruff format --check . && uv run --extra dev ruff check . && uv run --extra dev mypy src && npm run test:coverage && uv run --extra dev -- uv build --no-build-isolation",
+    "quality:python": "uv run --extra dev ruff format --check . && uv run --extra dev ruff check . && npm run type && npm run test:coverage && uv run --extra dev -- uv build --no-build-isolation",
     "quality:check": "npm run quality:frontend && npm run quality:python",
     "security": "npm run security:check",
     "security:npm": "npm audit --audit-level=high --omit=dev",
@@ -26,10 +27,10 @@
   "devDependencies": {
     "@commitlint/cli": "^20.4.1",
     "@commitlint/config-conventional": "^20.4.1",
-    "@eslint/js": "^9.12.0",
+    "@eslint/js": "^10.0.0",
     "commitlint": "^20.4.1",
-    "eslint": "^9.12.0",
-    "eslint-plugin-security": "^3.0.1",
+    "eslint": "^10.8.0",
+    "eslint-plugin-security": "^4.0.1",
     "globals": "^15.9.0",
     "husky": "^9.1.4",
     "lint-staged": "^15.2.10",
@@ -55,7 +56,7 @@
     ]
   },
   "engines": {
-    "node": ">=22.9"
+    "node": "^22.13.0 || >=24"
   },
   "volta": {
     "node": "22.22.2",

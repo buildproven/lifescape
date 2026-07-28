@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "gates": {
+    "type": {
+      "executable": "npm",
+      "args": ["run", "type"]
+    }
+  }
+}

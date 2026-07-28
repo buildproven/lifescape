@@ -10,7 +10,7 @@ The governing rule is: **gates eliminate, weights rank, evidence decides, uncert
 
 ## Quick start
 
-Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and Node.js 22.9+.
+Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and Node.js 22.13+.
 
 ```bash
 uv sync --locked --extra dev --python 3.12
