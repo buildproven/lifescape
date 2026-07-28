@@ -43,6 +43,13 @@ def test_cli_help_builds_all_commands() -> None:
     assert "validate-sources" in result.output
 
 
+def test_research_report_help_supports_repeated_investigation_leads() -> None:
+    result = runner.invoke(app, ["research-report", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--investigate-place" in result.output
+
+
 def test_app_command_help_exposes_local_options() -> None:
     result = runner.invoke(app, ["app", "--help"])
     command = get_command(app).commands["app"]

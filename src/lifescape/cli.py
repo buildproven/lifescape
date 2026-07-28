@@ -109,7 +109,7 @@ def research_report_command(
     profile: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
     config_dir: Annotated[Path, typer.Option(exists=True, file_okay=False)] = Path("config"),
     manifest: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
-    investigate_place: Annotated[tuple[str, ...], typer.Option()] = (),
+    investigate_place: Annotated[list[str] | None, typer.Option()] = None,
     database: Annotated[Path, typer.Option()] = Path("outputs/research-report.sqlite"),
     output_dir: Annotated[Path, typer.Option()] = Path("outputs/research-report"),
     as_of: Annotated[str | None, typer.Option()] = None,
@@ -132,7 +132,10 @@ def research_report_command(
         as_of=evaluated_as_of,
     )
     cards = build_research_cards(
-        run, audit, load_gates(config_dir).gates, investigate_place_ids=investigate_place
+        run,
+        audit,
+        load_gates(config_dir).gates,
+        investigate_place_ids=tuple(investigate_place or ()),
     )
     markdown, csv_path = write_research_report(
         cards, output_dir, strict_eligible_count=len(run.scores)
