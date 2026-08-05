@@ -10,12 +10,13 @@ from typing import Annotated
 import typer
 import yaml
 
-from lifescape.config import ConfigurationError, load_sources
+from lifescape.config import ConfigurationError, load_metrics, load_sources
 from lifescape.connectors.base import Connector
 from lifescape.connectors.census_acs import CensusAcsConnector
 from lifescape.connectors.noaa_gsoy import NoaaGsoyConnector
 from lifescape.connectors.orchestrate import PlaceRequest, fetch_live_observations
 from lifescape.evidence import SourcePolicyError, validate_source
+from lifescape.evidence_audit import audit_manual_evidence, write_evidence_audit
 from lifescape.models import Confidence, PlaceRecord, SourceRecord, SourceTier
 from lifescape.pipeline import execute_run
 from lifescape.resources import bundled_benchmark
@@ -70,6 +71,35 @@ def run_command(
         output_dir=str(output_dir),
     )
     typer.echo(result.run_id)
+
+
+@app.command("audit-evidence")
+def audit_evidence_command(
+    evidence: Annotated[Path, typer.Option(exists=True, dir_okay=False)],
+    output_dir: Annotated[Path, typer.Option()] = Path("outputs/evidence-audit"),
+    config_dir: Annotated[Path, typer.Option(exists=True, file_okay=False)] = Path("config"),
+    manifest: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
+    as_of: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """Audit a wide manual CSV for metric-specific source provenance."""
+    _event("evidence_audit_started", evidence=str(evidence), config_dir=str(config_dir))
+    audit = audit_manual_evidence(
+        evidence,
+        load_metrics(config_dir),
+        load_sources(config_dir),
+        manifest_path=manifest,
+        as_of=_parse_optional_date(as_of, "--as-of"),
+    )
+    audit_path, template_path = write_evidence_audit(
+        audit, output_dir, evidence_path=evidence, manifest_path=manifest
+    )
+    _event(
+        "evidence_audit_completed",
+        findings=audit.finding_count,
+        observations=len(audit.entries),
+        audit=str(audit_path),
+        template=str(template_path),
+    )
 
 
 def _load_place_requests(path: Path) -> tuple[PlaceRequest, ...]:
