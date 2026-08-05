@@ -4,6 +4,7 @@ const state = {
   selected: new Set(),
   metricCount: 0,
   evidenceToken: null,
+  researchPacket: null,
   result: null,
 };
 
@@ -269,6 +270,59 @@ async function importEvidence(file) {
   toast(`Imported ${state.places.length} towns from ${file.name}`);
 }
 
+function renderDiscovery(packet) {
+  state.researchPacket = packet;
+  const results = $("#discovery-results");
+  results.innerHTML = `<p class="discovery-disclosure">${escapeHtml(packet.disclosure)}</p>${packet.leads
+    .map(
+      (lead) => `<article class="discovery-card">
+        <h3>${escapeHtml(lead.name)}, ${escapeHtml(lead.state)}</h3>
+        <p>${escapeHtml(lead.rationale)}</p>
+        <small>${lead.unresolved_critical_metrics.length} critical facts still need verification</small>
+      </article>`
+    )
+    .join("")}`;
+}
+
+async function discoverCandidates() {
+  const preferences = $("#discovery-preferences").value.trim();
+  const examples = [
+    $("#discovery-example-one").value.trim(),
+    $("#discovery-example-two").value.trim(),
+  ].filter(Boolean);
+  if (preferences.length < 20) {
+    toast("Describe the retirement life you want in at least a sentence.");
+    return;
+  }
+  if (!examples.length) {
+    toast("Name at least one example town so discovery has a reference point.");
+    return;
+  }
+  const button = $("#discover-button");
+  button.disabled = true;
+  button.textContent = "Finding research leads…";
+  try {
+    const response = await fetch("/api/research/discover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        preferences,
+        exemplar_towns: examples,
+        hard_constraints: [`Maximum purchase budget: ${money.format(Number($("#budget").value))}`],
+        exclusions: [],
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "Discovery could not run.");
+    renderDiscovery(payload);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+    button.innerHTML = "Find research leads <span>↗</span>";
+  }
+}
+
 async function initialize() {
   try {
     const response = await fetch("/api/bootstrap");
@@ -324,5 +378,6 @@ $("#evidence-file").addEventListener("change", async (event) => {
   }
   event.target.value = "";
 });
+$("#discover-button").addEventListener("click", discoverCandidates);
 
 initialize();

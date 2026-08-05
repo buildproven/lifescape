@@ -11,6 +11,8 @@ import pytest
 import uvicorn
 from playwright.sync_api import Page, sync_playwright
 
+from lifescape.models import PlaceRecord
+from lifescape.research import DiscoveryLead, DiscoveryProvider, SearchBrief
 from lifescape.web import create_app
 
 
@@ -40,7 +42,12 @@ def contrast_ratio(
 
 
 @contextmanager
-def running_app(output_dir: Path, *, hosted_demo: bool = False) -> Iterator[str]:
+def running_app(
+    output_dir: Path,
+    *,
+    hosted_demo: bool = False,
+    discovery_provider: DiscoveryProvider | None = None,
+) -> Iterator[str]:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -50,6 +57,7 @@ def running_app(output_dir: Path, *, hosted_demo: bool = False) -> Iterator[str]
                 output_dir,
                 hosted_demo=hosted_demo,
                 hosted_runs_enabled=True if hosted_demo else None,
+                discovery_provider=discovery_provider,
             ),
             host="127.0.0.1",
             port=port,
@@ -71,6 +79,41 @@ def running_app(output_dir: Path, *, hosted_demo: bool = False) -> Iterator[str]
     finally:
         server.should_exit = True
         thread.join(timeout=5)
+
+
+class FakeDiscoveryProvider:
+    def discover(self, brief: SearchBrief) -> tuple[DiscoveryLead, ...]:
+        assert brief.exemplar_towns == ("Traverse City, MI",)
+        return (
+            DiscoveryLead(
+                place=PlaceRecord(place_id="asheville_nc", name="Asheville", state="NC"),
+                rationale="A research lead, not a verified conclusion.",
+            ),
+        )
+
+
+def test_user_can_generate_discovery_leads_without_affecting_comparison(
+    tmp_path: Path,
+) -> None:
+    with (
+        running_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()) as url,
+        sync_playwright() as playwright,
+    ):
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page.goto(url)
+
+        page.get_by_role("heading", name="Shape the decision").wait_for()
+        page.locator("#discovery-preferences").fill(
+            "Walkable four-season retirement town with nature and a lively core."
+        )
+        page.locator("#discovery-example-one").fill("Traverse City, MI")
+        page.get_by_role("button", name="Find research leads ↗").click()
+
+        page.get_by_role("heading", name="Asheville, NC").wait_for()
+        assert page.get_by_text("Discovery leads are not verified evidence").is_visible()
+        assert page.get_by_text("7 critical facts still need verification").is_visible()
+        browser.close()
 
 
 @pytest.mark.parametrize(

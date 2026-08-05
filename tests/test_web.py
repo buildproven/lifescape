@@ -11,8 +11,22 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from lifescape.models import PlaceRecord
 from lifescape.pipeline import execute_run
+from lifescape.research import DiscoveryLead, SearchBrief
 from lifescape.web import HostedRunGuard, create_app
+
+
+class FakeDiscoveryProvider:
+    def discover(self, brief: SearchBrief) -> tuple[DiscoveryLead, ...]:
+        assert brief.exemplar_towns == ("Traverse City, MI",)
+        return (
+            DiscoveryLead(
+                place=PlaceRecord(place_id="asheville_nc", name="Asheville", state="NC"),
+                rationale="A discovery lead, not verified evidence.",
+                caveats=("Verify all critical evidence.",),
+            ),
+        )
 
 
 def test_hosted_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> None:
@@ -43,6 +57,64 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
     assert "CSV uploads are disabled." not in page.text
     assert len(bootstrap.json()["places"]) == 10
     assert bootstrap.json()["metric_count"] == 17
+
+
+def test_local_app_creates_discovery_packet_without_scoring(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        response = client.post(
+            "/api/research/discover",
+            json={
+                "preferences": (
+                    "Walkable four-season retirement town with nature and a lively core."
+                ),
+                "exemplar_towns": ["Traverse City, MI"],
+                "hard_constraints": ["Budget below $700,000"],
+                "exclusions": [],
+            },
+        )
+        payload = response.json()
+        fetched = client.get(f"/api/research/packets/{payload['packet_id']}")
+
+    assert response.status_code == 200
+    assert payload["state"] == "DISCOVERY"
+    assert payload["leads"][0]["place_id"] == "asheville_nc"
+    assert len(payload["leads"][0]["unresolved_critical_metrics"]) == 7
+    assert "cannot affect gates or ranking" in payload["disclosure"]
+    assert fetched.json() == payload
+
+
+def test_promotion_requires_existing_packet_and_never_runs_scoring(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        missing = client.post(
+            "/api/research/promote",
+            json={
+                "packet_id": "missing",
+                "reviewer": "Brett Stark",
+                "place": {"place_id": "asheville_nc", "name": "Asheville", "state": "NC"},
+                "metric_id": "annual_snowfall",
+                "raw_value": 12,
+                "observed_period": "2025",
+                "observed_at": "2025-12-31",
+                "source": {
+                    "url": "https://www.ncei.noaa.gov/example",
+                    "title": "Station observation",
+                    "publisher": "NOAA",
+                    "tier": "A",
+                    "retrieved_at": "2026-01-01",
+                    "geography": "town",
+                    "confidence": "high",
+                },
+            },
+        )
+
+    assert missing.status_code == 404
+    assert "research packet is not available" in missing.json()["detail"]
 
 
 def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:

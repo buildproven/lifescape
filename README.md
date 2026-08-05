@@ -28,6 +28,23 @@ The public deployment at `lifescape.buildproven.ai` is a static explanation and 
 synthetic example. It exposes no comparison API, accepts no inputs, and stores no user data.
 Use the local app for your own evidence, computation, reports, and downloadable provenance.
 
+### Find research leads with Claude (optional)
+
+The local app can turn a short description of the retirement life you want plus one or two
+example towns into candidate **research leads**. This is optional and requires an Anthropic
+API key and model name in your local environment:
+
+```bash
+export ANTHROPIC_API_KEY="..."
+export LIFESCAPE_ANTHROPIC_MODEL="..."
+uv run lifescape app
+```
+
+Claude receives only the SearchBrief when you press **Find research leads**. Its output is
+Tier C discovery material: it can suggest towns and caveats, but cannot provide decision
+evidence, clear a gate, or change a ranking. A human must review and promote a complete
+Tier A/B source record through Lifescape's evidence policy before it can be used later.
+
 For the command-line benchmark and QA Architect checks:
 
 ```bash

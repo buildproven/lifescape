@@ -27,10 +27,22 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from lifescape.config import load_metrics
+from lifescape.config import load_metrics, load_sources
 from lifescape.evidence import validate_unique_headers
 from lifescape.models import GateState, RunResult
 from lifescape.pipeline import execute_run
+from lifescape.research import (
+    ClaudeDiscoveryProvider,
+    DiscoveryProvider,
+    PromotionRequest,
+    PromotionResult,
+    ResearchError,
+    ResearchPacket,
+    SearchBrief,
+    create_packet,
+    promote_evidence,
+    readiness_for,
+)
 from lifescape.resources import bundled_benchmark
 
 MAX_EVIDENCE_BYTES = 5_000_000
@@ -473,6 +485,7 @@ def create_app(
     output_dir: Path | None = None,
     *,
     hosted_demo: bool = False,
+    discovery_provider: DiscoveryProvider | None = None,
     hosted_runs_enabled: bool | None = None,
     hosted_run_limit: int = HOSTED_RUN_LIMIT,
     hosted_run_window_seconds: float = HOSTED_RUN_WINDOW_SECONDS,
@@ -509,6 +522,8 @@ def create_app(
     root_output = (output_dir or Path("outputs/app")).resolve()
     run_directories: dict[str, Path] = {}
     imported_evidence: OrderedDict[str, str] = OrderedDict()
+    research_packets: OrderedDict[str, ResearchPacket] = OrderedDict()
+    promoted_evidence: dict[str, list[PromotionResult]] = {}
     hosted_guard = HostedRunGuard(
         enabled=(not hosted_demo if hosted_runs_enabled is None else hosted_runs_enabled),
         run_limit=hosted_run_limit,
@@ -583,6 +598,89 @@ def create_app(
                 "evidence_token": evidence_token,
             }
         except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    def research_response(packet: ResearchPacket) -> dict[str, object]:
+        with bundled_benchmark() as (_, config_dir):
+            needs = readiness_for(packet, load_metrics(config_dir))
+        return {
+            "packet_id": packet.id,
+            "state": packet.state,
+            "leads": [
+                {
+                    "place_id": lead.place.place_id,
+                    "name": lead.place.name,
+                    "state": lead.place.state,
+                    "rationale": lead.rationale,
+                    "caveats": list(lead.caveats),
+                    "discovery_urls": [str(url) for url in lead.discovery_urls],
+                    "research_state": lead.state,
+                    "unresolved_critical_metrics": list(needs[lead.place.place_id]),
+                }
+                for lead in packet.leads
+            ],
+            "disclosure": (
+                "Discovery leads are not verified evidence and cannot affect gates or ranking. "
+                "A human must promote an eligible source record before a future decision run."
+            ),
+        }
+
+    @app.post("/api/research/discover")
+    def discover_candidates(brief: SearchBrief, request: Request) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        _validate_mutation_origin(request)
+        try:
+            provider = discovery_provider or ClaudeDiscoveryProvider.from_environment()
+            packet = create_packet(brief, provider.discover(brief))
+            research_packets[packet.id] = packet
+            while len(research_packets) > 8:
+                expired_id, _ = research_packets.popitem(last=False)
+                promoted_evidence.pop(expired_id, None)
+            return research_response(packet)
+        except ResearchError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/research/packets/{packet_id}")
+    def inspect_research_packet(packet_id: str) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        try:
+            return research_response(research_packets[packet_id])
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="research packet is not available in this session"
+            ) from exc
+
+    @app.post("/api/research/promote")
+    def promote_research_evidence(payload: PromotionRequest, request: Request) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        _validate_mutation_origin(request)
+        try:
+            packet = research_packets[payload.packet_id]
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="research packet is not available in this session"
+            ) from exc
+        try:
+            with bundled_benchmark() as (_, config_dir):
+                result = promote_evidence(
+                    payload,
+                    packet=packet,
+                    metrics=load_metrics(config_dir),
+                    sources=load_sources(config_dir),
+                )
+            promoted_evidence.setdefault(packet.id, []).append(result)
+            return {
+                "packet_id": result.packet_id,
+                "reviewer": result.reviewer,
+                "observation": result.observation.model_dump(mode="json"),
+                "disclosure": (
+                    "Promotion validates one source record; it does not run or alter scoring."
+                ),
+            }
+        except ResearchError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/run")
