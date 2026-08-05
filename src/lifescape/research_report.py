@@ -48,13 +48,15 @@ def build_research_cards(
     for place_id in sorted(places):
         place = places[place_id]
         audit_by_metric = {entry.metric_id: entry for entry in audit_by_place.get(place_id, ())}
+        results_by_gate = {result.gate_id: result for result in gates_by_place[place_id]}
         failed = next(
             (
                 result
-                for result in gates_by_place[place_id]
+                for gate in gates
+                if (result := results_by_gate.get(gate.id)) is not None
                 if result.result is GateState.FAIL
-                and audit_by_metric.get(gate_by_id[result.gate_id].metric_id) is not None
-                and audit_by_metric[gate_by_id[result.gate_id].metric_id].status == "ready"
+                and audit_by_metric.get(gate.metric_id) is not None
+                and audit_by_metric[gate.metric_id].status == "ready"
             ),
             None,
         )
@@ -63,10 +65,8 @@ def build_research_cards(
             for gate in gates
             if audit_by_metric.get(gate.metric_id) is None
             or audit_by_metric[gate.metric_id].status != "ready"
-            or any(
-                result.gate_id == gate.id and result.result is GateState.UNKNOWN
-                for result in gates_by_place[place_id]
-            )
+            or results_by_gate.get(gate.id) is None
+            or results_by_gate[gate.id].result is GateState.UNKNOWN
         )
         if failed is not None:
             metric_id = gate_by_id[failed.gate_id].metric_id

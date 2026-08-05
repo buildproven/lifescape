@@ -163,3 +163,51 @@ def test_research_cards_reject_unknown_designation() -> None:
             ),
             investigate_place_ids=("missing",),
         )
+
+
+def test_research_cards_stably_select_gate_order_and_surface_missing_results() -> None:
+    gates = (
+        GateDefinition(
+            id="winter", metric_id="annual_snowfall", operator=GateOperator.MAX, threshold=65
+        ),
+        GateDefinition(
+            id="healthcare", metric_id="er_drive_minutes", operator=GateOperator.MAX, threshold=25
+        ),
+    )
+    run = _run().model_copy(
+        update={
+            "gate_results": (
+                GateResult(
+                    place_id="reject",
+                    gate_id="healthcare",
+                    result=GateState.FAIL,
+                    raw_value=40,
+                    threshold=25,
+                    source_url="https://example.gov/healthcare",
+                    notes="failed",
+                ),
+                *_run().gate_results,
+            )
+        }
+    )
+    audit = EvidenceAudit(
+        entries=(
+            *_audit().entries,
+            AuditEntry(
+                "lead", "Lead", "NC", "er_drive_minutes", 20, "https://x", None, "ready", None
+            ),
+            AuditEntry(
+                "reject", "Reject", "NC", "er_drive_minutes", 40, "https://x", None, "ready", None
+            ),
+            AuditEntry(
+                "unknown", "Unknown", "NC", "er_drive_minutes", 20, "https://x", None, "ready", None
+            ),
+        ),
+        template_rows=(),
+        as_of=date(2026, 1, 1),
+    )
+
+    cards = build_research_cards(run, audit, gates, investigate_place_ids=("lead",))
+
+    assert cards[0].unresolved_critical_metrics == ("annual_snowfall", "er_drive_minutes")
+    assert cards[1].reason == "annual_snowfall failed its threshold (90 vs 65)"
