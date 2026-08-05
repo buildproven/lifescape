@@ -7,6 +7,7 @@ import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
+from math import isfinite
 from pathlib import Path
 
 from lifescape.evidence import (
@@ -50,6 +51,7 @@ class AuditEntry:
     metric_id: str
     raw_value: float
     supplied_source_url: str
+    validated_provenance: dict[str, str] | None
     status: str
     reason: str | None
 
@@ -61,6 +63,7 @@ class AuditEntry:
             "metric_id": self.metric_id,
             "raw_value": self.raw_value,
             "supplied_source_url": self.supplied_source_url,
+            "validated_provenance": self.validated_provenance,
             "status": self.status,
             "reason": self.reason,
         }
@@ -72,6 +75,7 @@ class EvidenceAudit:
 
     entries: tuple[AuditEntry, ...]
     template_rows: tuple[dict[str, str], ...]
+    as_of: date
 
     @property
     def finding_count(self) -> int:
@@ -79,6 +83,7 @@ class EvidenceAudit:
 
     def as_dict(self) -> dict[str, object]:
         return {
+            "as_of": self.as_of.isoformat(),
             "entries": [entry.as_dict() for entry in self.entries],
             "finding_count": self.finding_count,
             "observation_count": len(self.entries),
@@ -116,9 +121,13 @@ def audit_manual_evidence(
                 raise EvidenceAuditError(
                     f"row {row['_row_number']}: {metric_id} must be a numeric value"
                 ) from exc
+            if not isfinite(raw_value):
+                raise EvidenceAuditError(
+                    f"row {row['_row_number']}: {metric_id} must be a finite number"
+                )
             key = (row["place_id"], metric_id)
             manifest_row = manifest.get(key)
-            status, reason = _audit_status(
+            status, reason, validated_provenance = _audit_status(
                 row,
                 metric,
                 raw_value,
@@ -134,16 +143,21 @@ def audit_manual_evidence(
                     metric_id=metric_id,
                     raw_value=raw_value,
                     supplied_source_url=row["source_url"],
+                    validated_provenance=validated_provenance,
                     status=status,
                     reason=reason,
                 )
             )
             template_rows.append(_template_row(row, metric_id, value))
 
-    return EvidenceAudit(entries=tuple(entries), template_rows=tuple(template_rows))
+    return EvidenceAudit(
+        entries=tuple(entries), template_rows=tuple(template_rows), as_of=reference_date
+    )
 
 
-def write_evidence_audit(audit: EvidenceAudit, output_dir: Path) -> tuple[Path, Path]:
+def write_evidence_audit(
+    audit: EvidenceAudit, output_dir: Path, *, manifest_path: Path | None = None
+) -> tuple[Path, Path]:
     """Write deterministic audit JSON and a blank per-metric correction template."""
     output_dir.mkdir(parents=True, exist_ok=True)
     audit_path = output_dir / "provenance-audit.json"
@@ -151,6 +165,10 @@ def write_evidence_audit(audit: EvidenceAudit, output_dir: Path) -> tuple[Path, 
         json.dumps(audit.as_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     template_path = output_dir / "evidence-manifest-template.csv"
+    if manifest_path is not None and template_path.resolve() == manifest_path.resolve():
+        raise EvidenceAuditError(
+            "output template path would overwrite the supplied evidence manifest"
+        )
     with template_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=MANIFEST_COLUMNS, lineterminator="\n")
         writer.writeheader()
@@ -229,24 +247,30 @@ def _audit_status(
     manifest_row: dict[str, str] | None,
     policy: SourcesConfig,
     as_of: date,
-) -> tuple[str, str | None]:
+) -> tuple[str, str | None, dict[str, str] | None]:
     if manifest_row is None:
         semantic_reason = _semantic_mismatch(metric.id, row["source_title"])
         if semantic_reason is not None:
-            return "action_required", semantic_reason
-        return "action_required", "missing metric-specific provenance record"
+            return "action_required", semantic_reason, None
+        return "action_required", "missing metric-specific provenance record", None
     missing_fields = _missing_manifest_fields(manifest_row)
     if missing_fields:
-        return "action_required", f"manifest record is missing fields: {', '.join(missing_fields)}"
+        return (
+            "action_required",
+            f"manifest record is missing fields: {', '.join(missing_fields)}",
+            None,
+        )
     try:
         manifest_value = float(manifest_row["value"])
     except ValueError:
-        return "action_required", "manifest value is not numeric"
+        return "action_required", "manifest value is not numeric", None
+    if not isfinite(manifest_value):
+        return "action_required", "manifest value must be a finite number", None
     if manifest_value != raw_value:
-        return "action_required", "manifest value does not match the wide evidence value"
+        return "action_required", "manifest value does not match the wide evidence value", None
     semantic_reason = _semantic_mismatch(metric.id, manifest_row["source_title"])
     if semantic_reason is not None:
-        return "action_required", semantic_reason
+        return "action_required", semantic_reason, None
     try:
         source = SourceRecord(
             url=manifest_row["source_url"],
@@ -259,16 +283,20 @@ def _audit_status(
             synthetic=_parse_boolean(manifest_row["synthetic"]),
         )
         observed_at = date.fromisoformat(manifest_row["observed_at"])
-        validate_source(source, policy, as_of=as_of)
+        validate_source(source, policy, for_gate=metric.critical, as_of=as_of)
         validate_observation_freshness(observed_at, metric, source, as_of=as_of)
     except (ValueError, EvidenceError) as exc:
-        return "action_required", str(exc)
-    if source.geography != metric.geography_level:
-        return "action_required", (
-            f"source geography {source.geography!r} does not match "
-            f"metric geography {metric.geography_level!r}"
+        return "action_required", str(exc), None
+    if (
+        row["geography_type"] != metric.geography_level
+        or source.geography != metric.geography_level
+    ):
+        return (
+            "action_required",
+            f"metric {metric.id!r} requires {metric.geography_level!r} geography",
+            None,
         )
-    return "ready", None
+    return "ready", None, dict(manifest_row)
 
 
 def _semantic_mismatch(metric_id: str, source_title: str) -> str | None:

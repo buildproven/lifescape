@@ -1,14 +1,21 @@
 import csv
 import json
+from datetime import date
 from pathlib import Path
 
+import pytest
+
 from lifescape.config import load_metrics, load_sources
-from lifescape.evidence_audit import audit_manual_evidence, write_evidence_audit
+from lifescape.evidence_audit import (
+    EvidenceAuditError,
+    audit_manual_evidence,
+    write_evidence_audit,
+)
 
 CONFIG_DIR = Path(__file__).parents[1] / "config"
 
 
-def _write_wide_evidence(path: Path, values: dict[str, str]) -> None:
+def _write_wide_evidence(path: Path, values: dict[str, str], **overrides: str) -> None:
     columns = [
         "place_id",
         "place_name",
@@ -42,6 +49,7 @@ def _write_wide_evidence(path: Path, values: dict[str, str]) -> None:
         "confidence": "high",
         "synthetic": "false",
         **values,
+        **overrides,
     }
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns, lineterminator="\n")
@@ -167,7 +175,9 @@ def test_audit_output_is_deterministic_and_preserves_input(tmp_path: Path) -> No
     evidence = tmp_path / "evidence.csv"
     _write_wide_evidence(evidence, {"annual_snowfall": "20"})
     original = evidence.read_bytes()
-    audit = audit_manual_evidence(evidence, load_metrics(CONFIG_DIR), load_sources(CONFIG_DIR))
+    audit = audit_manual_evidence(
+        evidence, load_metrics(CONFIG_DIR), load_sources(CONFIG_DIR), as_of=date(2026, 8, 5)
+    )
 
     first_dir = tmp_path / "first"
     second_dir = tmp_path / "second"
@@ -178,7 +188,98 @@ def test_audit_output_is_deterministic_and_preserves_input(tmp_path: Path) -> No
     assert first_audit.read_bytes() == second_audit.read_bytes()
     assert first_template.read_bytes() == second_template.read_bytes()
     payload = json.loads(first_audit.read_text(encoding="utf-8"))
+    assert payload["as_of"] == "2026-08-05"
     assert payload["entries"][0]["supplied_source_url"] == "https://www.zillow.com/home-values/town"
+    assert payload["entries"][0]["validated_provenance"] is None
     assert [row["metric_id"] for row in csv.DictReader(first_template.open(encoding="utf-8"))] == [
         "annual_snowfall"
     ]
+
+
+def test_audit_ledger_preserves_accepted_metric_provenance(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence.csv"
+    manifest = tmp_path / "manifest.csv"
+    _write_wide_evidence(evidence, {"annual_snowfall": "20"})
+    record = _manifest_record("annual_snowfall", "20")
+    _write_manifest(manifest, [record])
+
+    audit = audit_manual_evidence(
+        evidence,
+        load_metrics(CONFIG_DIR),
+        load_sources(CONFIG_DIR),
+        manifest_path=manifest,
+        as_of=None,
+    )
+
+    assert audit.entries[0].validated_provenance == record
+
+
+def test_audit_rejects_low_confidence_critical_metric(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence.csv"
+    manifest = tmp_path / "manifest.csv"
+    _write_wide_evidence(
+        evidence,
+        {"median_sale_price": "400000"},
+        source_title="Manual row source",
+    )
+    _write_manifest(
+        manifest,
+        [_manifest_record("median_sale_price", "400000", confidence="medium")],
+    )
+
+    audit = audit_manual_evidence(
+        evidence, load_metrics(CONFIG_DIR), load_sources(CONFIG_DIR), manifest_path=manifest
+    )
+
+    assert audit.entries[0].reason == "medium confidence cannot decide a gate; minimum is high"
+
+
+def test_audit_rejects_place_geography_mismatch(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence.csv"
+    manifest = tmp_path / "manifest.csv"
+    _write_wide_evidence(evidence, {"annual_snowfall": "20"}, geography_type="county")
+    _write_manifest(manifest, [_manifest_record("annual_snowfall", "20")])
+
+    audit = audit_manual_evidence(
+        evidence, load_metrics(CONFIG_DIR), load_sources(CONFIG_DIR), manifest_path=manifest
+    )
+
+    assert audit.entries[0].reason == "metric 'annual_snowfall' requires 'town' geography"
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity"])
+def test_audit_rejects_non_finite_wide_values(tmp_path: Path, value: str) -> None:
+    evidence = tmp_path / "evidence.csv"
+    _write_wide_evidence(evidence, {"annual_snowfall": value})
+
+    with pytest.raises(EvidenceAuditError, match="must be a finite number"):
+        audit_manual_evidence(evidence, load_metrics(CONFIG_DIR), load_sources(CONFIG_DIR))
+
+
+def test_audit_rejects_non_finite_manifest_value(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence.csv"
+    manifest = tmp_path / "manifest.csv"
+    _write_wide_evidence(evidence, {"annual_snowfall": "20"})
+    _write_manifest(manifest, [_manifest_record("annual_snowfall", "NaN")])
+
+    audit = audit_manual_evidence(
+        evidence, load_metrics(CONFIG_DIR), load_sources(CONFIG_DIR), manifest_path=manifest
+    )
+
+    assert audit.entries[0].reason == "manifest value must be a finite number"
+
+
+def test_audit_never_overwrites_supplied_manifest(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence.csv"
+    manifest = tmp_path / "evidence-manifest-template.csv"
+    _write_wide_evidence(evidence, {"annual_snowfall": "20"})
+    _write_manifest(manifest, [_manifest_record("annual_snowfall", "20")])
+    original = manifest.read_bytes()
+    audit = audit_manual_evidence(
+        evidence, load_metrics(CONFIG_DIR), load_sources(CONFIG_DIR), manifest_path=manifest
+    )
+
+    with pytest.raises(EvidenceAuditError, match="would overwrite"):
+        write_evidence_audit(audit, tmp_path, manifest_path=manifest)
+
+    assert manifest.read_bytes() == original
