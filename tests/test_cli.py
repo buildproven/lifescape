@@ -44,6 +44,8 @@ def test_cli_help_builds_all_commands() -> None:
 
 
 def test_research_report_help_supports_repeated_investigation_leads() -> None:
+    # Rich wraps rendered help according to terminal width, so assert Typer's
+    # option registration rather than a presentation-dependent help line.
     result = runner.invoke(app, ["research-report", "--help"])
     command = get_command(app).commands["research-report"]
     option_flags = {
