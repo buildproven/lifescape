@@ -43,6 +43,22 @@ def test_cli_help_builds_all_commands() -> None:
     assert "validate-sources" in result.output
 
 
+def test_research_report_help_supports_repeated_investigation_leads() -> None:
+    # Rich wraps rendered help according to terminal width, so assert Typer's
+    # option registration rather than a presentation-dependent help line.
+    result = runner.invoke(app, ["research-report", "--help"])
+    command = get_command(app).commands["research-report"]
+    option_flags = {
+        flag
+        for parameter in command.params
+        if isinstance(parameter, TyperOption)
+        for flag in parameter.opts
+    }
+
+    assert result.exit_code == 0, result.output
+    assert "--investigate-place" in option_flags
+
+
 def test_app_command_help_exposes_local_options() -> None:
     result = runner.invoke(app, ["app", "--help"])
     command = get_command(app).commands["app"]

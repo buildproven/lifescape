@@ -77,6 +77,28 @@ individual metric, then re-run with `--manifest path/to/evidence-manifest.csv`. 
 source, geography, freshness, confidence, or metric semantics cannot be validated remains
 `action_required` and never changes the strict scoring path.
 
+### Produce a conditional research shortlist
+
+For early-stage discovery, produce a bucketed research queue alongside the unchanged strict
+engine output. This command never ranks towns or treats missing critical evidence as a pass.
+Use `--investigate-place` only for town IDs that a researcher has deliberately selected as
+leads; repeat the option to include more than one lead.
+
+```bash
+lifescape research-report \
+  --evidence path/to/evidence.csv \
+  --profile path/to/user_profile.yaml \
+  --config-dir config \
+  --manifest path/to/evidence-manifest.csv \
+  --investigate-place lake_geneva_wi \
+  --output-dir outputs/research-report
+```
+
+The output contains three explicit buckets: **Investigate now**, **Known reject**, and
+**Insufficient evidence**. A town can be a known reject only when its failed gate has
+metric-specific provenance that passed the audit. All other unresolved critical evidence is
+listed with its next verification action.
+
 ## Live snowfall evidence
 
 `lifescape live-run` can additionally fetch NOAA NCEI Global Summary of the Year

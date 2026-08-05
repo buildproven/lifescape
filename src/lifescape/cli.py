@@ -10,7 +10,7 @@ from typing import Annotated
 import typer
 import yaml
 
-from lifescape.config import ConfigurationError, load_metrics, load_sources
+from lifescape.config import ConfigurationError, load_gates, load_metrics, load_sources
 from lifescape.connectors.base import Connector
 from lifescape.connectors.census_acs import CensusAcsConnector
 from lifescape.connectors.noaa_gsoy import NoaaGsoyConnector
@@ -19,6 +19,7 @@ from lifescape.evidence import SourcePolicyError, validate_source
 from lifescape.evidence_audit import audit_manual_evidence, write_evidence_audit
 from lifescape.models import Confidence, PlaceRecord, SourceRecord, SourceTier
 from lifescape.pipeline import execute_run
+from lifescape.research_report import build_research_cards, write_research_report
 from lifescape.resources import bundled_benchmark
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
@@ -99,6 +100,56 @@ def audit_evidence_command(
         observations=len(audit.entries),
         audit=str(audit_path),
         template=str(template_path),
+    )
+
+
+@app.command("research-report")
+def research_report_command(
+    evidence: Annotated[Path, typer.Option(exists=True, dir_okay=False)],
+    profile: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
+    config_dir: Annotated[Path, typer.Option(exists=True, file_okay=False)] = Path("config"),
+    manifest: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
+    investigate_place: Annotated[list[str] | None, typer.Option()] = None,
+    database: Annotated[Path, typer.Option()] = Path("outputs/research-report.sqlite"),
+    output_dir: Annotated[Path, typer.Option()] = Path("outputs/research-report"),
+    as_of: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """Write a conditional research shortlist without ranking towns."""
+    evaluated_as_of = _parse_optional_date(as_of, "--as-of")
+    run = execute_run(
+        evidence_path=evidence,
+        config_dir=config_dir,
+        database_path=database,
+        output_dir=output_dir / "strict-engine",
+        profile_path=profile,
+        as_of=evaluated_as_of,
+    )
+    audit = audit_manual_evidence(
+        evidence,
+        load_metrics(config_dir),
+        load_sources(config_dir),
+        manifest_path=manifest,
+        as_of=evaluated_as_of,
+    )
+    cards = build_research_cards(
+        run,
+        audit,
+        load_gates(config_dir).gates,
+        investigate_place_ids=tuple(investigate_place or ()),
+    )
+    markdown, csv_path, audit_path = write_research_report(
+        cards,
+        output_dir,
+        strict_eligible_count=len(run.scores),
+        audit=audit,
+        has_synthetic_evidence=any(item.source.synthetic for item in run.observations),
+    )
+    _event(
+        "research_report_completed",
+        places=len(cards),
+        markdown=str(markdown),
+        csv=str(csv_path),
+        audit=str(audit_path),
     )
 
 
