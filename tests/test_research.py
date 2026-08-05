@@ -18,6 +18,7 @@ from lifescape.research import (
     create_packet,
     promote_evidence,
     readiness_for,
+    state_for,
 )
 
 
@@ -122,6 +123,121 @@ def test_human_reviewed_ready_source_promotes_without_scoring(policy) -> None:
     assert result.packet_id == selected_packet.id
     assert result.reviewer == "Brett Stark"
     assert result.observation.metric_id == "annual_snowfall"
+
+
+def test_promotion_rejects_discovery_url_and_forged_place_identity(policy) -> None:
+    selected_packet = create_packet(
+        brief(),
+        (
+            DiscoveryLead(
+                place=PlaceRecord(place_id="asheville_nc", name="Asheville", state="NC"),
+                rationale="Discovery lead only.",
+                discovery_urls=("https://example.com/discovery",),
+            ),
+        ),
+    )
+    request = promotion(selected_packet.id)
+    with pytest.raises(ResearchError, match="discovery URLs"):
+        promote_evidence(
+            request.model_copy(
+                update={
+                    "source": request.source.model_copy(
+                        update={"url": "https://example.com/discovery"}
+                    )
+                }
+            ),
+            packet=selected_packet,
+            metrics=load_metrics(Path("config")),
+            sources=policy,
+            as_of=date(2026, 1, 2),
+        )
+    with pytest.raises(ResearchError, match="exactly match"):
+        promote_evidence(
+            request.model_copy(
+                update={"place": PlaceRecord(place_id="asheville_nc", name="Forged", state="NC")}
+            ),
+            packet=selected_packet,
+            metrics=load_metrics(Path("config")),
+            sources=policy,
+            as_of=date(2026, 1, 2),
+        )
+
+
+def test_promotion_rejects_blank_reviewer_and_stale_observation(policy) -> None:
+    selected_packet = packet()
+    with pytest.raises(ValueError, match="human"):
+        PromotionRequest.model_validate(
+            {**promotion(selected_packet.id).model_dump(mode="json"), "reviewer": "  "}
+        )
+    with pytest.raises(ResearchError, match="stale"):
+        promote_evidence(
+            promotion(selected_packet.id).model_copy(update={"observed_at": date(2023, 1, 1)}),
+            packet=selected_packet,
+            metrics=load_metrics(Path("config")),
+            sources=policy,
+            as_of=date(2026, 1, 2),
+        )
+
+
+def test_provider_cannot_set_later_lifecycle_state_and_promotions_update_readiness(policy) -> None:
+    selected_packet = packet()
+    promoted = promote_evidence(
+        promotion(selected_packet.id),
+        packet=selected_packet,
+        metrics=load_metrics(Path("config")),
+        sources=policy,
+        as_of=date(2026, 1, 2),
+    )
+    assert (
+        "annual_snowfall"
+        not in readiness_for(selected_packet, load_metrics(Path("config")), (promoted,))[
+            "asheville_nc"
+        ]
+    )
+    assert (
+        state_for(selected_packet, load_metrics(Path("config")), (promoted,)).value == "RESEARCHING"
+    )
+
+
+def test_claude_discovery_rejects_a_non_discovery_lifecycle_state() -> None:
+    payload = {
+        "content": [
+            {
+                "text": json.dumps(
+                    {
+                        "leads": [
+                            {
+                                "place": {
+                                    "place_id": "asheville_nc",
+                                    "name": "Asheville",
+                                    "state": "NC",
+                                },
+                                "rationale": "A possible fit.",
+                                "state": "RANKED",
+                            }
+                        ]
+                    }
+                )
+            }
+        ]
+    }
+
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(payload).encode()
+
+    provider = ClaudeDiscoveryProvider(api_key="test-key", model="test-model")
+    with (
+        patch("lifescape.research.urlopen", return_value=Response()),
+        pytest.raises(ResearchError, match="required lead JSON"),
+    ):
+        provider.discover(brief())
 
 
 def test_claude_discovery_returns_tier_c_leads_only() -> None:

@@ -18,7 +18,7 @@ from uuid import uuid4
 
 from pydantic import Field, HttpUrl, model_validator
 
-from lifescape.evidence import SourcePolicyError, validate_source
+from lifescape.evidence import SourcePolicyError, validate_observation_freshness, validate_source
 from lifescape.models import (
     MetricDefinition,
     ObservationRecord,
@@ -84,7 +84,10 @@ class PromotionRequest(StrictModel):
 
     @model_validator(mode="after")
     def human_reviewer_is_named(self) -> PromotionRequest:
-        if self.reviewer.strip().lower() in {"ai", "claude", "codex", "model"}:
+        normalized = self.reviewer.strip().lower()
+        if not normalized:
+            raise ValueError("reviewer must identify the human who checked the source")
+        if normalized in {"ai", "claude", "codex", "model"}:
             raise ValueError("reviewer must identify the human who checked the source")
         return self
 
@@ -155,7 +158,7 @@ class ClaudeDiscoveryProvider:
         try:
             text = payload["content"][0]["text"]
             raw = json.loads(text)
-            leads = tuple(DiscoveryLead.model_validate(item) for item in raw["leads"])
+            leads = tuple(_validate_discovery_lead(item) for item in raw["leads"])
         except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ResearchError("Claude discovery did not return the required lead JSON") from exc
         if not leads:
@@ -180,8 +183,13 @@ def promote_evidence(
     """Validate a human-reviewed packet record without altering engine inputs."""
     if request.packet_id != packet.id:
         raise ResearchError("promotion packet_id does not match the selected research packet")
-    if request.place.place_id not in {lead.place.place_id for lead in packet.leads}:
+    lead = next(
+        (item for item in packet.leads if item.place.place_id == request.place.place_id), None
+    )
+    if lead is None:
         raise ResearchError("promotion place is not a candidate in the selected research packet")
+    if request.place != lead.place:
+        raise ResearchError("promotion place must exactly match the selected research-packet lead")
     metric = next((item for item in metrics if item.id == request.metric_id), None)
     if metric is None:
         raise ResearchError(f"unknown metric: {request.metric_id}")
@@ -192,10 +200,25 @@ def promote_evidence(
             f"source geography {request.source.geography!r} does not match "
             f"metric geography {metric.geography_level!r}"
         )
+    if request.place.geography_type != metric.geography_level:
+        raise ResearchError(
+            f"place geography {request.place.geography_type!r} does not match "
+            f"metric geography {metric.geography_level!r}"
+        )
+    discovery_urls = {str(url) for item in packet.leads for url in item.discovery_urls}
+    if str(request.source.url) in discovery_urls:
+        raise ResearchError("discovery URLs cannot be promoted to decision evidence")
     if not metric.valid_min <= request.raw_value <= metric.valid_max:
         raise ResearchError(f"{metric.id} value falls outside its configured valid range")
     try:
-        validate_source(request.source, sources)
+        reference_date = as_of or date.today()
+        validate_source(request.source, sources, as_of=reference_date)
+        validate_observation_freshness(
+            request.observed_at,
+            metric,
+            request.source,
+            as_of=reference_date,
+        )
     except SourcePolicyError as exc:
         raise ResearchError(str(exc)) from exc
     observation = ObservationRecord(
@@ -206,15 +229,51 @@ def promote_evidence(
         observed_at=request.observed_at,
         source=request.source,
     )
-    return PromotionResult(observation=observation, packet_id=packet.id, reviewer=request.reviewer)
+    return PromotionResult(
+        observation=observation,
+        packet_id=packet.id,
+        reviewer=request.reviewer.strip(),
+    )
 
 
 def readiness_for(
-    packet: ResearchPacket, metrics: tuple[MetricDefinition, ...]
+    packet: ResearchPacket,
+    metrics: tuple[MetricDefinition, ...],
+    promotions: tuple[PromotionResult, ...] = (),
 ) -> dict[str, tuple[str, ...]]:
     """Return per-candidate critical evidence needs; discovery never marks them ready."""
     critical = tuple(metric.id for metric in metrics if metric.critical)
-    return {lead.place.place_id: critical for lead in packet.leads}
+    promoted = {
+        (item.observation.place.place_id, item.observation.metric_id) for item in promotions
+    }
+    return {
+        lead.place.place_id: tuple(
+            metric_id for metric_id in critical if (lead.place.place_id, metric_id) not in promoted
+        )
+        for lead in packet.leads
+    }
+
+
+def state_for(
+    packet: ResearchPacket,
+    metrics: tuple[MetricDefinition, ...],
+    promotions: tuple[PromotionResult, ...] = (),
+) -> ResearchState:
+    """Calculate packet state from accepted local promotion audit records."""
+    if not promotions:
+        return ResearchState.DISCOVERY
+    if all(not needs for needs in readiness_for(packet, metrics, promotions).values()):
+        return ResearchState.DECIDABLE
+    return ResearchState.RESEARCHING
+
+
+def _validate_discovery_lead(value: object) -> DiscoveryLead:
+    if not isinstance(value, dict):
+        raise ValueError("each discovery lead must be an object")
+    supplied_state = value.get("state", ResearchState.DISCOVERY)
+    if supplied_state != ResearchState.DISCOVERY:
+        raise ValueError("discovery providers may only return DISCOVERY-state leads")
+    return DiscoveryLead.model_validate({**value, "state": ResearchState.DISCOVERY})
 
 
 def _discovery_prompt(brief: SearchBrief) -> str:

@@ -42,6 +42,7 @@ from lifescape.research import (
     create_packet,
     promote_evidence,
     readiness_for,
+    state_for,
 )
 from lifescape.resources import bundled_benchmark
 
@@ -602,10 +603,12 @@ def create_app(
 
     def research_response(packet: ResearchPacket) -> dict[str, object]:
         with bundled_benchmark() as (_, config_dir):
-            needs = readiness_for(packet, load_metrics(config_dir))
+            metrics = load_metrics(config_dir)
+        promotions = tuple(promoted_evidence.get(packet.id, ()))
+        needs = readiness_for(packet, metrics, promotions)
         return {
             "packet_id": packet.id,
-            "state": packet.state,
+            "state": state_for(packet, metrics, promotions),
             "leads": [
                 {
                     "place_id": lead.place.place_id,
