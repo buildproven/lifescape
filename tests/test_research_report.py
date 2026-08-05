@@ -73,8 +73,12 @@ def _run() -> RunResult:
 def _audit() -> EvidenceAudit:
     return EvidenceAudit(
         entries=(
-            AuditEntry("lead", "Lead", "NC", "annual_snowfall", 20, "https://x", "ready", None),
-            AuditEntry("reject", "Reject", "NC", "annual_snowfall", 90, "https://x", "ready", None),
+            AuditEntry(
+                "lead", "Lead", "NC", "annual_snowfall", 20, "https://x", None, "ready", None
+            ),
+            AuditEntry(
+                "reject", "Reject", "NC", "annual_snowfall", 90, "https://x", None, "ready", None
+            ),
             AuditEntry(
                 "unknown",
                 "Unknown",
@@ -82,11 +86,13 @@ def _audit() -> EvidenceAudit:
                 "annual_snowfall",
                 20,
                 "https://x",
+                None,
                 "action_required",
                 "missing provenance",
             ),
         ),
         template_rows=(),
+        as_of=date(2026, 1, 1),
     )
 
 
