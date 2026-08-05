@@ -46,9 +46,16 @@ def test_cli_help_builds_all_commands() -> None:
 
 def test_research_report_help_supports_repeated_investigation_leads() -> None:
     result = runner.invoke(app, ["research-report", "--help"])
+    command = get_command(app).commands["research-report"]
+    option_flags = {
+        flag
+        for parameter in command.params
+        if isinstance(parameter, TyperOption)
+        for flag in parameter.opts
+    }
 
     assert result.exit_code == 0, result.output
-    assert "--investigate-place" in result.output
+    assert "--investigate-place" in option_flags
 
 
 def test_app_command_help_exposes_local_options() -> None:
