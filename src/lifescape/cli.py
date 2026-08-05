@@ -90,7 +90,9 @@ def audit_evidence_command(
         manifest_path=manifest,
         as_of=_parse_optional_date(as_of, "--as-of"),
     )
-    audit_path, template_path = write_evidence_audit(audit, output_dir, manifest_path=manifest)
+    audit_path, template_path = write_evidence_audit(
+        audit, output_dir, evidence_path=evidence, manifest_path=manifest
+    )
     _event(
         "evidence_audit_completed",
         findings=audit.finding_count,

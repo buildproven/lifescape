@@ -156,19 +156,24 @@ def audit_manual_evidence(
 
 
 def write_evidence_audit(
-    audit: EvidenceAudit, output_dir: Path, *, manifest_path: Path | None = None
+    audit: EvidenceAudit,
+    output_dir: Path,
+    *,
+    evidence_path: Path | None = None,
+    manifest_path: Path | None = None,
 ) -> tuple[Path, Path]:
     """Write deterministic audit JSON and a blank per-metric correction template."""
-    output_dir.mkdir(parents=True, exist_ok=True)
     audit_path = output_dir / "provenance-audit.json"
+    template_path = output_dir / "evidence-manifest-template.csv"
+    input_paths = tuple(
+        path.resolve() for path in (evidence_path, manifest_path) if path is not None
+    )
+    if audit_path.resolve() in input_paths or template_path.resolve() in input_paths:
+        raise EvidenceAuditError("an audit output path would overwrite a supplied evidence input")
+    output_dir.mkdir(parents=True, exist_ok=True)
     audit_path.write_text(
         json.dumps(audit.as_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    template_path = output_dir / "evidence-manifest-template.csv"
-    if manifest_path is not None and template_path.resolve() == manifest_path.resolve():
-        raise EvidenceAuditError(
-            "output template path would overwrite the supplied evidence manifest"
-        )
     with template_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=MANIFEST_COLUMNS, lineterminator="\n")
         writer.writeheader()

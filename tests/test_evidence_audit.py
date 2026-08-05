@@ -283,3 +283,16 @@ def test_audit_never_overwrites_supplied_manifest(tmp_path: Path) -> None:
         write_evidence_audit(audit, tmp_path, manifest_path=manifest)
 
     assert manifest.read_bytes() == original
+
+
+@pytest.mark.parametrize("input_name", ["provenance-audit.json", "evidence-manifest-template.csv"])
+def test_audit_never_overwrites_evidence_input(tmp_path: Path, input_name: str) -> None:
+    evidence = tmp_path / input_name
+    _write_wide_evidence(evidence, {"annual_snowfall": "20"})
+    original = evidence.read_bytes()
+    audit = audit_manual_evidence(evidence, load_metrics(CONFIG_DIR), load_sources(CONFIG_DIR))
+
+    with pytest.raises(EvidenceAuditError, match="would overwrite"):
+        write_evidence_audit(audit, tmp_path, evidence_path=evidence)
+
+    assert evidence.read_bytes() == original
