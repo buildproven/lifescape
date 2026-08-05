@@ -11,7 +11,6 @@ from typer.testing import CliRunner
 from lifescape.cli import app
 
 runner = CliRunner()
-runner.env["COLUMNS"] = "200"
 
 CENSUS_PAYLOAD: list[list[str]] = [
     ["NAME", "DP02_0068PE", "state", "place"],
