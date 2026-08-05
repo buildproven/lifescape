@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -62,6 +63,10 @@ def build_research_cards(
             for gate in gates
             if audit_by_metric.get(gate.metric_id) is None
             or audit_by_metric[gate.metric_id].status != "ready"
+            or any(
+                result.gate_id == gate.id and result.result is GateState.UNKNOWN
+                for result in gates_by_place[place_id]
+            )
         )
         if failed is not None:
             metric_id = gate_by_id[failed.gate_id].metric_id
@@ -76,7 +81,9 @@ def build_research_cards(
                     ),
                     unresolved_critical_metrics=unresolved,
                     next_action=None,
-                    source_url=audit_by_metric[metric_id].supplied_source_url,
+                    source_url=(audit_by_metric[metric_id].validated_provenance or {}).get(
+                        "source_url", audit_by_metric[metric_id].supplied_source_url
+                    ),
                 )
             )
             continue
@@ -94,6 +101,11 @@ def build_research_cards(
                 )
             )
             continue
+        if not unresolved:
+            raise ResearchReportError(
+                f"{place_id!r} is decision-ready; either omit it from this research queue "
+                "or designate it as an investigation lead"
+            )
         cards.append(
             ResearchCard(
                 place_id=place_id,
@@ -109,8 +121,13 @@ def build_research_cards(
 
 
 def write_research_report(
-    cards: tuple[ResearchCard, ...], output_dir: Path, *, strict_eligible_count: int
-) -> tuple[Path, Path]:
+    cards: tuple[ResearchCard, ...],
+    output_dir: Path,
+    *,
+    strict_eligible_count: int,
+    audit: EvidenceAudit,
+    has_synthetic_evidence: bool,
+) -> tuple[Path, Path, Path]:
     """Write deterministic Markdown and CSV research artifacts without score fields."""
     output_dir.mkdir(parents=True, exist_ok=True)
     buckets = ("Investigate now", "Known reject", "Insufficient evidence")
@@ -120,6 +137,15 @@ def write_research_report(
         "",
         "This is a research queue, not a town ranking or purchase recommendation.",
         "",
+        *(
+            [
+                "> **Synthetic evidence warning:** This shortlist contains synthetic test data. "
+                "It must not support a real purchase decision.",
+                "",
+            ]
+            if has_synthetic_evidence
+            else []
+        ),
         "## Field summary",
         "",
         *(f"- {bucket}: {counts[bucket]}" for bucket in buckets),
@@ -144,6 +170,11 @@ def write_research_report(
             markdown_lines.append("")
     markdown_path = output_dir / "research-shortlist.md"
     markdown_path.write_text("\n".join(markdown_lines).rstrip() + "\n", encoding="utf-8")
+
+    audit_path = output_dir / "provenance-audit.json"
+    audit_path.write_text(
+        json.dumps(audit.as_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     csv_path = output_dir / "research-shortlist.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
@@ -173,7 +204,7 @@ def write_research_report(
                     "source_url": card.source_url or "",
                 }
             )
-    return markdown_path, csv_path
+    return markdown_path, csv_path, audit_path
 
 
 def _next_action(metric_id: str | None) -> str | None:
@@ -190,4 +221,4 @@ def _next_action(metric_id: str | None) -> str | None:
         "distress_index": "Record the configured Census-derived distress observation.",
         "one_level_inventory_count": "Run and record the repeatable one-level listing search.",
     }
-    return actions.get(metric_id)
+    return actions.get(metric_id, f"Record a metric-correct {metric_id} source and date.")

@@ -137,14 +137,19 @@ def research_report_command(
         load_gates(config_dir).gates,
         investigate_place_ids=tuple(investigate_place or ()),
     )
-    markdown, csv_path = write_research_report(
-        cards, output_dir, strict_eligible_count=len(run.scores)
+    markdown, csv_path, audit_path = write_research_report(
+        cards,
+        output_dir,
+        strict_eligible_count=len(run.scores),
+        audit=audit,
+        has_synthetic_evidence=any(item.source.synthetic for item in run.observations),
     )
     _event(
         "research_report_completed",
         places=len(cards),
         markdown=str(markdown),
         csv=str(csv_path),
+        audit=str(audit_path),
     )
 
 

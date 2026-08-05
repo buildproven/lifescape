@@ -130,7 +130,13 @@ def test_report_lists_each_town_once_and_omits_ranking_fields(tmp_path: Path) ->
         ),
         investigate_place_ids=("lead",),
     )
-    markdown, csv_path = write_research_report(cards, tmp_path, strict_eligible_count=0)
+    markdown, csv_path, audit_path = write_research_report(
+        cards,
+        tmp_path,
+        strict_eligible_count=0,
+        audit=_audit(),
+        has_synthetic_evidence=True,
+    )
 
     assert markdown.read_text(encoding="utf-8").count("### ") == 3
     assert "Rank" not in markdown.read_text(encoding="utf-8")
@@ -138,6 +144,8 @@ def test_report_lists_each_town_once_and_omits_ranking_fields(tmp_path: Path) ->
     assert "- Source: https://x" in markdown.read_text(encoding="utf-8")
     assert "rank" not in csv_path.read_text(encoding="utf-8").splitlines()[0]
     assert "score" not in csv_path.read_text(encoding="utf-8").splitlines()[0]
+    assert "Synthetic evidence warning" in markdown.read_text(encoding="utf-8")
+    assert '"as_of": "2026-01-01"' in audit_path.read_text(encoding="utf-8")
 
 
 def test_research_cards_reject_unknown_designation() -> None:
