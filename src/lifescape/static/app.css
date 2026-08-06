@@ -42,7 +42,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 button {
@@ -441,6 +443,66 @@ a:focus-visible {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+.research-review {
+  margin-top: 15px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.research-review summary {
+  cursor: pointer;
+  color: var(--accent-deep);
+  font-size: 12px;
+  font-weight: 700;
+}
+.research-review > p,
+.review-ledger p {
+  font-size: 11px;
+}
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.review-grid label {
+  display: grid;
+  gap: 4px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+}
+.review-grid input,
+.review-grid select,
+.review-grid textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--white);
+  color: var(--ink);
+  padding: 7px;
+}
+.review-wide {
+  grid-column: 1 / -1;
+}
+.review-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+}
+.review-ledger {
+  grid-column: 1 / -1;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+.review-ledger h3,
+.review-ledger p {
+  margin: 0;
+}
+.review-ledger p + p {
+  margin-top: 7px;
 }
 
 input[type="range"] {

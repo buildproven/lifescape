@@ -5,10 +5,15 @@
 - No free, town-level public API was found for `median_sale_price`, `flood_risk_score`, or `one_level_inventory_count` as of 2026-07 (Zillow's public API is discontinued; FEMA's flood API is not publicly accessible without a paid third-party wrapper; real-estate listing inventory is inherently commercial/MLS-adjacent data). These metrics are expected to stay manually curated.
 - Optional Claude discovery can suggest unverified candidate-town leads from a user
   SearchBrief and one or two exemplar towns. It has no authority to provide decision
-  evidence, clear a gate, or rank a town. Claude does not receive evidence imports,
-  and Lifescape does not yet provide an automated web-research or evidence-promotion
-  user interface; a human must independently review and promote a complete source
-  record before a normal decision run can use it.
+  evidence, clear a gate, or rank a town. Claude does not receive evidence imports.
+  The local app records a named human's approve/reject decision and can export approved
+  records into the normal evidence CSV contract, but it does not automate source lookup.
+  A research packet cannot enter a run until every candidate has complete approved critical
+  evidence.
+- FCC broadband availability is location-level, and CMS hospital facts do not establish a
+  household's route-time outcome. Both belong to finalist, address-aware verification after
+  a town clears discovery and evidence review; neither is a discovery gate or a town-level
+  proxy in the current engine.
 - Confidence aggregation and contradiction tracking are deferred to Milestone 3; Milestone 1 enforces high confidence at gates.
 - Neighborhood, property, mapping, scouting, future-self, and regret workflows are deferred to later milestones.
 - Source retrieval recency and metric-specific observation age are enforced independently. Complex observation intervals still use one explicit effective observation date supplied by the evidence curator.

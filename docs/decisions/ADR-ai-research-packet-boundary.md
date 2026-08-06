@@ -8,17 +8,19 @@ Accepted for the AI-assisted discovery MVP.
 
 Add a local `SearchBrief` and `ResearchPacket` domain that represent user intent,
 candidate leads, and proposed evidence separately from `ObservationRecord`. A packet
-contains discovery material and its review state; it cannot be supplied to
+contains discovery material and its review state; it cannot itself be supplied to
 `execute_run`. A packet can produce an engine-compatible observation only through a
 pure promotion operation that requires a complete `SourceRecord`, an explicit metric,
 an allowed A/B source, and a reviewed state. Promotion records the packet ID and the
 human reviewer identity in its local audit result. An AI cannot be the sole reviewer
 of its own packet output.
 
-The local web API may create and inspect packets, but it does not introduce hosted
-storage or let AI material mutate the engine's evidence CSV. `execute_run` remains
-the only authority for gates, eligibility, scoring, sensitivity, persistence, and
-reports.
+The local web API may create, inspect, approve, reject, and export packets, but it
+does not introduce hosted storage or let AI material mutate the engine's evidence
+CSV. Approved observations export in the existing CSV contract. A run may consume
+that export only when every packet candidate has an approved, complete record for
+every critical metric. `execute_run` remains the only authority for gates,
+eligibility, scoring, sensitivity, persistence, and reports.
 
 ## Context
 
@@ -44,6 +46,8 @@ early town discovery; they remain visible as finalist-verification requirements.
   pages, and other discovery URLs as evidence, and it rejects source geography that
   does not exactly match the candidate/metric geography required by source policy.
 - Candidate discovery and finalist verification have separate states and UI labels.
+- Review records visibly identify the human reviewer and an APPROVED or REJECTED
+  decision. A rejection is audit data, not a replacement observation.
 - No silent proxy, midpoint, geography substitution, or inferred evidence is allowed.
 - Unknown critical evidence continues to block at `execute_run`; allowing a discovery
   lead with missing finalist evidence does not relax decision-time gating.
@@ -60,7 +64,8 @@ format, even if a local packet artifact remains after route removal.
 
 - Unit tests reject Tier C and incomplete promotion attempts.
 - A promoted ready record passes the same source-policy validation as manual evidence.
-- API tests show discovery leads/readiness but prove they cannot invoke scoring.
+- API tests show incomplete packets cannot export or invoke scoring, while a complete
+  approved packet exports through the normal evidence CSV contract.
 - Tests prove promotion retains packet-origin/reviewer audit metadata and that engine
   loaders reject packet-format files.
 - Existing engine, browser-journey, source-policy, Ruff, and mypy gates remain green.

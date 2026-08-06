@@ -8,16 +8,21 @@ from unittest.mock import patch
 import pytest
 
 from lifescape.config import load_metrics
+from lifescape.evidence import ingest_csv
 from lifescape.models import Confidence, PlaceRecord, SourceRecord, SourceTier
 from lifescape.research import (
     ClaudeDiscoveryProvider,
     DiscoveryLead,
     PromotionRequest,
+    RejectionRequest,
     ResearchError,
     SearchBrief,
     create_packet,
+    export_approved_evidence,
     promote_evidence,
     readiness_for,
+    reject_evidence,
+    require_complete_packet_evidence,
     state_for,
 )
 
@@ -123,6 +128,57 @@ def test_human_reviewed_ready_source_promotes_without_scoring(policy) -> None:
     assert result.packet_id == selected_packet.id
     assert result.reviewer == "Brett Stark"
     assert result.observation.metric_id == "annual_snowfall"
+
+
+def test_complete_approved_packet_exports_existing_evidence_csv_contract(
+    tmp_path: Path, policy
+) -> None:
+    selected_packet = packet()
+    metrics = load_metrics(Path("config"))
+    critical = [metric for metric in metrics if metric.critical]
+    promotions = tuple(
+        promote_evidence(
+            promotion(selected_packet.id).model_copy(
+                update={
+                    "metric_id": metric.id,
+                    "raw_value": max(metric.valid_min, min(12, metric.valid_max)),
+                }
+            ),
+            packet=selected_packet,
+            metrics=metrics,
+            sources=policy,
+            as_of=date(2026, 1, 2),
+        )
+        for metric in critical
+    )
+
+    require_complete_packet_evidence(selected_packet, metrics, promotions)
+    path = tmp_path / "approved.csv"
+    path.write_text(export_approved_evidence(promotions, metrics), encoding="utf-8")
+    loaded = ingest_csv(path, metrics, policy, as_of=date(2026, 1, 2))
+
+    assert {(item.place.place_id, item.metric_id) for item in loaded} == {
+        ("asheville_nc", metric.id) for metric in critical
+    }
+
+
+def test_rejection_is_a_visible_audit_decision_not_evidence() -> None:
+    selected_packet = packet()
+
+    rejected = reject_evidence(
+        RejectionRequest(
+            packet_id=selected_packet.id,
+            reviewer="Brett Stark",
+            place=PlaceRecord(place_id="asheville_nc", name="Asheville", state="NC"),
+            metric_id="annual_snowfall",
+            reason="Station coverage is outside the town boundary.",
+        ),
+        packet=selected_packet,
+        metrics=load_metrics(Path("config")),
+    )
+
+    assert rejected.decision.value == "REJECTED"
+    assert rejected.reason == "Station coverage is outside the town boundary."
 
 
 def test_promotion_rejects_discovery_url_and_forged_place_identity(policy) -> None:

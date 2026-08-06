@@ -117,6 +117,53 @@ def test_promotion_requires_existing_packet_and_never_runs_scoring(tmp_path: Pat
     assert "research packet is not available" in missing.json()["detail"]
 
 
+def test_research_export_refuses_incomplete_packet_and_rejection_is_visible(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        packet = client.post(
+            "/api/research/discover",
+            json={
+                "preferences": (
+                    "Walkable four-season retirement town with nature and a lively core."
+                ),
+                "exemplar_towns": ["Traverse City, MI"],
+            },
+        ).json()
+        rejected = client.post(
+            "/api/research/reject",
+            json={
+                "packet_id": packet["packet_id"],
+                "reviewer": "Brett Stark",
+                "place": {"place_id": "asheville_nc", "name": "Asheville", "state": "NC"},
+                "metric_id": "annual_snowfall",
+                "reason": "Station record cannot represent the entire town.",
+            },
+        )
+        exported = client.get(f"/api/research/packets/{packet['packet_id']}/evidence.csv")
+        with patch("lifescape.web.execute_run") as execute:
+            run = client.post(
+                "/api/run",
+                json={
+                    "selected_place_ids": ["asheville_nc"],
+                    "purchase_budget_max": 700_000,
+                    "future_self_age": 75,
+                    "household": "couple",
+                    "research_packet_id": packet["packet_id"],
+                },
+            )
+
+    assert rejected.status_code == 200
+    assert rejected.json()["review"]["decision"] == "REJECTED"
+    assert rejected.json()["packet"]["reviews"][0]["reason"].startswith("Station record")
+    assert exported.status_code == 422
+    assert "critical evidence remains unapproved" in exported.json()["detail"]
+    assert run.status_code == 422
+    assert "critical evidence remains unapproved" in run.json()["detail"]
+    execute.assert_not_called()
+
+
 def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
     output = tmp_path / "output"
     with TestClient(

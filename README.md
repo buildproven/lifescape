@@ -42,8 +42,11 @@ uv run lifescape app
 
 Claude receives only the SearchBrief when you press **Find research leads**. Its output is
 Tier C discovery material: it can suggest towns and caveats, but cannot provide decision
-evidence, clear a gate, or change a ranking. A human must review and promote a complete
-Tier A/B source record through Lifescape's evidence policy before it can be used later.
+evidence, clear a gate, or change a ranking. The local research review form shows the source
+URL, geography, observation date, metric, named reviewer, and an explicit approve/reject
+decision. An approved record is exported in the normal evidence CSV format. Lifescape permits
+that packet into a local decision run only after every packet candidate has complete approved
+critical evidence; rejected and unknown records remain blocking.
 
 For the command-line benchmark and QA Architect checks:
 

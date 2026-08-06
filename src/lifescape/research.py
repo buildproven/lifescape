@@ -7,6 +7,8 @@ human reviewer promotes a complete A/B source record through ``promote_evidence`
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 from datetime import date
@@ -18,7 +20,12 @@ from uuid import uuid4
 
 from pydantic import Field, HttpUrl, model_validator
 
-from lifescape.evidence import SourcePolicyError, validate_observation_freshness, validate_source
+from lifescape.evidence import (
+    IDENTITY_COLUMNS,
+    SourcePolicyError,
+    validate_observation_freshness,
+    validate_source,
+)
 from lifescape.models import (
     MetricDefinition,
     ObservationRecord,
@@ -36,6 +43,11 @@ class ResearchState(StrEnum):
     VERIFICATION_READY = "VERIFICATION_READY"
     DECIDABLE = "DECIDABLE"
     RANKED = "RANKED"
+
+
+class ReviewDecision(StrEnum):
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
 
 
 class ResearchError(ValueError):
@@ -98,6 +110,34 @@ class PromotionResult(StrictModel):
     observation: ObservationRecord
     packet_id: str
     reviewer: str
+
+
+class RejectionRequest(StrictModel):
+    """A named reviewer rejects a proposed source record without creating evidence."""
+
+    packet_id: str
+    reviewer: str = Field(min_length=2, max_length=120)
+    place: PlaceRecord
+    metric_id: str
+    reason: str = Field(min_length=8, max_length=1_000)
+
+    @model_validator(mode="after")
+    def human_reviewer_is_named(self) -> RejectionRequest:
+        normalized = self.reviewer.strip().lower()
+        if not normalized or normalized in {"ai", "claude", "codex", "model"}:
+            raise ValueError("reviewer must identify the human who checked the source")
+        return self
+
+
+class ReviewRecord(StrictModel):
+    """Visible local audit record for an approve or reject decision."""
+
+    packet_id: str
+    place_id: str
+    metric_id: str
+    reviewer: str
+    decision: ReviewDecision
+    reason: str | None = None
 
 
 class DiscoveryProvider(Protocol):
@@ -234,6 +274,96 @@ def promote_evidence(
         packet_id=packet.id,
         reviewer=request.reviewer.strip(),
     )
+
+
+def reject_evidence(
+    request: RejectionRequest,
+    *,
+    packet: ResearchPacket,
+    metrics: tuple[MetricDefinition, ...],
+) -> ReviewRecord:
+    """Record a rejection only after binding it to a real packet lead and metric."""
+    if request.packet_id != packet.id:
+        raise ResearchError("rejection packet_id does not match the selected research packet")
+    lead = next(
+        (item for item in packet.leads if item.place.place_id == request.place.place_id), None
+    )
+    if lead is None or request.place != lead.place:
+        raise ResearchError("rejection place must exactly match a selected research-packet lead")
+    if request.metric_id not in {metric.id for metric in metrics}:
+        raise ResearchError(f"unknown metric: {request.metric_id}")
+    return ReviewRecord(
+        packet_id=packet.id,
+        place_id=request.place.place_id,
+        metric_id=request.metric_id,
+        reviewer=request.reviewer.strip(),
+        decision=ReviewDecision.REJECTED,
+        reason=request.reason.strip(),
+    )
+
+
+def export_approved_evidence(
+    promotions: tuple[PromotionResult, ...], metrics: tuple[MetricDefinition, ...]
+) -> str:
+    """Write approved observations as the existing wide evidence CSV contract.
+
+    Each row carries exactly one metric and its own source block.  This preserves
+    metric-level provenance even when two facts about a town come from different
+    primary sources; ``ingest_csv`` already accepts that normalized wide form.
+    """
+    metric_ids = tuple(metric.id for metric in metrics)
+    fieldnames = sorted(IDENTITY_COLUMNS) + list(metric_ids)
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=fieldnames, lineterminator="\n")
+    writer.writeheader()
+    seen: set[tuple[str, str]] = set()
+    for item in sorted(
+        promotions,
+        key=lambda value: (value.observation.place.place_id, value.observation.metric_id),
+    ):
+        observation = item.observation
+        key = (observation.place.place_id, observation.metric_id)
+        if key in seen:
+            raise ResearchError(
+                "multiple approved observations for "
+                f"{observation.place.place_id!r} and {observation.metric_id!r}"
+            )
+        seen.add(key)
+        source = observation.source
+        row: dict[str, str | float] = {field: "" for field in fieldnames}
+        row.update(
+            {
+                "place_id": observation.place.place_id,
+                "place_name": observation.place.name,
+                "state": observation.place.state,
+                "geography_type": observation.place.geography_type,
+                "source_url": source.url,
+                "source_title": source.title,
+                "publisher": source.publisher,
+                "tier": source.tier.value,
+                "retrieved_at": source.retrieved_at.isoformat(),
+                "observed_period": observation.observed_period,
+                "observed_at": observation.observed_at.isoformat(),
+                "source_geography": source.geography,
+                "confidence": source.confidence.value,
+                "synthetic": str(source.synthetic).lower(),
+                observation.metric_id: observation.raw_value,
+            }
+        )
+        writer.writerow(row)
+    return stream.getvalue()
+
+
+def require_complete_packet_evidence(
+    packet: ResearchPacket,
+    metrics: tuple[MetricDefinition, ...],
+    promotions: tuple[PromotionResult, ...],
+) -> None:
+    """Fail closed until every packet candidate has approved critical evidence."""
+    missing = readiness_for(packet, metrics, promotions)
+    unresolved = {place_id: values for place_id, values in missing.items() if values}
+    if unresolved:
+        raise ResearchError(f"critical evidence remains unapproved: {unresolved}")
 
 
 def readiness_for(
