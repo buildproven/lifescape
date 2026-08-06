@@ -777,6 +777,8 @@ def create_app(
         runs_root = root_output / "runs"
         run_dir = runs_root / token
         try:
+            if payload.research_packet_id is None and len(payload.selected_place_ids) < 2:
+                raise ValueError("select at least two towns before running a comparison")
             runs_root.mkdir(parents=True, exist_ok=True)
             with TemporaryDirectory(prefix=".staging-", dir=runs_root) as staging_name:
                 staging_dir = Path(staging_name)
@@ -811,8 +813,6 @@ def create_app(
                             raise ValueError(
                                 "imported evidence is no longer available; import it again"
                             ) from exc
-                    elif len(payload.selected_place_ids) < 2:
-                        raise ValueError("select at least two towns before running a comparison")
                     fieldnames, rows = _read_evidence(csv_text, metric_ids)
                     evidence_path = staging_dir / "evidence.csv"
                     _filter_evidence(

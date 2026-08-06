@@ -164,6 +164,27 @@ def test_research_export_refuses_incomplete_packet_and_rejection_is_visible(tmp_
     execute.assert_not_called()
 
 
+def test_imported_evidence_requires_two_selected_towns(tmp_path: Path) -> None:
+    evidence = Path("data/benchmarks/evidence.csv").read_bytes()
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        token = client.post("/api/evidence/inspect", content=evidence).json()["evidence_token"]
+        with patch("lifescape.web.execute_run") as execute:
+            response = client.post(
+                "/api/run",
+                json={
+                    "selected_place_ids": ["williamsburg_va"],
+                    "purchase_budget_max": 700_000,
+                    "future_self_age": 75,
+                    "household": "couple",
+                    "evidence_token": token,
+                },
+            )
+
+    assert response.status_code == 422
+    assert "select at least two towns" in response.json()["detail"]
+    execute.assert_not_called()
+
+
 def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
     output = tmp_path / "output"
     with TestClient(

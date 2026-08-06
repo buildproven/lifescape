@@ -15,6 +15,7 @@ from datetime import date
 from enum import StrEnum
 from typing import Protocol
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -52,6 +53,10 @@ class ReviewDecision(StrEnum):
 
 class ResearchError(ValueError):
     """Raised when a discovery or evidence-promotion request is unsafe or invalid."""
+
+
+MAX_DISCOVERY_RESPONSE_BYTES = 1_000_000
+MAX_DISCOVERY_LEADS = 15
 
 
 class SearchBrief(StrictModel):
@@ -192,13 +197,29 @@ class ClaudeDiscoveryProvider:
         )
         try:
             with urlopen(request, timeout=45) as response:
-                payload = json.loads(response.read())
+                headers = getattr(response, "headers", {})
+                content_length = headers.get("Content-Length")
+                try:
+                    response_size = int(content_length) if content_length is not None else 0
+                except ValueError as exc:
+                    raise ResearchError(
+                        "Claude discovery returned an invalid Content-Length"
+                    ) from exc
+                if response_size > MAX_DISCOVERY_RESPONSE_BYTES:
+                    raise ResearchError("Claude discovery response exceeds the 1 MB safety limit")
+                payload_bytes = response.read(MAX_DISCOVERY_RESPONSE_BYTES + 1)
+                if len(payload_bytes) > MAX_DISCOVERY_RESPONSE_BYTES:
+                    raise ResearchError("Claude discovery response exceeds the 1 MB safety limit")
+                payload = json.loads(payload_bytes)
         except (HTTPError, URLError, json.JSONDecodeError) as exc:
             raise ResearchError(f"Claude discovery failed: {exc}") from exc
         try:
             text = payload["content"][0]["text"]
             raw = json.loads(text)
-            leads = tuple(_validate_discovery_lead(item) for item in raw["leads"])
+            raw_leads = raw["leads"]
+            if not isinstance(raw_leads, list) or len(raw_leads) > MAX_DISCOVERY_LEADS:
+                raise ValueError("discovery response has an invalid number of leads")
+            leads = tuple(_validate_discovery_lead(item) for item in raw_leads)
         except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ResearchError("Claude discovery did not return the required lead JSON") from exc
         if not leads:
@@ -245,8 +266,10 @@ def promote_evidence(
             f"place geography {request.place.geography_type!r} does not match "
             f"metric geography {metric.geography_level!r}"
         )
-    discovery_urls = {str(url) for item in packet.leads for url in item.discovery_urls}
-    if str(request.source.url) in discovery_urls:
+    discovery_urls = {
+        _canonical_source_url(str(url)) for item in packet.leads for url in item.discovery_urls
+    }
+    if _canonical_source_url(request.source.url) in discovery_urls:
         raise ResearchError("discovery URLs cannot be promoted to decision evidence")
     if not metric.valid_min <= request.raw_value <= metric.valid_max:
         raise ResearchError(f"{metric.id} value falls outside its configured valid range")
@@ -404,6 +427,20 @@ def _validate_discovery_lead(value: object) -> DiscoveryLead:
     if supplied_state != ResearchState.DISCOVERY:
         raise ValueError("discovery providers may only return DISCOVERY-state leads")
     return DiscoveryLead.model_validate({**value, "state": ResearchState.DISCOVERY})
+
+
+def _canonical_source_url(value: str) -> str:
+    """Compare discovery and proposed source URLs without query/slash evasions."""
+    parsed = urlsplit(value)
+    hostname = parsed.hostname.lower() if parsed.hostname else ""
+    if not hostname:
+        return value
+    port = parsed.port
+    if (parsed.scheme == "https" and port == 443) or (parsed.scheme == "http" and port == 80):
+        port = None
+    netloc = hostname if port is None else f"{hostname}:{port}"
+    path = parsed.path.rstrip("/") or "/"
+    return urlunsplit((parsed.scheme.lower(), netloc, path, "", ""))
 
 
 def _discovery_prompt(brief: SearchBrief) -> str:

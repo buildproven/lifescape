@@ -207,6 +207,20 @@ def test_promotion_rejects_discovery_url_and_forged_place_identity(policy) -> No
             sources=policy,
             as_of=date(2026, 1, 2),
         )
+    with pytest.raises(ResearchError, match="discovery URLs"):
+        promote_evidence(
+            request.model_copy(
+                update={
+                    "source": request.source.model_copy(
+                        update={"url": "https://example.com/discovery/?source=lead"}
+                    )
+                }
+            ),
+            packet=selected_packet,
+            metrics=load_metrics(Path("config")),
+            sources=policy,
+            as_of=date(2026, 1, 2),
+        )
     with pytest.raises(ResearchError, match="exactly match"):
         promote_evidence(
             request.model_copy(
@@ -285,7 +299,7 @@ def test_claude_discovery_rejects_a_non_discovery_lifecycle_state() -> None:
         def __exit__(self, *_: object) -> None:
             return None
 
-        def read(self) -> bytes:
+        def read(self, *_: object) -> bytes:
             return json.dumps(payload).encode()
 
     provider = ClaudeDiscoveryProvider(api_key="test-key", model="test-model")
@@ -325,7 +339,7 @@ def test_claude_discovery_returns_tier_c_leads_only() -> None:
         def __exit__(self, *_: object) -> None:
             return None
 
-        def read(self) -> bytes:
+        def read(self, *_: object) -> bytes:
             return json.dumps(payload).encode()
 
     provider = ClaudeDiscoveryProvider(api_key="test-key", model="test-model")
@@ -342,3 +356,25 @@ def test_claude_discovery_requires_explicit_opt_in_configuration() -> None:
         ClaudeDiscoveryProvider(api_key="", model="test-model")
     with pytest.raises(ResearchError, match="LIFESCAPE_ANTHROPIC_MODEL"):
         ClaudeDiscoveryProvider(api_key="test-key", model="")
+
+
+def test_claude_discovery_rejects_an_oversized_response() -> None:
+    class Response:
+        def __init__(self) -> None:
+            self.headers: dict[str, str] = {}
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def read(self, *_: object) -> bytes:
+            return b"x" * 1_000_001
+
+    provider = ClaudeDiscoveryProvider(api_key="test-key", model="test-model")
+    with (
+        patch("lifescape.research.urlopen", return_value=Response()),
+        pytest.raises(ResearchError, match="1 MB"),
+    ):
+        provider.discover(brief())

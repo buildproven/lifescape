@@ -297,7 +297,9 @@ function renderDiscovery(packet) {
             <label>Source URL<input name="source_url" type="url" placeholder="https://…" required /></label>
             <label>Source title<input name="source_title" required /></label>
             <label>Publisher<input name="publisher" required /></label>
+            <label>Source tier<select name="tier"><option value="A">Tier A — official primary</option><option value="B">Tier B — approved secondary</option></select></label>
             <label>Source geography<select name="geography"><option value="town">town</option><option value="station">station</option><option value="county">county</option></select></label>
+            <label>Confidence<select name="confidence"><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></label>
             <label>Retrieved date<input name="retrieved_at" type="date" required /></label>
             <label>Reviewer<input name="reviewer" autocomplete="name" required /></label>
             <label class="review-wide">Rejection reason (required only to reject)<textarea name="reason" rows="2"></textarea></label>
@@ -336,10 +338,10 @@ async function submitReview(button, packet) {
           url: read("source_url"),
           title: read("source_title"),
           publisher: read("publisher"),
-          tier: "A",
+          tier: read("tier"),
           retrieved_at: read("retrieved_at"),
           geography: read("geography"),
-          confidence: "high",
+          confidence: read("confidence"),
           synthetic: false,
         },
       };
