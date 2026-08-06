@@ -3,7 +3,9 @@ const state = {
   places: [],
   selected: new Set(),
   metricCount: 0,
+  metrics: [],
   evidenceToken: null,
+  researchPacket: null,
   result: null,
 };
 
@@ -269,6 +271,142 @@ async function importEvidence(file) {
   toast(`Imported ${state.places.length} towns from ${file.name}`);
 }
 
+function renderDiscovery(packet) {
+  state.researchPacket = packet;
+  const results = $("#discovery-results");
+  const metrics = state.metrics
+    .map(
+      (metric) =>
+        `<option value="${escapeHtml(metric)}">${escapeHtml(metric.replaceAll("_", " "))}</option>`
+    )
+    .join("");
+  results.innerHTML = `<p class="discovery-disclosure">${escapeHtml(packet.disclosure)}</p>${packet.leads
+    .map(
+      (lead) => `<article class="discovery-card" data-place-id="${escapeHtml(lead.place_id)}">
+        <h3>${escapeHtml(lead.name)}, ${escapeHtml(lead.state)}</h3>
+        <p>${escapeHtml(lead.rationale)}</p>
+        <small>${lead.unresolved_critical_metrics.length} critical facts still need verification</small>
+        <details class="research-review">
+          <summary>Review a source record</summary>
+          <p>Approve only a complete Tier A/B town-level record. Rejecting records a visible review decision but never creates evidence.</p>
+          <div class="review-grid">
+            <label>Metric<select name="metric_id">${metrics}</select></label>
+            <label>Value<input name="raw_value" type="number" step="any" required /></label>
+            <label>Observation period<input name="observed_period" placeholder="2021-2025" required /></label>
+            <label>Observation date<input name="observed_at" type="date" required /></label>
+            <label>Source URL<input name="source_url" type="url" placeholder="https://…" required /></label>
+            <label>Source title<input name="source_title" required /></label>
+            <label>Publisher<input name="publisher" required /></label>
+            <label>Source tier<select name="tier"><option value="A">Tier A — official primary</option><option value="B">Tier B — approved secondary</option></select></label>
+            <label>Source geography<select name="geography"><option value="town">town</option><option value="station">station</option><option value="county">county</option></select></label>
+            <label>Confidence<select name="confidence"><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></label>
+            <label>Retrieved date<input name="retrieved_at" type="date" required /></label>
+            <label>Reviewer<input name="reviewer" autocomplete="name" required /></label>
+            <label class="review-wide">Rejection reason (required only to reject)<textarea name="reason" rows="2"></textarea></label>
+          </div>
+          <div class="review-actions"><button class="secondary-button" data-review-action="approve" type="button">Promote approved evidence</button><button class="text-button" data-review-action="reject" type="button">Reject record</button></div>
+        </details>
+      </article>`
+    )
+    .join(
+      ""
+    )}<section class="review-ledger"><h3>Review decisions</h3>${packet.reviews.length ? packet.reviews.map((review) => `<p><strong>${escapeHtml(review.decision)}</strong> · ${escapeHtml(review.metric_id.replaceAll("_", " "))} · ${escapeHtml(review.reviewer)}${review.reason ? ` — ${escapeHtml(review.reason)}` : ""}</p>`).join("") : "<p>No source records reviewed yet.</p>"}</section>`;
+  $$("[data-review-action]").forEach((button) =>
+    button.addEventListener("click", () => submitReview(button, packet))
+  );
+}
+
+async function submitReview(button, packet) {
+  const card = button.closest(".discovery-card");
+  const read = (name) => card.querySelector(`[name=${name}]`).value.trim();
+  const place = packet.leads.find((lead) => lead.place_id === card.dataset.placeId);
+  const common = {
+    packet_id: packet.packet_id,
+    reviewer: read("reviewer"),
+    place: { place_id: place.place_id, name: place.name, state: place.state },
+    metric_id: read("metric_id"),
+  };
+  const rejecting = button.dataset.reviewAction === "reject";
+  const payload = rejecting
+    ? { ...common, reason: read("reason") }
+    : {
+        ...common,
+        raw_value: Number(read("raw_value")),
+        observed_period: read("observed_period"),
+        observed_at: read("observed_at"),
+        source: {
+          url: read("source_url"),
+          title: read("source_title"),
+          publisher: read("publisher"),
+          tier: read("tier"),
+          retrieved_at: read("retrieved_at"),
+          geography: read("geography"),
+          confidence: read("confidence"),
+          synthetic: false,
+        },
+      };
+  button.disabled = true;
+  try {
+    const response = await fetch(rejecting ? "/api/research/reject" : "/api/research/promote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || "Review could not be recorded.");
+    const refreshed = await fetch(`/api/research/packets/${packet.packet_id}`);
+    renderDiscovery(await refreshed.json());
+    toast(
+      rejecting
+        ? "Rejection recorded. The metric remains unknown."
+        : "Approved evidence recorded. Review the remaining critical facts."
+    );
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function discoverCandidates() {
+  const preferences = $("#discovery-preferences").value.trim();
+  const examples = [
+    $("#discovery-example-one").value.trim(),
+    $("#discovery-example-two").value.trim(),
+  ].filter(Boolean);
+  if (preferences.length < 20) {
+    toast("Describe the retirement life you want in at least a sentence.");
+    return;
+  }
+  if (!examples.length) {
+    toast("Name at least one example town so discovery has a reference point.");
+    return;
+  }
+  const button = $("#discover-button");
+  button.disabled = true;
+  button.textContent = "Finding research leads…";
+  try {
+    const response = await fetch("/api/research/discover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        preferences,
+        exemplar_towns: examples,
+        hard_constraints: [`Maximum purchase budget: ${money.format(Number($("#budget").value))}`],
+        exclusions: [],
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "Discovery could not run.");
+    renderDiscovery(payload);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+    button.innerHTML = "Find research leads <span>↗</span>";
+  }
+}
+
 async function initialize() {
   try {
     const response = await fetch("/api/bootstrap");
@@ -276,6 +414,7 @@ async function initialize() {
     const payload = await response.json();
     state.places = payload.places;
     state.metricCount = payload.metric_count;
+    state.metrics = payload.metrics;
     state.selected = new Set(state.places.map((place) => place.place_id));
     $("#budget").value = payload.defaults.purchase_budget_max;
     $("#dataset-meta").textContent = `${state.places.length} towns · ${state.metricCount} metrics`;
@@ -324,5 +463,6 @@ $("#evidence-file").addEventListener("change", async (event) => {
   }
   event.target.value = "";
 });
+$("#discover-button").addEventListener("click", discoverCandidates);
 
 initialize();

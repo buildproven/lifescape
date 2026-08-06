@@ -121,6 +121,43 @@
               </div>
               <p class="field-help">Stored with the comparison so assumptions remain visible.</p>
             </fieldset>
+
+            <section
+              class="field field-wide discovery-workspace"
+              aria-labelledby="discovery-heading"
+            >
+              <div class="field-heading">
+                <label id="discovery-heading" for="discovery-preferences"
+                  >Find towns like these</label
+                >
+                <span class="field-kicker">Research leads only</span>
+              </div>
+              <p class="field-help">
+                Describe the life you want and name one or two towns that feel close. Claude can
+                suggest leads, but it cannot verify facts or change a ranking.
+              </p>
+              <textarea
+                id="discovery-preferences"
+                rows="4"
+                placeholder="Walkable four-season town with nature nearby, a lively core, and room to age in place…"
+              ></textarea>
+              <div class="discovery-examples">
+                <label
+                  >Example town one<input
+                    id="discovery-example-one"
+                    type="text"
+                    placeholder="Traverse City, MI"
+                /></label>
+                <label
+                  >Example town two <span>(optional)</span
+                  ><input id="discovery-example-two" type="text" placeholder="Asheville, NC"
+                /></label>
+              </div>
+              <button class="secondary-button discovery-button" id="discover-button" type="button">
+                Find research leads <span>↗</span>
+              </button>
+              <div class="discovery-results" id="discovery-results" aria-live="polite"></div>
+            </section>
           </div>
         </section>
 
