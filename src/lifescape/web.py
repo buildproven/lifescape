@@ -727,6 +727,13 @@ def create_app(
                 status_code=404, detail="research packet is not available in this session"
             ) from exc
         try:
+            existing = {
+                (item.place_id, item.metric_id)
+                for item in research_reviews.get(packet.id, ())
+                if item.decision is ReviewDecision.REJECTED
+            }
+            if (payload.place.place_id, payload.metric_id) in existing:
+                raise ResearchError("that observation has already been rejected for this packet")
             with bundled_benchmark() as (_, config_dir):
                 result = reject_evidence(payload, packet=packet, metrics=load_metrics(config_dir))
             research_reviews.setdefault(packet.id, []).append(result)
@@ -777,7 +784,7 @@ def create_app(
         runs_root = root_output / "runs"
         run_dir = runs_root / token
         try:
-            if payload.research_packet_id is None and len(payload.selected_place_ids) < 2:
+            if len(payload.selected_place_ids) < 2:
                 raise ValueError("select at least two towns before running a comparison")
             runs_root.mkdir(parents=True, exist_ok=True)
             with TemporaryDirectory(prefix=".staging-", dir=runs_root) as staging_name:

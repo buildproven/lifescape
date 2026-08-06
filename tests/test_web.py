@@ -160,8 +160,37 @@ def test_research_export_refuses_incomplete_packet_and_rejection_is_visible(tmp_
     assert exported.status_code == 422
     assert "critical evidence remains unapproved" in exported.json()["detail"]
     assert run.status_code == 422
-    assert "critical evidence remains unapproved" in run.json()["detail"]
+    assert "select at least two towns" in run.json()["detail"]
     execute.assert_not_called()
+
+
+def test_research_rejection_is_idempotent_per_packet_place_and_metric(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        packet = client.post(
+            "/api/research/discover",
+            json={
+                "preferences": (
+                    "Walkable four-season retirement town with nature and a lively core."
+                ),
+                "exemplar_towns": ["Traverse City, MI"],
+            },
+        ).json()
+        rejection = {
+            "packet_id": packet["packet_id"],
+            "reviewer": "Brett Stark",
+            "place": {"place_id": "asheville_nc", "name": "Asheville", "state": "NC"},
+            "metric_id": "annual_snowfall",
+            "reason": "Station record cannot represent the entire town.",
+        }
+        first = client.post("/api/research/reject", json=rejection)
+        second = client.post("/api/research/reject", json=rejection)
+
+    assert first.status_code == 200
+    assert second.status_code == 422
+    assert "already been rejected" in second.json()["detail"]
 
 
 def test_imported_evidence_requires_two_selected_towns(tmp_path: Path) -> None:
