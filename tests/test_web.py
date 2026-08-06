@@ -29,6 +29,12 @@ class FakeDiscoveryProvider:
         )
 
 
+class EmptyDiscoveryProvider:
+    def discover(self, brief: SearchBrief) -> tuple[DiscoveryLead, ...]:
+        del brief
+        return ()
+
+
 def test_hosted_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> None:
     with TestClient(
         create_app(tmp_path / "output", hosted_demo=True),
@@ -86,6 +92,23 @@ def test_local_app_creates_discovery_packet_without_scoring(tmp_path: Path) -> N
     assert fetched.json() == payload
 
 
+def test_discovery_refuses_a_provider_with_no_leads(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=EmptyDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        response = client.post(
+            "/api/research/discover",
+            json={
+                "preferences": "A walkable retirement town.",
+                "exemplar_towns": ["Traverse City, MI"],
+            },
+        )
+
+    assert response.status_code == 422
+    assert "at least one discovery lead" in response.json()["detail"]
+
+
 def test_promotion_requires_existing_packet_and_never_runs_scoring(tmp_path: Path) -> None:
     with TestClient(
         create_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()),
@@ -115,6 +138,26 @@ def test_promotion_requires_existing_packet_and_never_runs_scoring(tmp_path: Pat
 
     assert missing.status_code == 404
     assert "research packet is not available" in missing.json()["detail"]
+
+
+def test_research_packet_endpoints_report_missing_session_packet(tmp_path: Path) -> None:
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        inspected = client.get("/api/research/packets/missing")
+        rejected = client.post(
+            "/api/research/reject",
+            json={
+                "packet_id": "missing",
+                "reviewer": "Brett Stark",
+                "place": {"place_id": "asheville_nc", "name": "Asheville", "state": "NC"},
+                "metric_id": "annual_snowfall",
+                "reason": "The source geography is not town-level.",
+            },
+        )
+        exported = client.get("/api/research/packets/missing/evidence.csv")
+
+    for response in (inspected, rejected, exported):
+        assert response.status_code == 404
+        assert "research packet is not available" in response.json()["detail"]
 
 
 def test_research_export_refuses_incomplete_packet_and_rejection_is_visible(tmp_path: Path) -> None:
@@ -212,6 +255,63 @@ def test_imported_evidence_requires_two_selected_towns(tmp_path: Path) -> None:
     assert response.status_code == 422
     assert "select at least two towns" in response.json()["detail"]
     execute.assert_not_called()
+
+
+def test_research_run_requires_a_packet_from_the_current_session(tmp_path: Path) -> None:
+    with (
+        TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client,
+        patch("lifescape.web.execute_run") as execute,
+    ):
+        response = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": ["asheville_nc", "williamsburg_va"],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+                "research_packet_id": "deadbeefcafe",
+            },
+        )
+
+    assert response.status_code == 422
+    assert "research packet is not available in this session" in response.json()["detail"]
+    execute.assert_not_called()
+
+
+def test_run_requires_imported_evidence_from_the_current_session(tmp_path: Path) -> None:
+    with (
+        TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client,
+        patch("lifescape.web.execute_run") as execute,
+    ):
+        response = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": ["asheville_nc", "williamsburg_va"],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+                "evidence_token": "deadbeefcafe",
+            },
+        )
+
+    assert response.status_code == 422
+    assert "imported evidence is no longer available; import it again" in response.json()["detail"]
+    execute.assert_not_called()
+
+
+def test_hosted_demo_rejects_research_endpoints(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
+    ) as client:
+        inspected = client.get("/api/research/packets/nope")
+        promoted = client.post("/api/research/promote", json={})
+        rejected = client.post("/api/research/reject", json={})
+        exported = client.get("/api/research/packets/nope/evidence.csv")
+
+    for response in (inspected, promoted, rejected, exported):
+        assert response.status_code == 404
+        assert "hosted site has no application API" in response.json()["detail"]
 
 
 def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:
