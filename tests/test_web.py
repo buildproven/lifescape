@@ -11,8 +11,28 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from lifescape.models import PlaceRecord
 from lifescape.pipeline import execute_run
+from lifescape.research import DiscoveryLead, SearchBrief
 from lifescape.web import HostedRunGuard, create_app
+
+
+class FakeDiscoveryProvider:
+    def discover(self, brief: SearchBrief) -> tuple[DiscoveryLead, ...]:
+        assert brief.exemplar_towns == ("Traverse City, MI",)
+        return (
+            DiscoveryLead(
+                place=PlaceRecord(place_id="asheville_nc", name="Asheville", state="NC"),
+                rationale="A discovery lead, not verified evidence.",
+                caveats=("Verify all critical evidence.",),
+            ),
+        )
+
+
+class EmptyDiscoveryProvider:
+    def discover(self, brief: SearchBrief) -> tuple[DiscoveryLead, ...]:
+        del brief
+        return ()
 
 
 def test_hosted_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> None:
@@ -43,6 +63,255 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
     assert "CSV uploads are disabled." not in page.text
     assert len(bootstrap.json()["places"]) == 10
     assert bootstrap.json()["metric_count"] == 17
+
+
+def test_local_app_creates_discovery_packet_without_scoring(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        response = client.post(
+            "/api/research/discover",
+            json={
+                "preferences": (
+                    "Walkable four-season retirement town with nature and a lively core."
+                ),
+                "exemplar_towns": ["Traverse City, MI"],
+                "hard_constraints": ["Budget below $700,000"],
+                "exclusions": [],
+            },
+        )
+        payload = response.json()
+        fetched = client.get(f"/api/research/packets/{payload['packet_id']}")
+
+    assert response.status_code == 200
+    assert payload["state"] == "DISCOVERY"
+    assert payload["leads"][0]["place_id"] == "asheville_nc"
+    assert len(payload["leads"][0]["unresolved_critical_metrics"]) == 7
+    assert "cannot affect gates or ranking" in payload["disclosure"]
+    assert fetched.json() == payload
+
+
+def test_discovery_refuses_a_provider_with_no_leads(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=EmptyDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        response = client.post(
+            "/api/research/discover",
+            json={
+                "preferences": "A walkable retirement town.",
+                "exemplar_towns": ["Traverse City, MI"],
+            },
+        )
+
+    assert response.status_code == 422
+    assert "at least one discovery lead" in response.json()["detail"]
+
+
+def test_promotion_requires_existing_packet_and_never_runs_scoring(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        missing = client.post(
+            "/api/research/promote",
+            json={
+                "packet_id": "missing",
+                "reviewer": "Brett Stark",
+                "place": {"place_id": "asheville_nc", "name": "Asheville", "state": "NC"},
+                "metric_id": "annual_snowfall",
+                "raw_value": 12,
+                "observed_period": "2025",
+                "observed_at": "2025-12-31",
+                "source": {
+                    "url": "https://www.ncei.noaa.gov/example",
+                    "title": "Station observation",
+                    "publisher": "NOAA",
+                    "tier": "A",
+                    "retrieved_at": "2026-01-01",
+                    "geography": "town",
+                    "confidence": "high",
+                },
+            },
+        )
+
+    assert missing.status_code == 404
+    assert "research packet is not available" in missing.json()["detail"]
+
+
+def test_research_packet_endpoints_report_missing_session_packet(tmp_path: Path) -> None:
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        inspected = client.get("/api/research/packets/missing")
+        rejected = client.post(
+            "/api/research/reject",
+            json={
+                "packet_id": "missing",
+                "reviewer": "Brett Stark",
+                "place": {"place_id": "asheville_nc", "name": "Asheville", "state": "NC"},
+                "metric_id": "annual_snowfall",
+                "reason": "The source geography is not town-level.",
+            },
+        )
+        exported = client.get("/api/research/packets/missing/evidence.csv")
+
+    for response in (inspected, rejected, exported):
+        assert response.status_code == 404
+        assert "research packet is not available" in response.json()["detail"]
+
+
+def test_research_export_refuses_incomplete_packet_and_rejection_is_visible(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        packet = client.post(
+            "/api/research/discover",
+            json={
+                "preferences": (
+                    "Walkable four-season retirement town with nature and a lively core."
+                ),
+                "exemplar_towns": ["Traverse City, MI"],
+            },
+        ).json()
+        rejected = client.post(
+            "/api/research/reject",
+            json={
+                "packet_id": packet["packet_id"],
+                "reviewer": "Brett Stark",
+                "place": {"place_id": "asheville_nc", "name": "Asheville", "state": "NC"},
+                "metric_id": "annual_snowfall",
+                "reason": "Station record cannot represent the entire town.",
+            },
+        )
+        exported = client.get(f"/api/research/packets/{packet['packet_id']}/evidence.csv")
+        with patch("lifescape.web.execute_run") as execute:
+            run = client.post(
+                "/api/run",
+                json={
+                    "selected_place_ids": ["asheville_nc"],
+                    "purchase_budget_max": 700_000,
+                    "future_self_age": 75,
+                    "household": "couple",
+                    "research_packet_id": packet["packet_id"],
+                },
+            )
+
+    assert rejected.status_code == 200
+    assert rejected.json()["review"]["decision"] == "REJECTED"
+    assert rejected.json()["packet"]["reviews"][0]["reason"].startswith("Station record")
+    assert exported.status_code == 422
+    assert "critical evidence remains unapproved" in exported.json()["detail"]
+    assert run.status_code == 422
+    assert "select at least two towns" in run.json()["detail"]
+    execute.assert_not_called()
+
+
+def test_research_rejection_is_idempotent_per_packet_place_and_metric(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        packet = client.post(
+            "/api/research/discover",
+            json={
+                "preferences": (
+                    "Walkable four-season retirement town with nature and a lively core."
+                ),
+                "exemplar_towns": ["Traverse City, MI"],
+            },
+        ).json()
+        rejection = {
+            "packet_id": packet["packet_id"],
+            "reviewer": "Brett Stark",
+            "place": {"place_id": "asheville_nc", "name": "Asheville", "state": "NC"},
+            "metric_id": "annual_snowfall",
+            "reason": "Station record cannot represent the entire town.",
+        }
+        first = client.post("/api/research/reject", json=rejection)
+        second = client.post("/api/research/reject", json=rejection)
+
+    assert first.status_code == 200
+    assert second.status_code == 422
+    assert "already been rejected" in second.json()["detail"]
+
+
+def test_imported_evidence_requires_two_selected_towns(tmp_path: Path) -> None:
+    evidence = Path("data/benchmarks/evidence.csv").read_bytes()
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        token = client.post("/api/evidence/inspect", content=evidence).json()["evidence_token"]
+        with patch("lifescape.web.execute_run") as execute:
+            response = client.post(
+                "/api/run",
+                json={
+                    "selected_place_ids": ["williamsburg_va"],
+                    "purchase_budget_max": 700_000,
+                    "future_self_age": 75,
+                    "household": "couple",
+                    "evidence_token": token,
+                },
+            )
+
+    assert response.status_code == 422
+    assert "select at least two towns" in response.json()["detail"]
+    execute.assert_not_called()
+
+
+def test_research_run_requires_a_packet_from_the_current_session(tmp_path: Path) -> None:
+    with (
+        TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client,
+        patch("lifescape.web.execute_run") as execute,
+    ):
+        response = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": ["asheville_nc", "williamsburg_va"],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+                "research_packet_id": "deadbeefcafe",
+            },
+        )
+
+    assert response.status_code == 422
+    assert "research packet is not available in this session" in response.json()["detail"]
+    execute.assert_not_called()
+
+
+def test_run_requires_imported_evidence_from_the_current_session(tmp_path: Path) -> None:
+    with (
+        TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client,
+        patch("lifescape.web.execute_run") as execute,
+    ):
+        response = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": ["asheville_nc", "williamsburg_va"],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+                "evidence_token": "deadbeefcafe",
+            },
+        )
+
+    assert response.status_code == 422
+    assert "imported evidence is no longer available; import it again" in response.json()["detail"]
+    execute.assert_not_called()
+
+
+def test_hosted_demo_rejects_research_endpoints(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
+    ) as client:
+        inspected = client.get("/api/research/packets/nope")
+        promoted = client.post("/api/research/promote", json={})
+        rejected = client.post("/api/research/reject", json={})
+        exported = client.get("/api/research/packets/nope/evidence.csv")
+
+    for response in (inspected, promoted, rejected, exported):
+        assert response.status_code == 404
+        assert "hosted site has no application API" in response.json()["detail"]
 
 
 def test_hosted_demo_is_synthetic_and_stateless(tmp_path: Path) -> None:

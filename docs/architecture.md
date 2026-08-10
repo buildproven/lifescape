@@ -20,3 +20,24 @@ Configuration is immutable after validation. The run ID hashes canonical configu
 
 The connector protocol is defined under `src/lifescape/connectors`; live connector implementations are deferred to Milestone 2.
 
+## AI-assisted discovery boundary
+
+The local app may send a user-approved `SearchBrief` to an opt-in discovery provider
+and receive a session-local `ResearchPacket`. The packet contains candidate leads,
+rationales, caveats, and optional discovery links only. It is not an evidence CSV or
+an engine input.
+
+```text
+SearchBrief → optional Claude discovery → ResearchPacket (Tier C)
+                                              │
+                              human-reviewed A/B source record
+                                              ▼
+                                      promotion validation
+                                              │
+                                              └── a future normal evidence run
+```
+
+`execute_run` remains the only authority for gates, scoring, sensitivity, persistence,
+and reports. A promotion validates one source record without changing any current run.
+Tier C material, incomplete provenance, and geography mismatches fail before a record
+can become an `ObservationRecord`.

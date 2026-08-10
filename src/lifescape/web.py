@@ -27,10 +27,29 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from lifescape.config import load_metrics
+from lifescape.config import load_metrics, load_sources
 from lifescape.evidence import validate_unique_headers
 from lifescape.models import GateState, RunResult
 from lifescape.pipeline import execute_run
+from lifescape.research import (
+    ClaudeDiscoveryProvider,
+    DiscoveryProvider,
+    PromotionRequest,
+    PromotionResult,
+    RejectionRequest,
+    ResearchError,
+    ResearchPacket,
+    ReviewDecision,
+    ReviewRecord,
+    SearchBrief,
+    create_packet,
+    export_approved_evidence,
+    promote_evidence,
+    readiness_for,
+    reject_evidence,
+    require_complete_packet_evidence,
+    state_for,
+)
 from lifescape.resources import bundled_benchmark
 
 MAX_EVIDENCE_BYTES = 5_000_000
@@ -203,11 +222,12 @@ class WebModel(BaseModel):
 
 
 class AppRunRequest(WebModel):
-    selected_place_ids: tuple[str, ...] = Field(min_length=2)
+    selected_place_ids: tuple[str, ...] = ()
     purchase_budget_max: float = Field(ge=50_000, le=100_000_000)
     future_self_age: int = Field(ge=40, le=110)
     household: Literal["solo", "couple", "family"] = "couple"
     evidence_token: str | None = Field(default=None, pattern=r"^[a-f0-9]{12}$")
+    research_packet_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{12}$")
 
     @field_validator("selected_place_ids")
     @classmethod
@@ -473,6 +493,7 @@ def create_app(
     output_dir: Path | None = None,
     *,
     hosted_demo: bool = False,
+    discovery_provider: DiscoveryProvider | None = None,
     hosted_runs_enabled: bool | None = None,
     hosted_run_limit: int = HOSTED_RUN_LIMIT,
     hosted_run_window_seconds: float = HOSTED_RUN_WINDOW_SECONDS,
@@ -509,6 +530,9 @@ def create_app(
     root_output = (output_dir or Path("outputs/app")).resolve()
     run_directories: dict[str, Path] = {}
     imported_evidence: OrderedDict[str, str] = OrderedDict()
+    research_packets: OrderedDict[str, ResearchPacket] = OrderedDict()
+    promoted_evidence: dict[str, list[PromotionResult]] = {}
+    research_reviews: dict[str, list[ReviewRecord]] = {}
     hosted_guard = HostedRunGuard(
         enabled=(not hosted_demo if hosted_runs_enabled is None else hosted_runs_enabled),
         run_limit=hosted_run_limit,
@@ -551,6 +575,7 @@ def create_app(
             "persistent_outputs": not hosted_demo,
             "places": _catalog(rows, metric_ids),
             "metric_count": len(metric_ids),
+            "metrics": list(metric_ids),
             "defaults": {
                 "purchase_budget_max": profile["purchase_budget_max"],
                 "future_self_age": profile["future_self_ages"][1],
@@ -585,6 +610,163 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    def research_response(packet: ResearchPacket) -> dict[str, object]:
+        with bundled_benchmark() as (_, config_dir):
+            metrics = load_metrics(config_dir)
+        promotions = tuple(promoted_evidence.get(packet.id, ()))
+        reviews = tuple(research_reviews.get(packet.id, ()))
+        needs = readiness_for(packet, metrics, promotions)
+        return {
+            "packet_id": packet.id,
+            "state": state_for(packet, metrics, promotions),
+            "leads": [
+                {
+                    "place_id": lead.place.place_id,
+                    "name": lead.place.name,
+                    "state": lead.place.state,
+                    "rationale": lead.rationale,
+                    "caveats": list(lead.caveats),
+                    "discovery_urls": [str(url) for url in lead.discovery_urls],
+                    "research_state": lead.state,
+                    "unresolved_critical_metrics": list(needs[lead.place.place_id]),
+                }
+                for lead in packet.leads
+            ],
+            "reviews": [item.model_dump(mode="json") for item in reviews],
+            "disclosure": (
+                "Discovery leads are not verified evidence and cannot affect gates or ranking. "
+                "A human must promote an eligible source record before a future decision run."
+            ),
+        }
+
+    @app.post("/api/research/discover")
+    def discover_candidates(brief: SearchBrief, request: Request) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        _validate_mutation_origin(request)
+        try:
+            provider = discovery_provider or ClaudeDiscoveryProvider.from_environment()
+            packet = create_packet(brief, provider.discover(brief))
+            research_packets[packet.id] = packet
+            while len(research_packets) > 8:
+                expired_id, _ = research_packets.popitem(last=False)
+                promoted_evidence.pop(expired_id, None)
+                research_reviews.pop(expired_id, None)
+            return research_response(packet)
+        except ResearchError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/research/packets/{packet_id}")
+    def inspect_research_packet(packet_id: str) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        try:
+            return research_response(research_packets[packet_id])
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="research packet is not available in this session"
+            ) from exc
+
+    @app.post("/api/research/promote")
+    def promote_research_evidence(payload: PromotionRequest, request: Request) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        _validate_mutation_origin(request)
+        try:
+            packet = research_packets[payload.packet_id]
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="research packet is not available in this session"
+            ) from exc
+        try:
+            with bundled_benchmark() as (_, config_dir):
+                existing = {
+                    (item.observation.place.place_id, item.observation.metric_id)
+                    for item in promoted_evidence.get(packet.id, ())
+                }
+                if (payload.place.place_id, payload.metric_id) in existing:
+                    raise ResearchError(
+                        "that observation has already been approved for this packet"
+                    )
+                result = promote_evidence(
+                    payload,
+                    packet=packet,
+                    metrics=load_metrics(config_dir),
+                    sources=load_sources(config_dir),
+                )
+            promoted_evidence.setdefault(packet.id, []).append(result)
+            research_reviews.setdefault(packet.id, []).append(
+                ReviewRecord(
+                    packet_id=result.packet_id,
+                    place_id=result.observation.place.place_id,
+                    metric_id=result.observation.metric_id,
+                    reviewer=result.reviewer,
+                    decision=ReviewDecision.APPROVED,
+                )
+            )
+            return {
+                "packet_id": result.packet_id,
+                "reviewer": result.reviewer,
+                "observation": result.observation.model_dump(mode="json"),
+                "disclosure": (
+                    "Promotion validates one source record; it does not run or alter scoring."
+                ),
+            }
+        except ResearchError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/research/reject")
+    def reject_research_evidence(payload: RejectionRequest, request: Request) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        _validate_mutation_origin(request)
+        try:
+            packet = research_packets[payload.packet_id]
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="research packet is not available in this session"
+            ) from exc
+        try:
+            existing = {
+                (item.place_id, item.metric_id)
+                for item in research_reviews.get(packet.id, ())
+                if item.decision is ReviewDecision.REJECTED
+            }
+            if (payload.place.place_id, payload.metric_id) in existing:
+                raise ResearchError("that observation has already been rejected for this packet")
+            with bundled_benchmark() as (_, config_dir):
+                result = reject_evidence(payload, packet=packet, metrics=load_metrics(config_dir))
+            research_reviews.setdefault(packet.id, []).append(result)
+            return {"review": result.model_dump(mode="json"), "packet": research_response(packet)}
+        except ResearchError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/research/packets/{packet_id}/evidence.csv")
+    def export_research_evidence(packet_id: str) -> Response:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        try:
+            packet = research_packets[packet_id]
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="research packet is not available in this session"
+            ) from exc
+        with bundled_benchmark() as (_, config_dir):
+            metrics = load_metrics(config_dir)
+            promotions = tuple(promoted_evidence.get(packet.id, ()))
+            try:
+                require_complete_packet_evidence(packet, metrics, promotions)
+                csv_text = export_approved_evidence(promotions, metrics)
+            except ResearchError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return Response(
+            csv_text,
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{packet.id}-approved-evidence.csv"'
+            },
+        )
+
     @app.post("/api/run")
     def run_comparison(payload: AppRunRequest, request: Request) -> dict[str, object]:
         if hosted_demo:
@@ -602,13 +784,36 @@ def create_app(
         runs_root = root_output / "runs"
         run_dir = runs_root / token
         try:
+            if len(payload.selected_place_ids) < 2:
+                raise ValueError("select at least two towns before running a comparison")
             runs_root.mkdir(parents=True, exist_ok=True)
             with TemporaryDirectory(prefix=".staging-", dir=runs_root) as staging_name:
                 staging_dir = Path(staging_name)
                 with bundled_benchmark() as (benchmark_evidence, benchmark_config):
                     metric_ids = tuple(metric.id for metric in load_metrics(benchmark_config))
                     csv_text = benchmark_evidence.read_text(encoding="utf-8")
-                    if payload.evidence_token is not None:
+                    research_packet = None
+                    if payload.research_packet_id is not None:
+                        try:
+                            research_packet = research_packets[payload.research_packet_id]
+                        except KeyError as exc:
+                            raise ValueError(
+                                "research packet is not available in this session"
+                            ) from exc
+                        selected = set(payload.selected_place_ids)
+                        packet_places = {lead.place.place_id for lead in research_packet.leads}
+                        if selected != packet_places:
+                            raise ValueError(
+                                "a research run must include every packet candidate exactly once"
+                            )
+                        promotions = tuple(promoted_evidence.get(research_packet.id, ()))
+                        require_complete_packet_evidence(
+                            research_packet, load_metrics(benchmark_config), promotions
+                        )
+                        csv_text = export_approved_evidence(
+                            promotions, load_metrics(benchmark_config)
+                        )
+                    elif payload.evidence_token is not None:
                         try:
                             csv_text = imported_evidence[payload.evidence_token]
                         except KeyError as exc:
@@ -621,7 +826,7 @@ def create_app(
                         fieldnames, rows, set(payload.selected_place_ids), evidence_path
                     )
                     config_dir = benchmark_config
-                    if payload.evidence_token is not None:
+                    if payload.evidence_token is not None or research_packet is not None:
                         config_dir = staging_dir / "config"
                         shutil.copytree(benchmark_config, config_dir)
                         brief_path = config_dir / "research_brief.yaml"
