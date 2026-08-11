@@ -300,7 +300,7 @@ function renderDiscovery(packet) {
                   : `<p class="evidence-status">Decision: ${escapeHtml(status)}</p>`;
               return `<div class="fetched-evidence" data-metric-id="${escapeHtml(item.metric_id)}">
                 <div><strong>${escapeHtml(item.metric_id.replaceAll("_", " "))}</strong><span>${escapeHtml(String(item.raw_value))}</span></div>
-                <small>${escapeHtml(item.source.title)} · ${escapeHtml(item.source.geography)} · observed ${escapeHtml(item.observed_at)} · <a href="${escapeHtml(item.source.url)}" target="_blank" rel="noreferrer">source</a></small>
+                <small>${escapeHtml(item.source.title)} · ${escapeHtml(item.source.publisher)} · ${escapeHtml(item.source.geography)} · observed ${escapeHtml(item.observed_at)} · retrieved ${escapeHtml(item.source.retrieved_at)} · <a href="${escapeHtml(item.source.url)}" target="_blank" rel="noreferrer">source</a></small>
                 ${reviewActions}
               </div>`;
             })
