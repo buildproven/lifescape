@@ -1,15 +1,14 @@
 # Known limitations
 
 - All benchmark values are synthetic; no real town conclusion is supported.
-- Public data connectors and integration tests are Milestone 2 work. The Census ACS connector supports `education_attainment` (direct pull-through) and `distress_index` (a derived proxy: the unweighted average of ACS poverty rate, unemployment rate, and vacant housing rate — not an official Census statistic; see `SourceRecord.title` on the resulting observation). Both are wired into a dedicated `lifescape live-run` command (`config/research_brief.live.yaml`); `lifescape benchmark` is unaffected and still uses only synthetic evidence. `distress_index` is the first live-fetched metric that can actually block a candidate (critical gate, threshold `<=7`); the other five critical gates (`purchase_feasibility`, `healthcare`, `broadband`, `winter_severity`, `hazard_profile`, `aging_in_place_supply`) have no live connector yet and still require manual evidence. Connectors have no retry logic; a transient failure degrades that (place, metric) to missing evidence for the run.
+- Public-source adapters are available for the local research packet workflow and the existing `lifescape live-run` command. The Census ACS connector supports `education_attainment` (direct pull-through) and `distress_index` (a derived proxy: the unweighted average of ACS poverty rate, unemployment rate, and vacant housing rate — not an official Census statistic; see `SourceRecord.title` on the resulting observation). NOAA GSOY supports explicit station/year snowfall. Adapter output is fetched into a session-local review queue; it is never decision evidence until a named human approves it. Connectors have no retry logic; a transient failure is recorded as missing evidence and keeps the affected critical metric blocking.
 - No free, town-level public API was found for `median_sale_price`, `flood_risk_score`, or `one_level_inventory_count` as of 2026-07 (Zillow's public API is discontinued; FEMA's flood API is not publicly accessible without a paid third-party wrapper; real-estate listing inventory is inherently commercial/MLS-adjacent data). These metrics are expected to stay manually curated.
 - Optional Claude discovery can suggest unverified candidate-town leads from a user
-  SearchBrief and one or two exemplar towns. It has no authority to provide decision
-  evidence, clear a gate, or rank a town. Claude does not receive evidence imports.
-  The local app records a named human's approve/reject decision and can export approved
-  records into the normal evidence CSV contract, but it does not automate source lookup.
-  A research packet cannot enter a run until every candidate has complete approved critical
-  evidence.
+  SearchBrief and zero, one, or two exemplar towns. It has no authority to provide decision
+  evidence, clear a gate, or rank a town. Claude does not receive evidence imports. The local
+  app can fetch configured ACS/NOAA records, records a named human's approve/reject decision,
+  and exports only approved records into the normal evidence CSV contract. A research packet
+  cannot enter a run until every candidate has complete approved critical evidence.
 - FCC broadband availability is location-level, and CMS hospital facts do not establish a
   household's route-time outcome. Both belong to finalist, address-aware verification after
   a town clears discovery and evidence review; neither is a discovery gate or a town-level

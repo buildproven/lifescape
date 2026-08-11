@@ -13,16 +13,20 @@ from lifescape.models import Confidence, PlaceRecord, SourceRecord, SourceTier
 from lifescape.research import (
     ClaudeDiscoveryProvider,
     DiscoveryLead,
+    FetchedPromotionRequest,
     PromotionRequest,
     RejectionRequest,
     ResearchError,
+    ResearchSelectionRequest,
     SearchBrief,
     create_packet,
     export_approved_evidence,
     promote_evidence,
+    promote_fetched_evidence,
     readiness_for,
     reject_evidence,
     require_complete_packet_evidence,
+    select_packet_leads,
     state_for,
 )
 
@@ -47,6 +51,14 @@ def packet():
             ),
         ),
     )
+
+
+def test_search_brief_allows_intent_without_exemplar_towns() -> None:
+    result = SearchBrief(
+        preferences="A walkable retirement town with trails and a lively main street."
+    )
+
+    assert result.exemplar_towns == ()
 
 
 def promotion(
@@ -179,6 +191,64 @@ def test_rejection_is_a_visible_audit_decision_not_evidence() -> None:
 
     assert rejected.decision.value == "REJECTED"
     assert rejected.reason == "Station coverage is outside the town boundary."
+
+
+def test_selected_packet_contains_only_requested_leads() -> None:
+    selected = create_packet(
+        brief(),
+        (
+            DiscoveryLead(
+                place=PlaceRecord(place_id="asheville_nc", name="Asheville", state="NC"),
+                rationale="A",
+            ),
+            DiscoveryLead(
+                place=PlaceRecord(place_id="bend_or", name="Bend", state="OR"),
+                rationale="B",
+            ),
+            DiscoveryLead(
+                place=PlaceRecord(place_id="bozeman_mt", name="Bozeman", state="MT"),
+                rationale="C",
+            ),
+        ),
+    )
+
+    subset = select_packet_leads(
+        ResearchSelectionRequest(packet_id=selected.id, place_ids=("bend_or", "bozeman_mt")),
+        packet=selected,
+    )
+
+    assert [lead.place.place_id for lead in subset.leads] == ["bend_or", "bozeman_mt"]
+    assert subset.id != selected.id
+
+
+def test_fetched_observation_requires_metric_compatible_provenance(policy) -> None:
+    selected_packet = packet()
+    fetched = promotion(selected_packet.id).model_copy(
+        update={
+            "source": promotion(selected_packet.id).source.model_copy(
+                update={"geography": "station"}
+            )
+        }
+    )
+
+    with pytest.raises(ResearchError, match="does not match"):
+        promote_fetched_evidence(
+            FetchedPromotionRequest(
+                packet_id=selected_packet.id,
+                place_id="asheville_nc",
+                metric_id="annual_snowfall",
+                reviewer="Brett Stark",
+            ),
+            packet=selected_packet,
+            observation=fetched.model_copy(
+                update={
+                    "source": fetched.source.model_copy(update={"geography": "station"}),
+                }
+            ),
+            metrics=load_metrics(Path("config")),
+            sources=policy,
+            as_of=date(2026, 1, 2),
+        )
 
 
 def test_promotion_rejects_discovery_url_and_forged_place_identity(policy) -> None:

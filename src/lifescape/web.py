@@ -34,21 +34,30 @@ from lifescape.pipeline import execute_run
 from lifescape.research import (
     ClaudeDiscoveryProvider,
     DiscoveryProvider,
+    FetchedPromotionRequest,
     PromotionRequest,
     PromotionResult,
     RejectionRequest,
     ResearchError,
     ResearchPacket,
+    ResearchSelectionRequest,
     ReviewDecision,
     ReviewRecord,
     SearchBrief,
     create_packet,
     export_approved_evidence,
     promote_evidence,
+    promote_fetched_evidence,
     readiness_for,
     reject_evidence,
     require_complete_packet_evidence,
+    select_packet_leads,
     state_for,
+)
+from lifescape.research_sources import (
+    ConnectorEvidenceProvider,
+    EvidenceFetchResult,
+    ResearchEvidenceProvider,
 )
 from lifescape.resources import bundled_benchmark
 
@@ -500,6 +509,7 @@ def create_app(
     hosted_global_run_limit: int = HOSTED_GLOBAL_RUN_LIMIT,
     hosted_max_concurrent: int = HOSTED_MAX_CONCURRENT_RUNS,
     hosted_max_tracked_clients: int = HOSTED_MAX_TRACKED_CLIENTS,
+    research_evidence_provider: ResearchEvidenceProvider | None = None,
 ) -> FastAPI:
     """Create the loopback-only browser application."""
     app = FastAPI(
@@ -533,6 +543,8 @@ def create_app(
     research_packets: OrderedDict[str, ResearchPacket] = OrderedDict()
     promoted_evidence: dict[str, list[PromotionResult]] = {}
     research_reviews: dict[str, list[ReviewRecord]] = {}
+    fetched_evidence: dict[str, EvidenceFetchResult] = {}
+    evidence_provider = research_evidence_provider or ConnectorEvidenceProvider.from_environment()
     hosted_guard = HostedRunGuard(
         enabled=(not hosted_demo if hosted_runs_enabled is None else hosted_runs_enabled),
         run_limit=hosted_run_limit,
@@ -615,7 +627,35 @@ def create_app(
             metrics = load_metrics(config_dir)
         promotions = tuple(promoted_evidence.get(packet.id, ()))
         reviews = tuple(research_reviews.get(packet.id, ()))
+        fetched = fetched_evidence.get(packet.id, EvidenceFetchResult())
         needs = readiness_for(packet, metrics, promotions)
+        promoted_keys = {
+            (item.observation.place.place_id, item.observation.metric_id) for item in promotions
+        }
+        rejected_keys = {
+            (item.place_id, item.metric_id)
+            for item in reviews
+            if item.decision is ReviewDecision.REJECTED
+        }
+        fetched_by_key = {
+            (item.place.place_id, item.metric_id): item for item in fetched.observations
+        }
+        statuses: dict[str, dict[str, str]] = {}
+        for lead in packet.leads:
+            lead_status: dict[str, str] = {}
+            for metric in metrics:
+                key = (lead.place.place_id, metric.id)
+                if key in rejected_keys:
+                    lead_status[metric.id] = "rejected"
+                elif key in promoted_keys:
+                    lead_status[metric.id] = "approved"
+                elif key in fetched_by_key:
+                    lead_status[metric.id] = "awaiting_review"
+                elif metric.finalist_only:
+                    lead_status[metric.id] = "finalist_verification"
+                else:
+                    lead_status[metric.id] = "not_fetched"
+            statuses[lead.place.place_id] = lead_status
         return {
             "packet_id": packet.id,
             "state": state_for(packet, metrics, promotions),
@@ -627,15 +667,20 @@ def create_app(
                     "rationale": lead.rationale,
                     "caveats": list(lead.caveats),
                     "discovery_urls": [str(url) for url in lead.discovery_urls],
+                    "connector_geographies": dict(lead.connector_geographies),
                     "research_state": lead.state,
                     "unresolved_critical_metrics": list(needs[lead.place.place_id]),
                 }
                 for lead in packet.leads
             ],
             "reviews": [item.model_dump(mode="json") for item in reviews],
+            "evidence": [item.model_dump(mode="json") for item in fetched.observations],
+            "evidence_status": statuses,
+            "fetch_errors": {place_id: list(errors) for place_id, errors in fetched.errors.items()},
             "disclosure": (
                 "Discovery leads are not verified evidence and cannot affect gates or ranking. "
-                "A human must promote an eligible source record before a future decision run."
+                "Public-source adapters may fetch candidate observations, but a human must "
+                "approve an eligible record before a decision run."
             ),
         }
 
@@ -652,9 +697,57 @@ def create_app(
                 expired_id, _ = research_packets.popitem(last=False)
                 promoted_evidence.pop(expired_id, None)
                 research_reviews.pop(expired_id, None)
+                fetched_evidence.pop(expired_id, None)
             return research_response(packet)
         except ResearchError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/research/select")
+    def select_research_leads(
+        payload: ResearchSelectionRequest, request: Request
+    ) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        _validate_mutation_origin(request)
+        try:
+            packet = research_packets[payload.packet_id]
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="research packet is not available in this session"
+            ) from exc
+        try:
+            selected = select_packet_leads(payload, packet=packet)
+        except ResearchError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        research_packets[selected.id] = selected
+        promoted_evidence[selected.id] = []
+        research_reviews[selected.id] = []
+        fetched_evidence[selected.id] = EvidenceFetchResult()
+        return research_response(selected)
+
+    @app.post("/api/research/fetch")
+    def fetch_research_evidence(
+        payload: ResearchSelectionRequest, request: Request
+    ) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        _validate_mutation_origin(request)
+        try:
+            packet = research_packets[payload.packet_id]
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="research packet is not available in this session"
+            ) from exc
+        if set(payload.place_ids) != {lead.place.place_id for lead in packet.leads}:
+            raise HTTPException(
+                status_code=422,
+                detail="fetch request must include every selected packet candidate exactly once",
+            )
+        try:
+            fetched_evidence[packet.id] = evidence_provider.fetch(packet)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return research_response(packet)
 
     @app.get("/api/research/packets/{packet_id}")
     def inspect_research_packet(packet_id: str) -> dict[str, object]:
@@ -688,6 +781,15 @@ def create_app(
                     raise ResearchError(
                         "that observation has already been approved for this packet"
                     )
+                rejected = {
+                    (item.place_id, item.metric_id)
+                    for item in research_reviews.get(packet.id, ())
+                    if item.decision is ReviewDecision.REJECTED
+                }
+                if (payload.place.place_id, payload.metric_id) in rejected:
+                    raise ResearchError(
+                        "that observation has already been rejected for this packet"
+                    )
                 result = promote_evidence(
                     payload,
                     packet=packet,
@@ -715,6 +817,73 @@ def create_app(
         except ResearchError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.post("/api/research/approve-fetched")
+    def approve_fetched_research_evidence(
+        payload: FetchedPromotionRequest, request: Request
+    ) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        _validate_mutation_origin(request)
+        try:
+            packet = research_packets[payload.packet_id]
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="research packet is not available in this session"
+            ) from exc
+        fetched = fetched_evidence.get(packet.id, EvidenceFetchResult())
+        observation = next(
+            (
+                item
+                for item in fetched.observations
+                if item.place.place_id == payload.place_id and item.metric_id == payload.metric_id
+            ),
+            None,
+        )
+        if observation is None:
+            raise HTTPException(
+                status_code=422,
+                detail="that fetched observation is not available for this packet",
+            )
+        try:
+            with bundled_benchmark() as (_, config_dir):
+                existing = {
+                    (item.observation.place.place_id, item.observation.metric_id)
+                    for item in promoted_evidence.get(packet.id, ())
+                }
+                if (payload.place_id, payload.metric_id) in existing:
+                    raise ResearchError(
+                        "that observation has already been approved for this packet"
+                    )
+                rejected = {
+                    (item.place_id, item.metric_id)
+                    for item in research_reviews.get(packet.id, ())
+                    if item.decision is ReviewDecision.REJECTED
+                }
+                if (payload.place_id, payload.metric_id) in rejected:
+                    raise ResearchError(
+                        "that observation has already been rejected for this packet"
+                    )
+                result = promote_fetched_evidence(
+                    payload,
+                    packet=packet,
+                    observation=observation,
+                    metrics=load_metrics(config_dir),
+                    sources=load_sources(config_dir),
+                )
+            promoted_evidence.setdefault(packet.id, []).append(result)
+            research_reviews.setdefault(packet.id, []).append(
+                ReviewRecord(
+                    packet_id=packet.id,
+                    place_id=payload.place_id,
+                    metric_id=payload.metric_id,
+                    reviewer=result.reviewer,
+                    decision=ReviewDecision.APPROVED,
+                )
+            )
+            return research_response(packet)
+        except ResearchError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.post("/api/research/reject")
     def reject_research_evidence(payload: RejectionRequest, request: Request) -> dict[str, object]:
         if hosted_demo:
@@ -734,6 +903,12 @@ def create_app(
             }
             if (payload.place.place_id, payload.metric_id) in existing:
                 raise ResearchError("that observation has already been rejected for this packet")
+            approved = {
+                (item.observation.place.place_id, item.observation.metric_id)
+                for item in promoted_evidence.get(packet.id, ())
+            }
+            if (payload.place.place_id, payload.metric_id) in approved:
+                raise ResearchError("that observation has already been approved for this packet")
             with bundled_benchmark() as (_, config_dir):
                 result = reject_evidence(payload, packet=packet, metrics=load_metrics(config_dir))
             research_reviews.setdefault(packet.id, []).append(result)

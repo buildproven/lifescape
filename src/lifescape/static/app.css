@@ -415,10 +415,28 @@ a:focus-visible {
   font-size: 12px;
   line-height: 1.5;
 }
+.discovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
 .discovery-card {
   padding: 16px;
   border: 1px solid var(--line);
   background: rgba(252, 251, 247, 0.6);
+}
+.lead-select {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.lead-select input {
+  accent-color: var(--accent-deep);
 }
 .discovery-card h3,
 .discovery-card p {
@@ -490,6 +508,50 @@ a:focus-visible {
   align-items: center;
   gap: 14px;
   margin-top: 12px;
+}
+.fetched-evidence {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+.fetched-evidence > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.fetched-evidence small,
+.evidence-empty,
+.evidence-error,
+.evidence-status,
+.finalist-note {
+  display: block;
+  margin-top: 7px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.evidence-error {
+  color: var(--warning);
+}
+.evidence-status {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.fetched-evidence .review-actions {
+  align-items: end;
+}
+.fetched-evidence .review-actions label {
+  display: grid;
+  gap: 4px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+}
+.fetched-evidence .review-actions input {
+  border: 1px solid var(--line);
+  padding: 7px;
 }
 .review-ledger {
   grid-column: 1 / -1;

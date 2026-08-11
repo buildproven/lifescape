@@ -1,6 +1,8 @@
 # Milestone 1 implementation plan
 
-This plan implements only the Core Vertical Slice defined by the Retirement Decision Engine v6 master specification. The release is local-first, deterministic, evidence-backed, and usable without external APIs.
+This plan implements the Core Vertical Slice defined by the Retirement Decision Engine v6
+master specification plus the first intent-to-public-source research slice. The release is
+local-first, deterministic, evidence-backed, and usable without external APIs.
 
 ## Acceptance path
 
@@ -35,9 +37,28 @@ This plan implements only the Core Vertical Slice defined by the Retirement Deci
 - `lifescape benchmark` produces a ten-town comparison from clearly synthetic data and blocks every failed or unknown critical gate.
 - Running the benchmark twice with identical inputs produces byte-identical reports.
 
+## Research-packet slice
+
+The local app accepts user intent and optional exemplar towns, creates Tier C discovery
+leads, lets the user select a bounded pilot set, and fetches system-configured ACS and NOAA
+GSOY observations. The review queue preserves the adapter's source URL, source geography,
+observation date, metric, and value; a named human must approve a record before it can be
+exported into the existing wide evidence CSV. `execute_run` receives only that export and
+fails closed while any candidate has an unknown critical metric.
+
+Broadband, CMS/route time, flood/property, and other address- or parcel-specific checks are
+marked `finalist_only` in the metric configuration. They remain visible requirements after
+discovery and still block a decision run when unknown; they are not required to generate
+candidate leads. The pilot is intentionally session-local. See
+`docs/decisions/ADR-evidence-corpus-readiness.md` for the criteria before a shared corpus
+or database is considered.
+
 ## Deliberately deferred
 
-Live public-data connectors, automated candidate discovery, adversarial agents, neighborhood and property analysis, mapping, scouting, web UI, and final purchase recommendations remain outside Milestone 1. The connector protocol and manual evidence boundary are designed so Milestone 2 can add public sources without changing gate or scoring semantics.
+Additional live public-data connectors, adversarial agents, neighborhood and property
+analysis, mapping, scouting, and final purchase recommendations remain deferred. The
+connector protocol and manual evidence boundary keep future sources from changing gate or
+scoring semantics.
 
 Milestone 2 has begun: `lifescape.connectors.census_acs.CensusAcsConnector` implements the `Connector` protocol against the Census ACS 5-Year Data Profile API, requiring a free `CENSUS_API_KEY` (see `.env.example`). It supports two metrics: `education_attainment` (a direct pull-through of `DP02_0068PE`) and `distress_index` (a derived proxy: the unweighted average of poverty rate `DP03_0128PE`, unemployment rate `DP03_0009PE`, and vacant housing rate `DP04_0003PE` — documented as non-official in the observation's `SourceRecord.title` so it is never mistaken for a published Census statistic). `distress_index` is a critical gate (`distress_profile`, threshold `<=7`), so this is the first metric where live-fetched evidence can actually block a candidate, not just influence scoring.
 
@@ -57,4 +78,7 @@ missing critical evidence and blocks the candidate normally.
 
 The ACS connector now supports every Census state, district, and territory FIPS code rather than only the benchmark states. By default it resolves the newest *published* ACS 5-Year Data Profile vintage from the [official Census data catalog](https://api.census.gov/data.json), avoiding a date-derived guess before an annual release exists. Its `acs_year` constructor option pins a vintage when a reproducible research run requires one. Catalog failures or an absent published profile are explicit connector failures; the live-run orchestration records the affected evidence as missing, where critical gates remain blocked rather than silently falling back to a prior vintage.
 
-Remaining Milestone 2 work: connectors for `broadband_mbps_down`, `er_drive_minutes` (CMS Hospital General Information dataset — verified live and keyless, needs address-to-drive-time routing), and automated candidate discovery.
+Remaining work: connectors for finalist-only metrics (FCC location-level broadband,
+CMS facility facts plus address-aware routing, and property/neighborhood verification),
+refresh/history behavior for reviewed adapter records, and automated candidate discovery
+quality beyond the bounded local pilot.

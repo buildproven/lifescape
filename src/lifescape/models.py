@@ -50,6 +50,7 @@ class MetricDefinition(StrictModel):
     geography_level: str = "town"
     criterion: str
     critical: bool = False
+    finalist_only: bool = False
     freshness_days: int = Field(default=730, ge=0)
     valid_min: float = Field(allow_inf_nan=False)
     valid_max: float = Field(allow_inf_nan=False)

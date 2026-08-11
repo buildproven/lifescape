@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import runpy
 import sqlite3
+from datetime import date
 from html.parser import HTMLParser
 from inspect import signature
 from pathlib import Path
@@ -11,10 +12,11 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from lifescape.models import PlaceRecord
+from lifescape.models import Confidence, ObservationRecord, PlaceRecord, SourceRecord, SourceTier
 from lifescape.pipeline import execute_run
 from lifescape.research import DiscoveryLead, SearchBrief
-from lifescape.web import HostedRunGuard, create_app
+from lifescape.research_sources import EvidenceFetchResult
+from lifescape.web import HostedRunGuard, _read_evidence, create_app
 
 
 class FakeDiscoveryProvider:
@@ -33,6 +35,81 @@ class EmptyDiscoveryProvider:
     def discover(self, brief: SearchBrief) -> tuple[DiscoveryLead, ...]:
         del brief
         return ()
+
+
+class MultiDiscoveryProvider:
+    def discover(self, brief: SearchBrief) -> tuple[DiscoveryLead, ...]:
+        del brief
+        return (
+            DiscoveryLead(
+                place=PlaceRecord(place_id="asheville_nc", name="Asheville", state="NC"),
+                rationale="First lead.",
+            ),
+            DiscoveryLead(
+                place=PlaceRecord(place_id="bend_or", name="Bend", state="OR"),
+                rationale="Second lead.",
+            ),
+        )
+
+
+class FakeResearchEvidenceProvider:
+    def fetch(self, packet):
+        return EvidenceFetchResult(
+            observations=tuple(
+                ObservationRecord(
+                    place=lead.place,
+                    metric_id="distress_index",
+                    raw_value=2,
+                    observed_period="2021-2025",
+                    observed_at=date(2025, 12, 31),
+                    source=SourceRecord(
+                        url="https://api.census.gov/data/2025/acs/acs5/profile",
+                        title="American Community Survey 2025 5-Year Estimates",
+                        publisher="U.S. Census Bureau",
+                        tier=SourceTier.A,
+                        retrieved_at=date(2026, 1, 1),
+                        geography="town",
+                        confidence=Confidence.HIGH,
+                    ),
+                )
+                for lead in packet.leads
+            )
+        )
+
+
+class CompleteResearchEvidenceProvider:
+    def fetch(self, packet):
+        values = {
+            "median_sale_price": 500_000,
+            "er_drive_minutes": 10,
+            "broadband_mbps_down": 250,
+            "annual_snowfall": 10,
+            "flood_risk_score": 2,
+            "distress_index": 2,
+            "one_level_inventory_count": 25,
+        }
+        return EvidenceFetchResult(
+            observations=tuple(
+                ObservationRecord(
+                    place=lead.place,
+                    metric_id=metric_id,
+                    raw_value=value,
+                    observed_period="2021-2025",
+                    observed_at=date(2025, 12, 31),
+                    source=SourceRecord(
+                        url="https://api.census.gov/data/2025/acs/acs5/profile",
+                        title="Official pilot fixture",
+                        publisher="U.S. Census Bureau",
+                        tier=SourceTier.A,
+                        retrieved_at=date(2026, 1, 1),
+                        geography="town",
+                        confidence=Confidence.HIGH,
+                    ),
+                )
+                for lead in packet.leads
+                for metric_id, value in values.items()
+            )
+        )
 
 
 def test_hosted_landing_page_explains_the_product_and_links_to_demo(tmp_path: Path) -> None:
@@ -107,6 +184,169 @@ def test_discovery_refuses_a_provider_with_no_leads(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert "at least one discovery lead" in response.json()["detail"]
+
+
+def test_discovery_accepts_preferences_without_exemplar_town(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=MultiDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        response = client.post(
+            "/api/research/discover",
+            json={"preferences": "A walkable retirement town with outdoor access."},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["leads"]
+
+
+def test_selected_leads_can_fetch_and_review_adapter_evidence(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(
+            tmp_path / "output",
+            discovery_provider=MultiDiscoveryProvider(),
+            research_evidence_provider=FakeResearchEvidenceProvider(),
+        ),
+        base_url="http://127.0.0.1",
+    ) as client:
+        packet = client.post(
+            "/api/research/discover",
+            json={"preferences": "A walkable retirement town with outdoor access."},
+        ).json()
+        selected = client.post(
+            "/api/research/select",
+            json={
+                "packet_id": packet["packet_id"],
+                "place_ids": ["asheville_nc", "bend_or"],
+            },
+        ).json()
+        fetched = client.post(
+            "/api/research/fetch",
+            json={
+                "packet_id": selected["packet_id"],
+                "place_ids": ["asheville_nc", "bend_or"],
+            },
+        )
+        evidence = fetched.json()["evidence"][0]
+        approved = client.post(
+            "/api/research/approve-fetched",
+            json={
+                "packet_id": selected["packet_id"],
+                "place_id": evidence["place"]["place_id"],
+                "metric_id": evidence["metric_id"],
+                "reviewer": "Brett Stark",
+            },
+        )
+
+    assert fetched.status_code == 200
+    assert fetched.json()["evidence_status"]["asheville_nc"]["distress_index"] == "awaiting_review"
+    assert approved.status_code == 200
+    assert approved.json()["reviews"][0]["decision"] == "APPROVED"
+    assert approved.json()["evidence_status"]["asheville_nc"]["distress_index"] == "approved"
+
+
+def test_incomplete_adapter_packet_blocks_execute_run(tmp_path: Path) -> None:
+    with (
+        TestClient(
+            create_app(
+                tmp_path / "output",
+                discovery_provider=MultiDiscoveryProvider(),
+                research_evidence_provider=FakeResearchEvidenceProvider(),
+            ),
+            base_url="http://127.0.0.1",
+        ) as client,
+        patch("lifescape.web.execute_run") as execute,
+    ):
+        packet = client.post(
+            "/api/research/discover",
+            json={"preferences": "A walkable retirement town with outdoor access."},
+        ).json()
+        selected = client.post(
+            "/api/research/select",
+            json={"packet_id": packet["packet_id"], "place_ids": ["asheville_nc", "bend_or"]},
+        ).json()
+        fetched = client.post(
+            "/api/research/fetch",
+            json={"packet_id": selected["packet_id"], "place_ids": ["asheville_nc", "bend_or"]},
+        ).json()
+        observation = fetched["evidence"][0]
+        approved = client.post(
+            "/api/research/approve-fetched",
+            json={
+                "packet_id": selected["packet_id"],
+                "place_id": observation["place"]["place_id"],
+                "metric_id": observation["metric_id"],
+                "reviewer": "Brett Stark",
+            },
+        )
+        run = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": ["asheville_nc", "bend_or"],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+                "research_packet_id": selected["packet_id"],
+            },
+        )
+
+    assert approved.status_code == 200
+    assert run.status_code == 422
+    assert "critical evidence remains unapproved" in run.json()["detail"]
+    execute.assert_not_called()
+
+
+def test_complete_approved_adapter_packet_reaches_execute_run(tmp_path: Path) -> None:
+    with (
+        TestClient(
+            create_app(
+                tmp_path / "output",
+                discovery_provider=MultiDiscoveryProvider(),
+                research_evidence_provider=CompleteResearchEvidenceProvider(),
+            ),
+            base_url="http://127.0.0.1",
+        ) as client,
+        patch(
+            "lifescape.web.execute_run", side_effect=ValueError("execute boundary reached")
+        ) as execute,
+    ):
+        packet = client.post(
+            "/api/research/discover",
+            json={"preferences": "A walkable retirement town with outdoor access."},
+        ).json()
+        selected = client.post(
+            "/api/research/select",
+            json={"packet_id": packet["packet_id"], "place_ids": ["asheville_nc", "bend_or"]},
+        ).json()
+        fetched = client.post(
+            "/api/research/fetch",
+            json={"packet_id": selected["packet_id"], "place_ids": ["asheville_nc", "bend_or"]},
+        ).json()
+        for observation in fetched["evidence"]:
+            approved = client.post(
+                "/api/research/approve-fetched",
+                json={
+                    "packet_id": selected["packet_id"],
+                    "place_id": observation["place"]["place_id"],
+                    "metric_id": observation["metric_id"],
+                    "reviewer": "Brett Stark",
+                },
+            )
+            assert approved.status_code == 200
+        run = client.post(
+            "/api/run",
+            json={
+                "selected_place_ids": ["asheville_nc", "bend_or"],
+                "purchase_budget_max": 700_000,
+                "future_self_age": 75,
+                "household": "couple",
+                "research_packet_id": selected["packet_id"],
+            },
+        )
+
+    assert run.status_code == 422
+    assert "execute boundary reached" in run.json()["detail"]
+    execute.assert_called_once()
 
 
 def test_promotion_requires_existing_packet_and_never_runs_scoring(tmp_path: Path) -> None:
@@ -305,11 +545,14 @@ def test_hosted_demo_rejects_research_endpoints(tmp_path: Path) -> None:
         base_url="https://lifescape.buildproven.ai",
     ) as client:
         inspected = client.get("/api/research/packets/nope")
+        selected = client.post("/api/research/select", json={})
+        fetched = client.post("/api/research/fetch", json={})
         promoted = client.post("/api/research/promote", json={})
+        approved = client.post("/api/research/approve-fetched", json={})
         rejected = client.post("/api/research/reject", json={})
         exported = client.get("/api/research/packets/nope/evidence.csv")
 
-    for response in (inspected, promoted, rejected, exported):
+    for response in (inspected, selected, fetched, promoted, approved, rejected, exported):
         assert response.status_code == 404
         assert "hosted site has no application API" in response.json()["detail"]
 
@@ -403,12 +646,45 @@ def test_hosted_guard_rejects_rotating_clients_without_retaining_them() -> None:
     guard.release()
 
 
+def test_hosted_guard_enforces_disabled_and_per_client_limits() -> None:
+    disabled = HostedRunGuard(enabled=False)
+    with pytest.raises(HTTPException, match="temporarily disabled"):
+        disabled.acquire("client")
+
+    limited = HostedRunGuard(enabled=True, run_limit=1, max_concurrent=2)
+    limited.acquire("client")
+    with pytest.raises(HTTPException, match="limit reached"):
+        limited.acquire("client")
+    limited.release()
+
+    global_limited = HostedRunGuard(enabled=True, global_run_limit=1, max_concurrent=2)
+    global_limited.acquire("first")
+    global_limited.release()
+    with pytest.raises(HTTPException, match="capacity is exhausted"):
+        global_limited.acquire("second")
+
+    tracked_limited = HostedRunGuard(enabled=True, max_tracked_clients=1, max_concurrent=2)
+    tracked_limited.acquire("first")
+    tracked_limited.release()
+    with pytest.raises(HTTPException, match="capacity is exhausted"):
+        tracked_limited.acquire("second")
+
+
 def test_local_html_preserves_local_disclosure(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
         response = client.get("/")
 
     assert "Your evidence and outputs stay on this computer." in response.text
     assert "CSV uploads are disabled." not in response.text
+
+
+@pytest.mark.parametrize(
+    "csv_text, message",
+    [("", "no header"), ("place_id,place_name,state,metric\n", "no rows")],
+)
+def test_evidence_reader_rejects_empty_csv_shapes(csv_text: str, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        _read_evidence(csv_text, ("metric",))
 
 
 def test_finished_demo_shows_a_completed_decision(tmp_path: Path) -> None:
