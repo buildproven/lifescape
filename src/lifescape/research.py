@@ -63,7 +63,7 @@ class SearchBrief(StrictModel):
     """User-approved intent used only to produce non-decision discovery leads."""
 
     preferences: str = Field(min_length=20, max_length=4_000)
-    exemplar_towns: tuple[str, ...] = Field(min_length=1, max_length=2)
+    exemplar_towns: tuple[str, ...] = Field(default=(), min_length=0, max_length=2)
     hard_constraints: tuple[str, ...] = Field(default=(), max_length=12)
     exclusions: tuple[str, ...] = Field(default=(), max_length=12)
 
@@ -75,6 +75,7 @@ class DiscoveryLead(StrictModel):
     rationale: str = Field(min_length=1, max_length=1_000)
     caveats: tuple[str, ...] = ()
     discovery_urls: tuple[HttpUrl, ...] = ()
+    connector_geographies: dict[str, str] = Field(default_factory=dict)
     state: ResearchState = ResearchState.DISCOVERY
 
 
@@ -107,6 +108,29 @@ class PromotionRequest(StrictModel):
         if normalized in {"ai", "claude", "codex", "model"}:
             raise ValueError("reviewer must identify the human who checked the source")
         return self
+
+
+class FetchedPromotionRequest(StrictModel):
+    """Approve one adapter-fetched observation without re-entering its value."""
+
+    packet_id: str
+    place_id: str
+    metric_id: str
+    reviewer: str = Field(min_length=2, max_length=120)
+
+    @model_validator(mode="after")
+    def human_reviewer_is_named(self) -> FetchedPromotionRequest:
+        normalized = self.reviewer.strip().lower()
+        if not normalized or normalized in {"ai", "claude", "codex", "model"}:
+            raise ValueError("reviewer must identify the human who checked the source")
+        return self
+
+
+class ResearchSelectionRequest(StrictModel):
+    """Select a bounded subset of discovery leads for evidence retrieval."""
+
+    packet_id: str
+    place_ids: tuple[str, ...] = Field(min_length=2, max_length=15)
 
 
 class PromotionResult(StrictModel):
@@ -322,6 +346,82 @@ def reject_evidence(
         reviewer=request.reviewer.strip(),
         decision=ReviewDecision.REJECTED,
         reason=request.reason.strip(),
+    )
+
+
+def promote_fetched_evidence(
+    request: FetchedPromotionRequest,
+    *,
+    packet: ResearchPacket,
+    observation: ObservationRecord,
+    metrics: tuple[MetricDefinition, ...],
+    sources: SourcesConfig,
+    as_of: date | None = None,
+) -> PromotionResult:
+    """Promote a server-fetched observation after a named human review."""
+    if request.packet_id != packet.id:
+        raise ResearchError("promotion packet_id does not match the selected research packet")
+    lead = next((item for item in packet.leads if item.place.place_id == request.place_id), None)
+    if lead is None:
+        raise ResearchError("promotion place is not a candidate in the selected research packet")
+    if observation.place != lead.place:
+        raise ResearchError("fetched observation place does not match the selected packet lead")
+    if observation.metric_id != request.metric_id:
+        raise ResearchError("fetched observation metric does not match the requested metric")
+    metric = next((item for item in metrics if item.id == observation.metric_id), None)
+    if metric is None:
+        raise ResearchError(f"unknown metric: {observation.metric_id}")
+    if observation.place.geography_type != metric.geography_level:
+        raise ResearchError(
+            f"fetched observation geography {observation.place.geography_type!r} does not match "
+            f"metric {metric.id!r} geography {metric.geography_level!r}"
+        )
+    if observation.source.geography != metric.geography_level:
+        raise ResearchError(
+            f"fetched source geography {observation.source.geography!r} does not match "
+            f"metric {metric.id!r} geography {metric.geography_level!r}"
+        )
+    if not metric.valid_min <= observation.raw_value <= metric.valid_max:
+        raise ResearchError(f"{metric.id} value falls outside its configured valid range")
+    try:
+        reference_date = as_of or date.today()
+        validate_source(
+            observation.source,
+            sources,
+            for_gate=metric.critical,
+            as_of=reference_date,
+        )
+        validate_observation_freshness(
+            observation.observed_at,
+            metric,
+            observation.source,
+            as_of=reference_date,
+        )
+    except SourcePolicyError as exc:
+        raise ResearchError(str(exc)) from exc
+    return PromotionResult(
+        observation=observation,
+        packet_id=packet.id,
+        reviewer=request.reviewer.strip(),
+    )
+
+
+def select_packet_leads(
+    request: ResearchSelectionRequest, *, packet: ResearchPacket
+) -> ResearchPacket:
+    """Create a new packet containing exactly the selected discovery leads."""
+    if request.packet_id != packet.id:
+        raise ResearchError("selection packet_id does not match the selected research packet")
+    selected_ids = set(request.place_ids)
+    if len(selected_ids) != len(request.place_ids):
+        raise ResearchError("selected discovery leads must be unique")
+    leads = tuple(lead for lead in packet.leads if lead.place.place_id in selected_ids)
+    if len(leads) != len(selected_ids):
+        raise ResearchError("selection contains a place that is not a discovery lead")
+    return ResearchPacket(
+        id=uuid4().hex[:12],
+        brief=packet.brief,
+        leads=leads,
     )
 
 

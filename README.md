@@ -28,11 +28,12 @@ The public deployment at `lifescape.buildproven.ai` is a static explanation and 
 synthetic example. It exposes no comparison API, accepts no inputs, and stores no user data.
 Use the local app for your own evidence, computation, reports, and downloadable provenance.
 
-### Find research leads with Claude (optional)
+### Find research leads and review public evidence (optional)
 
-The local app can turn a short description of the retirement life you want plus one or two
-example towns into candidate **research leads**. This is optional and requires an Anthropic
-API key and model name in your local environment:
+The local app can turn a short description of the retirement life you want, with optional
+example towns, into candidate **research leads**. Users provide intent, constraints, and
+examples—not broadband, weather, or other raw research data. This is optional and requires
+an Anthropic API key and model name in your local environment:
 
 ```bash
 export ANTHROPIC_API_KEY="..."
@@ -42,11 +43,19 @@ uv run lifescape app
 
 Claude receives only the SearchBrief when you press **Find research leads**. Its output is
 Tier C discovery material: it can suggest towns and caveats, but cannot provide decision
-evidence, clear a gate, or change a ranking. The local research review form shows the source
-URL, geography, observation date, metric, named reviewer, and an explicit approve/reject
-decision. An approved record is exported in the normal evidence CSV format. Lifescape permits
-that packet into a local decision run only after every packet candidate has complete approved
-critical evidence; rejected and unknown records remain blocking.
+evidence, clear a gate, or change a ranking. After selecting at least two leads, the local
+app can fetch configured ACS and NOAA GSOY observations through reproducible connector
+adapters. Fetched values are read-only in the review screen: the source URL, geography,
+observation date, metric, named reviewer, and visible approve/reject decision are retained.
+An approved record is exported in the normal evidence CSV format. Lifescape permits that
+packet into a local decision run only after every candidate has complete approved critical
+evidence; rejected, stale, incompatible, finalist-only, and unknown records remain blocking.
+
+The adapters require system-owned geography configuration, never user-supplied evidence.
+Set `LIFESCAPE_RESEARCH_GEOGRAPHIES` to a JSON object keyed by the discovery lead ID, for
+example `{"asheville_nc":{"census_acs":"37:0210400","noaa_gsoy":"USW00003812:2024"}}`.
+ACS requires `CENSUS_API_KEY`. NOAA station observations remain explicitly station-level;
+the app will show them for review but will not silently convert a station into a town metric.
 
 For the command-line benchmark and QA Architect checks:
 

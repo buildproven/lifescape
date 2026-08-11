@@ -18,7 +18,9 @@ SQLite provenance → hard gates → eligible set → normalization/scoring
 
 Configuration is immutable after validation. The run ID hashes canonical configuration and evidence content. Gates execute before ranking. The reporting path consumes the same evaluated domain records that are persisted, so it cannot silently reinterpret evidence.
 
-The connector protocol is defined under `src/lifescape/connectors`; live connector implementations are deferred to Milestone 2.
+The connector protocol is defined under `src/lifescape/connectors`. ACS and NOAA GSOY
+adapters are available to the local research packet workflow; their fetched observations
+remain review-pending until a human approves them.
 
 ## AI-assisted discovery boundary
 
@@ -30,11 +32,16 @@ an engine input.
 ```text
 SearchBrief → optional Claude discovery → ResearchPacket (Tier C)
                                               │
+                          selected leads → ACS/NOAA adapter fetch
+                                              │
                               human-reviewed A/B source record
                                               ▼
                                       promotion validation
                                               │
-                                              └── a future normal evidence run
+                                      normal evidence CSV
+                                              │
+                                              ▼
+                                      execute_run (only when complete)
 ```
 
 `execute_run` remains the only authority for gates, scoring, sensitivity, persistence,
