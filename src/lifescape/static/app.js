@@ -279,6 +279,12 @@ function renderDiscovery(packet) {
   state.researchPacket = packet;
   const selectedPacket = state.researchPacketSelected;
   const results = $("#discovery-results");
+  const fetchHistory = (packet.fetch_history || [])
+    .map(
+      (snapshot, index) =>
+        `<li>Refresh ${index + 1} · ${escapeHtml(snapshot.fetched_at)} · ${snapshot.result.observations.length} observations · ${Object.keys(snapshot.result.errors).length} source-error groups</li>`
+    )
+    .join("");
   const evidenceByPlace = new Map();
   packet.evidence.forEach((item) => {
     const items = evidenceByPlace.get(item.place.place_id) || [];
@@ -327,7 +333,8 @@ function renderDiscovery(packet) {
   results.innerHTML = `<p class="discovery-disclosure">${escapeHtml(packet.disclosure)}</p>
     <div class="discovery-actions"><button class="secondary-button" data-research-action="fetch" type="button" ${selectedPacket ? "" : "disabled"}>Fetch available public evidence</button><button class="secondary-button" data-research-action="select" type="button">${selectedPacket ? "Continue with selected leads" : "Review selected leads"}</button></div>
     ${selectedPacket ? "" : '<p class="evidence-empty">Select the leads you want to compare before fetching public evidence.</p>'}
-    ${cards}<section class="review-ledger"><h3>Review decisions</h3>${packet.reviews.length ? packet.reviews.map((review) => `<p><strong>${escapeHtml(review.decision)}</strong> · ${escapeHtml(review.metric_id.replaceAll("_", " "))} · ${escapeHtml(review.reviewer)}${review.reason ? ` — ${escapeHtml(review.reason)}` : ""}</p>`).join("") : "<p>No source records reviewed yet.</p>"}</section>`;
+    ${cards}<section class="review-ledger"><h3>Review decisions</h3>${packet.reviews.length ? packet.reviews.map((review) => `<p><strong>${escapeHtml(review.decision)}</strong> · ${escapeHtml(review.metric_id.replaceAll("_", " "))} · ${escapeHtml(review.reviewer)}${review.reason ? ` — ${escapeHtml(review.reason)}` : ""}</p>`).join("") : "<p>No source records reviewed yet.</p>"}</section>
+    <details class="research-history"><summary>Fetch history (${packet.fetch_history_count || 0})</summary>${fetchHistory ? `<ul>${fetchHistory}</ul>` : "<p>No public-source fetch has been recorded yet.</p>"}</details>`;
   $$(`[data-fetched-action]`).forEach((button) =>
     button.addEventListener("click", () => submitFetchedReview(button, packet))
   );
