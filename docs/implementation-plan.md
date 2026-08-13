@@ -49,9 +49,9 @@ fails closed while any candidate has an unknown critical metric.
 Broadband, CMS/route time, flood/property, and other address- or parcel-specific checks are
 marked `finalist_only` in the metric configuration. They remain visible requirements after
 discovery and still block a decision run when unknown; they are not required to generate
-candidate leads. The pilot is intentionally session-local. See
-`docs/decisions/ADR-evidence-corpus-readiness.md` for the criteria before a shared corpus
-or database is considered.
+candidate leads. Packets, fetch snapshots, and human review records persist only in the local
+app output directory, so a reviewer can resume or compare refreshes after restart without
+creating a shared corpus or database. See `docs/decisions/ADR-evidence-corpus-readiness.md`.
 
 ## Deliberately deferred
 

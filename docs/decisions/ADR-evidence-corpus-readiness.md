@@ -1,4 +1,4 @@
-# ADR: Defer a shared evidence corpus until promotion is proven
+# ADR: Keep reviewed research history local until a shared corpus is proven
 
 ## Status
 
@@ -6,11 +6,12 @@ Accepted for the intent-driven discovery slice.
 
 ## Decision
 
-Lifescape remains session-local while the adapter-to-review workflow is validated.
+Lifescape persists research packets, fetched snapshots, and human review decisions only in a
+local workspace while the adapter-to-review workflow is validated.
 The product accepts user intent and optional exemplar towns, retrieves public-source
 observations where a reproducible geography is configured, and stores only approved
-records in the existing evidence CSV/run path. It does not create a shared database,
-cache, or corpus in this slice.
+records in the existing evidence CSV/run path. It does not create a hosted account, shared
+database, cache, or corpus in this slice.
 
 ## Why
 
@@ -22,12 +23,14 @@ The current workflow is still proving several contracts at once:
 - stale, rejected, missing, and finalist-only metrics remain blocking; and
 - a refresh must not silently replace a previously reviewed claim.
 
-Persisting claims before these behaviors are exercised would preserve incompatible
-records and make later source-policy changes look like trustworthy history.
+The local workspace makes those behaviors auditable across restarts without representing a
+publisher-backed corpus. Every refresh appends a snapshot; it cannot silently replace a
+previously reviewed claim. A promotion retains the exact source record that the reviewer saw.
 
 ## Boundaries
 
-- `ResearchPacket` and fetched observations are session-scoped for the local MVP.
+- `ResearchPacket`, fetch snapshots, and review records are stored only under the local app
+  output directory and are never uploaded or shared.
 - `execute_run` remains the only gate, score, persistence, and report authority.
 - Discovery material never satisfies a gate or contributes to a score.
 - ACS and NOAA adapter output may be displayed before review, but only approved,

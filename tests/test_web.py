@@ -16,6 +16,7 @@ from lifescape.models import Confidence, ObservationRecord, PlaceRecord, SourceR
 from lifescape.pipeline import execute_run
 from lifescape.research import DiscoveryLead, SearchBrief
 from lifescape.research_sources import EvidenceFetchResult
+from lifescape.research_workspace import ResearchWorkspace
 from lifescape.web import HostedRunGuard, _read_evidence, create_app
 
 
@@ -140,6 +141,9 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
     assert "CSV uploads are disabled." not in page.text
     assert len(bootstrap.json()["places"]) == 10
     assert bootstrap.json()["metric_count"] == 17
+    assert "Fetch history" in (Path(__file__).parents[1] / "src/lifescape/static/app.js").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_local_app_creates_discovery_packet_without_scoring(tmp_path: Path) -> None:
@@ -243,6 +247,115 @@ def test_selected_leads_can_fetch_and_review_adapter_evidence(tmp_path: Path) ->
     assert approved.status_code == 200
     assert approved.json()["reviews"][0]["decision"] == "APPROVED"
     assert approved.json()["evidence_status"]["asheville_nc"]["distress_index"] == "approved"
+
+
+def test_local_research_packet_resumes_after_restart_and_retains_fetch_history(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "output"
+    with TestClient(
+        create_app(
+            output,
+            discovery_provider=MultiDiscoveryProvider(),
+            research_evidence_provider=FakeResearchEvidenceProvider(),
+        ),
+        base_url="http://127.0.0.1",
+    ) as client:
+        packet = client.post(
+            "/api/research/discover",
+            json={"preferences": "A walkable retirement town with a lively center and nature."},
+        ).json()
+        selected = client.post(
+            "/api/research/select",
+            json={"packet_id": packet["packet_id"], "place_ids": ["asheville_nc", "bend_or"]},
+        ).json()
+        fetched = client.post(
+            "/api/research/fetch",
+            json={"packet_id": selected["packet_id"], "place_ids": ["asheville_nc", "bend_or"]},
+        ).json()
+        observation = fetched["evidence"][0]
+        client.post(
+            "/api/research/approve-fetched",
+            json={
+                "packet_id": selected["packet_id"],
+                "place_id": observation["place"]["place_id"],
+                "metric_id": observation["metric_id"],
+                "reviewer": "Brett Stark",
+            },
+        )
+        refreshed = client.post(
+            "/api/research/fetch",
+            json={"packet_id": selected["packet_id"], "place_ids": ["asheville_nc", "bend_or"]},
+        )
+
+    with TestClient(create_app(output), base_url="http://127.0.0.1") as resumed_client:
+        resumed = resumed_client.get(f"/api/research/packets/{selected['packet_id']}")
+
+    assert refreshed.status_code == 200
+    assert resumed.status_code == 200
+    assert resumed.json()["fetch_history_count"] == 2
+    assert resumed.json()["evidence_status"]["asheville_nc"]["distress_index"] == "approved"
+
+
+def test_research_selection_rolls_back_when_local_workspace_cannot_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", discovery_provider=MultiDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        packet = client.post(
+            "/api/research/discover",
+            json={"preferences": "A walkable retirement town with a lively center and nature."},
+        ).json()
+        monkeypatch.setattr(
+            ResearchWorkspace, "save", lambda *_: (_ for _ in ()).throw(OSError("full"))
+        )
+        selected = client.post(
+            "/api/research/select",
+            json={"packet_id": packet["packet_id"], "place_ids": ["asheville_nc", "bend_or"]},
+        )
+
+        original = client.get(f"/api/research/packets/{packet['packet_id']}")
+
+    assert selected.status_code == 422
+    assert "cannot save local research workspace" in selected.json()["detail"]
+    assert original.status_code == 200
+
+
+def test_research_fetch_rolls_back_when_local_workspace_cannot_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with TestClient(
+        create_app(
+            tmp_path / "output",
+            discovery_provider=MultiDiscoveryProvider(),
+            research_evidence_provider=FakeResearchEvidenceProvider(),
+        ),
+        base_url="http://127.0.0.1",
+    ) as client:
+        packet = client.post(
+            "/api/research/discover",
+            json={"preferences": "A walkable retirement town with a lively center and nature."},
+        ).json()
+        selected = client.post(
+            "/api/research/select",
+            json={"packet_id": packet["packet_id"], "place_ids": ["asheville_nc", "bend_or"]},
+        ).json()
+        monkeypatch.setattr(
+            ResearchWorkspace, "save", lambda *_: (_ for _ in ()).throw(OSError("full"))
+        )
+        fetched = client.post(
+            "/api/research/fetch",
+            json={"packet_id": selected["packet_id"], "place_ids": ["asheville_nc", "bend_or"]},
+        )
+        original = client.get(f"/api/research/packets/{selected['packet_id']}")
+
+    assert fetched.status_code == 422
+    assert "cannot save local research workspace" in fetched.json()["detail"]
+    assert original.status_code == 200
+    assert original.json()["fetch_history_count"] == 0
+    assert original.json()["evidence"] == []
 
 
 def test_incomplete_adapter_packet_blocks_execute_run(tmp_path: Path) -> None:
