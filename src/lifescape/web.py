@@ -807,7 +807,7 @@ def create_app(
             fetched_evidence[packet.id] = fetched
             fetch_history.setdefault(packet.id, []).append(workspace.snapshot(fetched))
             save_research_packet(packet, before)
-        except (OSError, ValueError) as exc:
+        except (ResearchError, OSError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return research_response(packet)
 
