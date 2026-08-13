@@ -559,15 +559,36 @@ def create_app(
             else EvidenceFetchResult()
         )
 
-    def save_research_packet(packet: ResearchPacket) -> None:
-        workspace.save(
-            StoredResearchPacket(
-                packet=packet,
-                promotions=tuple(promoted_evidence.get(packet.id, ())),
-                reviews=tuple(research_reviews.get(packet.id, ())),
-                fetch_history=tuple(fetch_history.get(packet.id, ())),
-            )
+    def stored_research_packet(packet: ResearchPacket) -> StoredResearchPacket:
+        return StoredResearchPacket(
+            packet=packet,
+            promotions=tuple(promoted_evidence.get(packet.id, ())),
+            reviews=tuple(research_reviews.get(packet.id, ())),
+            fetch_history=tuple(fetch_history.get(packet.id, ())),
         )
+
+    def restore_research_packet(stored: StoredResearchPacket | None, packet_id: str) -> None:
+        if stored is None:
+            research_packets.pop(packet_id, None)
+            promoted_evidence.pop(packet_id, None)
+            research_reviews.pop(packet_id, None)
+            fetched_evidence.pop(packet_id, None)
+            fetch_history.pop(packet_id, None)
+            return
+        research_packets[packet_id] = stored.packet
+        promoted_evidence[packet_id] = list(stored.promotions)
+        research_reviews[packet_id] = list(stored.reviews)
+        fetch_history[packet_id] = list(stored.fetch_history)
+        fetched_evidence[packet_id] = (
+            stored.fetch_history[-1].result if stored.fetch_history else EvidenceFetchResult()
+        )
+
+    def save_research_packet(packet: ResearchPacket, before: StoredResearchPacket | None) -> None:
+        try:
+            workspace.save(stored_research_packet(packet))
+        except OSError as exc:
+            restore_research_packet(before, packet.id)
+            raise ResearchError(f"cannot save local research workspace: {exc}") from exc
 
     evidence_provider = research_evidence_provider or ConnectorEvidenceProvider.from_environment()
     hosted_guard = HostedRunGuard(
@@ -725,7 +746,7 @@ def create_app(
             promoted_evidence[packet.id] = []
             research_reviews[packet.id] = []
             fetch_history[packet.id] = []
-            save_research_packet(packet)
+            save_research_packet(packet, None)
             while len(research_packets) > 8:
                 expired_id, _ = research_packets.popitem(last=False)
                 promoted_evidence.pop(expired_id, None)
@@ -751,14 +772,15 @@ def create_app(
             ) from exc
         try:
             selected = select_packet_leads(payload, packet=packet)
+            before = None
+            research_packets[selected.id] = selected
+            promoted_evidence[selected.id] = []
+            research_reviews[selected.id] = []
+            fetched_evidence[selected.id] = EvidenceFetchResult()
+            fetch_history[selected.id] = []
+            save_research_packet(selected, before)
         except ResearchError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        research_packets[selected.id] = selected
-        promoted_evidence[selected.id] = []
-        research_reviews[selected.id] = []
-        fetched_evidence[selected.id] = EvidenceFetchResult()
-        fetch_history[selected.id] = []
-        save_research_packet(selected)
         return research_response(selected)
 
     @app.post("/api/research/fetch")
@@ -780,10 +802,11 @@ def create_app(
                 detail="fetch request must include every selected packet candidate exactly once",
             )
         try:
+            before = stored_research_packet(packet)
             fetched = evidence_provider.fetch(packet)
             fetched_evidence[packet.id] = fetched
             fetch_history.setdefault(packet.id, []).append(workspace.snapshot(fetched))
-            save_research_packet(packet)
+            save_research_packet(packet, before)
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return research_response(packet)
@@ -811,6 +834,7 @@ def create_app(
                 status_code=404, detail="research packet is not available in this session"
             ) from exc
         try:
+            before = stored_research_packet(packet)
             with bundled_benchmark() as (_, config_dir):
                 existing = {
                     (item.observation.place.place_id, item.observation.metric_id)
@@ -845,7 +869,7 @@ def create_app(
                     decision=ReviewDecision.APPROVED,
                 )
             )
-            save_research_packet(packet)
+            save_research_packet(packet, before)
             return {
                 "packet_id": result.packet_id,
                 "reviewer": result.reviewer,
@@ -885,6 +909,7 @@ def create_app(
                 detail="that fetched observation is not available for this packet",
             )
         try:
+            before = stored_research_packet(packet)
             with bundled_benchmark() as (_, config_dir):
                 existing = {
                     (item.observation.place.place_id, item.observation.metric_id)
@@ -920,7 +945,7 @@ def create_app(
                     decision=ReviewDecision.APPROVED,
                 )
             )
-            save_research_packet(packet)
+            save_research_packet(packet, before)
             return research_response(packet)
         except ResearchError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -937,6 +962,7 @@ def create_app(
                 status_code=404, detail="research packet is not available in this session"
             ) from exc
         try:
+            before = stored_research_packet(packet)
             existing = {
                 (item.place_id, item.metric_id)
                 for item in research_reviews.get(packet.id, ())
@@ -953,7 +979,7 @@ def create_app(
             with bundled_benchmark() as (_, config_dir):
                 result = reject_evidence(payload, packet=packet, metrics=load_metrics(config_dir))
             research_reviews.setdefault(packet.id, []).append(result)
-            save_research_packet(packet)
+            save_research_packet(packet, before)
             return {"review": result.model_dump(mode="json"), "packet": research_response(packet)}
         except ResearchError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
