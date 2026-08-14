@@ -146,6 +146,17 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
     )
 
 
+def test_manual_evidence_validates_the_form_before_number_conversion() -> None:
+    app_source = (Path(__file__).parents[1] / "src/lifescape/static/app.js").read_text(
+        encoding="utf-8"
+    )
+
+    validation = app_source.index("if (!form.reportValidity()) return;")
+    conversion = app_source.index("raw_value: Number(rawValue)")
+    assert validation < conversion
+    assert 'if (rawValue === "") return;' in app_source
+
+
 def test_local_app_creates_discovery_packet_without_scoring(tmp_path: Path) -> None:
     with TestClient(
         create_app(tmp_path / "output", discovery_provider=FakeDiscoveryProvider()),

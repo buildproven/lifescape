@@ -370,13 +370,16 @@ function renderDiscovery(packet) {
 async function submitManualEvidence(button, packet) {
   const card = button.closest(".discovery-card");
   const form = button.closest(".manual-evidence");
+  if (!form.reportValidity()) return;
   const value = (name) => form.querySelector(`[name=${name}]`).value.trim();
+  const rawValue = value("raw_value");
+  if (rawValue === "") return;
   const payload = {
     packet_id: packet.packet_id,
     reviewer: value("reviewer"),
     place: packet.leads.find((lead) => lead.place_id === card.dataset.placeId),
     metric_id: form.dataset.metricId,
-    raw_value: Number(value("raw_value")),
+    raw_value: Number(rawValue),
     observed_period: value("observed_period"),
     observed_at: value("observed_at"),
     source: {
