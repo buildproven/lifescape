@@ -493,6 +493,53 @@ def test_promotion_requires_existing_packet_and_never_runs_scoring(tmp_path: Pat
     assert "research packet is not available" in missing.json()["detail"]
 
 
+def test_manual_finalist_town_evidence_is_reviewed_saved_and_resumable(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    with TestClient(
+        create_app(output, discovery_provider=FakeDiscoveryProvider()),
+        base_url="http://127.0.0.1",
+    ) as client:
+        packet = client.post(
+            "/api/research/discover",
+            json={
+                "preferences": "A walkable retirement town with outdoor access.",
+                "exemplar_towns": ["Traverse City, MI"],
+            },
+        ).json()
+        approved = client.post(
+            "/api/research/promote",
+            json={
+                "packet_id": packet["packet_id"],
+                "reviewer": "Brett Stark",
+                "place": {"place_id": "asheville_nc", "name": "Asheville", "state": "NC"},
+                "metric_id": "median_sale_price",
+                "raw_value": 500000,
+                "observed_period": "July 2026 monthly median",
+                "observed_at": "2026-08-01",
+                "source": {
+                    "url": "https://example.gov/asheville-sales",
+                    "title": "Asheville monthly sale prices",
+                    "publisher": "Example public records office",
+                    "tier": "A",
+                    "retrieved_at": "2026-08-02",
+                    "geography": "town",
+                    "confidence": "high",
+                    "synthetic": False,
+                },
+            },
+        )
+
+    assert approved.status_code == 200
+    assert approved.json()["evidence_status"]["asheville_nc"]["median_sale_price"] == "approved"
+    assert approved.json()["reviews"][0]["reviewer"] == "Brett Stark"
+
+    with TestClient(create_app(output), base_url="http://127.0.0.1") as client:
+        resumed = client.get(f"/api/research/packets/{packet['packet_id']}")
+
+    assert resumed.status_code == 200
+    assert resumed.json()["evidence_status"]["asheville_nc"]["median_sale_price"] == "approved"
+
+
 def test_research_packet_endpoints_report_missing_session_packet(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
         inspected = client.get("/api/research/packets/missing")

@@ -299,7 +299,12 @@ def promote_evidence(
         raise ResearchError(f"{metric.id} value falls outside its configured valid range")
     try:
         reference_date = as_of or date.today()
-        validate_source(request.source, sources, as_of=reference_date)
+        validate_source(
+            request.source,
+            sources,
+            for_gate=metric.critical,
+            as_of=reference_date,
+        )
         validate_observation_freshness(
             request.observed_at,
             metric,

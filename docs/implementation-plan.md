@@ -82,3 +82,15 @@ Remaining work: connectors for finalist-only metrics (FCC location-level broadba
 CMS facility facts plus address-aware routing, and property/neighborhood verification),
 refresh/history behavior for reviewed adapter records, and automated candidate discovery
 quality beyond the bounded local pilot.
+
+## Manual finalist-evidence slice
+
+The local app exposes the existing reviewed promotion path for finalist-only town metrics that
+cannot be fetched by a public adapter. A named human enters a metric-correct town aggregate,
+observation period and date, and complete Tier A/B source provenance. The same source-policy,
+geography, range, freshness, persistence, completeness, and approved CSV export controls used by
+adapter evidence apply before the record can enter `execute_run`.
+
+Address- and parcel-scoped checks remain visibly unresolved. This slice does not relabel a
+property fact as a town metric, add a separate finalist ledger, add paid providers, select an
+address, or produce a `BUY` recommendation.

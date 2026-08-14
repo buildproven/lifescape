@@ -870,14 +870,7 @@ def create_app(
                 )
             )
             save_research_packet(packet, before)
-            return {
-                "packet_id": result.packet_id,
-                "reviewer": result.reviewer,
-                "observation": result.observation.model_dump(mode="json"),
-                "disclosure": (
-                    "Promotion validates one source record; it does not run or alter scoring."
-                ),
-            }
+            return research_response(packet)
         except ResearchError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 

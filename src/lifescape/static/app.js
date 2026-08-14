@@ -316,13 +316,33 @@ function renderDiscovery(packet) {
             .join("")}`;
       const finalistMetrics = Object.entries(packet.evidence_status[lead.place_id] || {})
         .filter(([, status]) => status === "finalist_verification")
-        .map(([metric]) => metric.replaceAll("_", " "));
+        .map(([metric]) => metric);
+      const manualEvidence = finalistMetrics
+        .map(
+          (metric) => `<details class="manual-evidence" data-metric-id="${escapeHtml(metric)}">
+            <summary>Add reviewed ${escapeHtml(metric.replaceAll("_", " "))} evidence</summary>
+            <p>Enter a town-level aggregate from a Tier A or B source. Address and property facts cannot satisfy this town metric.</p>
+            <div class="manual-evidence-grid">
+              <label>Value<input name="raw_value" type="number" step="any" required /></label>
+              <label>Observation period<input name="observed_period" placeholder="2025 annual or Jan–Jun 2026" required /></label>
+              <label>Observed date<input name="observed_at" type="date" required /></label>
+              <label>Source URL<input name="source_url" type="url" placeholder="https://…" required /></label>
+              <label>Source title<input name="source_title" required /></label>
+              <label>Publisher<input name="publisher" required /></label>
+              <label>Source tier<select name="tier"><option value="A">A</option><option value="B">B</option></select></label>
+              <label>Retrieved date<input name="retrieved_at" type="date" required /></label>
+              <label>Reviewer<input name="reviewer" autocomplete="name" required /></label>
+            </div>
+            <button class="secondary-button" data-manual-action="approve" type="button">Approve town evidence</button>
+          </details>`
+        )
+        .join("");
       return `<article class="discovery-card" data-place-id="${escapeHtml(lead.place_id)}">
         <label class="lead-select"><input type="checkbox" data-lead-select checked /><span>Select for evidence review</span></label>
         <h3>${escapeHtml(lead.name)}, ${escapeHtml(lead.state)}</h3>
         <p>${escapeHtml(lead.rationale)}</p>
         <small>${lead.unresolved_critical_metrics.length} critical facts still need verification</small>
-        ${finalistMetrics.length ? `<p class="finalist-note">Finalist verification later: ${escapeHtml(finalistMetrics.join(", "))}</p>` : ""}
+        ${finalistMetrics.length ? `<p class="finalist-note">Manual town evidence required: ${escapeHtml(finalistMetrics.map((metric) => metric.replaceAll("_", " ")).join(", "))}</p>${manualEvidence}` : ""}
         <details class="research-review" open><summary>Fetched evidence review</summary>
           <p>Values below came from a public-source adapter. Approve or reject the record; do not retype its value.</p>
           ${evidence}
@@ -338,10 +358,53 @@ function renderDiscovery(packet) {
   $$(`[data-fetched-action]`).forEach((button) =>
     button.addEventListener("click", () => submitFetchedReview(button, packet))
   );
+  $$(`[data-manual-action]`).forEach((button) =>
+    button.addEventListener("click", () => submitManualEvidence(button, packet))
+  );
   $("[data-research-action=fetch]").addEventListener("click", () => fetchPacketEvidence(packet));
   $("[data-research-action=select]").addEventListener("click", () =>
     selectedPacket ? setStep("towns") : selectResearchLeads(packet)
   );
+}
+
+async function submitManualEvidence(button, packet) {
+  const card = button.closest(".discovery-card");
+  const form = button.closest(".manual-evidence");
+  const value = (name) => form.querySelector(`[name=${name}]`).value.trim();
+  const payload = {
+    packet_id: packet.packet_id,
+    reviewer: value("reviewer"),
+    place: packet.leads.find((lead) => lead.place_id === card.dataset.placeId),
+    metric_id: form.dataset.metricId,
+    raw_value: Number(value("raw_value")),
+    observed_period: value("observed_period"),
+    observed_at: value("observed_at"),
+    source: {
+      url: value("source_url"),
+      title: value("source_title"),
+      publisher: value("publisher"),
+      tier: value("tier"),
+      retrieved_at: value("retrieved_at"),
+      geography: "town",
+      confidence: "high",
+      synthetic: false,
+    },
+  };
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/research/promote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || "Town evidence could not be approved.");
+    renderDiscovery(result);
+    toast("Reviewed town evidence approved and saved locally.");
+  } catch (error) {
+    toast(error.message);
+    button.disabled = false;
+  }
 }
 
 async function fetchPacketEvidence(packet) {
