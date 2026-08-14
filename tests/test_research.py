@@ -319,6 +319,28 @@ def test_promotion_rejects_blank_reviewer_and_stale_observation(policy) -> None:
         )
 
 
+def test_critical_manual_promotion_requires_gate_confidence(policy) -> None:
+    selected_packet = packet()
+    request = promotion(selected_packet.id).model_copy(
+        update={
+            "metric_id": "median_sale_price",
+            "raw_value": 500_000,
+            "source": promotion(selected_packet.id).source.model_copy(
+                update={"confidence": Confidence.MEDIUM}
+            ),
+        }
+    )
+
+    with pytest.raises(ResearchError, match="cannot decide a gate"):
+        promote_evidence(
+            request,
+            packet=selected_packet,
+            metrics=load_metrics(Path("config")),
+            sources=policy,
+            as_of=date(2026, 1, 2),
+        )
+
+
 def test_provider_cannot_set_later_lifecycle_state_and_promotions_update_readiness(policy) -> None:
     selected_packet = packet()
     promoted = promote_evidence(
