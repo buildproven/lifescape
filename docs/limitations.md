@@ -12,7 +12,9 @@
 - FCC broadband availability is location-level, and CMS hospital facts do not establish a
   household's route-time outcome. Both belong to finalist, address-aware verification after
   a town clears discovery and evidence review; neither is a discovery gate or a town-level
-  proxy in the current engine.
+  proxy in the current engine. Lifescape can now retain a versioned Census place internal point,
+  CMS emergency-capable hospital address, and pinned Census Geocoder match as route-endpoint
+  evidence. It still has no approved routing backend and emits no `er_drive_minutes` value.
 - Confidence aggregation and contradiction tracking are deferred to Milestone 3; Milestone 1 enforces high confidence at gates.
 - Neighborhood, property, mapping, scouting, future-self, and regret workflows are deferred to later milestones.
 - Source retrieval recency and metric-specific observation age are enforced independently. Complex observation intervals still use one explicit effective observation date supplied by the evidence curator.

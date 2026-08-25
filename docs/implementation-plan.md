@@ -79,7 +79,8 @@ missing critical evidence and blocks the candidate normally.
 The ACS connector now supports every Census state, district, and territory FIPS code rather than only the benchmark states. By default it resolves the newest *published* ACS 5-Year Data Profile vintage from the [official Census data catalog](https://api.census.gov/data.json), avoiding a date-derived guess before an annual release exists. Its `acs_year` constructor option pins a vintage when a reproducible research run requires one. Catalog failures or an absent published profile are explicit connector failures; the live-run orchestration records the affected evidence as missing, where critical gates remain blocked rather than silently falling back to a prior vintage.
 
 Remaining work: connectors for finalist-only metrics (FCC location-level broadband,
-CMS facility facts plus address-aware routing, and property/neighborhood verification),
+address-aware ER routing after the versioned CMS/Census coordinate-evidence contract in
+`docs/decisions/ADR-er-coordinate-evidence.md`, and property/neighborhood verification),
 refresh/history behavior for reviewed adapter records, and automated candidate discovery
 quality beyond the bounded local pilot.
 
