@@ -59,6 +59,7 @@ class CoordinateEvidence(StrictModel):
     response_checksum: str
     original_address: str | None = None
     matched_address: str | None = None
+    facility_id: str | None = None
     match_quality: GeocoderMatchQuality = GeocoderMatchQuality.NOT_APPLICABLE
 
     @model_validator(mode="after")
@@ -74,10 +75,16 @@ class CoordinateEvidence(StrictModel):
         if self.semantics is CoordinateSemantics.GEOCODED_STRUCTURE_ADDRESS:
             if not all(value and value.strip() for value in address_fields):
                 raise ValueError("geocoded coordinates require original and matched addresses")
+            if not self.facility_id or not self.facility_id.strip():
+                raise ValueError("geocoded hospital coordinates require a CMS facility ID")
             if self.match_quality is not GeocoderMatchQuality.SINGLE_MATCH:
                 raise ValueError("geocoded coordinates require one unambiguous address match")
-        elif any(address_fields) or self.match_quality is not GeocoderMatchQuality.NOT_APPLICABLE:
-            raise ValueError("place internal points cannot contain address-match fields")
+        elif (
+            any(address_fields)
+            or self.facility_id is not None
+            or self.match_quality is not GeocoderMatchQuality.NOT_APPLICABLE
+        ):
+            raise ValueError("place internal points cannot contain hospital address-match fields")
         return self
 
 
@@ -132,6 +139,8 @@ class RouteEndpoints(StrictModel):
             raise ValueError("route destination must be a geocoded structure address")
         if not self.destination_facility_id.strip():
             raise ValueError("destination_facility_id cannot be blank")
+        if self.destination.facility_id != self.destination_facility_id:
+            raise ValueError("route destination facility ID does not match coordinate evidence")
         return self
 
 
@@ -142,10 +151,13 @@ def fetch_snapshot(source_url: str) -> RawResponse:
     try:
         with urlopen(source_url, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             payload = response.read()
+            final_url = response.geturl()
     except (HTTPError, URLError) as exc:
         raise CoordinateEvidenceError(f"coordinate source request failed: {exc}") from exc
+    if not isinstance(final_url, str) or not final_url.startswith("https://"):
+        raise CoordinateEvidenceError("coordinate source final URL must use HTTPS")
     return RawResponse(
-        source_url=source_url,
+        source_url=final_url,
         payload=payload,
         checksum=hashlib.sha256(payload).hexdigest(),
     )
@@ -333,6 +345,7 @@ class CensusAddressGeocoder:
             response_checksum=response.checksum,
             original_address=hospital.address.full_address,
             matched_address=matched_address,
+            facility_id=hospital.facility_id,
             match_quality=GeocoderMatchQuality.SINGLE_MATCH,
         )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import date
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,6 +15,7 @@ from lifescape.connectors.coordinate_evidence import (
     CoordinateSemantics,
     GeocoderMatchQuality,
     build_route_endpoints,
+    fetch_snapshot,
     parse_census_place_internal_point,
     parse_cms_emergency_hospitals,
 )
@@ -164,6 +166,7 @@ def test_geocoder_preserves_address_match_and_response_provenance() -> None:
     assert destination.semantics is CoordinateSemantics.GEOCODED_STRUCTURE_ADDRESS
     assert destination.original_address == "1 Main St, Madison, WI 53703"
     assert destination.matched_address == "1 MAIN ST, MADISON, WI, 53703"
+    assert destination.facility_id == "100001"
     assert destination.match_quality is GeocoderMatchQuality.SINGLE_MATCH
     assert (
         destination.response_checksum
@@ -201,6 +204,7 @@ def _coordinate(semantics: CoordinateSemantics) -> CoordinateEvidence:
         {
             "original_address": "1 Main St, Madison, WI 53703",
             "matched_address": "1 MAIN ST, MADISON, WI, 53703",
+            "facility_id": "100001",
             "match_quality": GeocoderMatchQuality.SINGLE_MATCH,
         }
         if semantics is CoordinateSemantics.GEOCODED_STRUCTURE_ADDRESS
@@ -229,6 +233,10 @@ def test_route_endpoints_require_both_provenance_bearing_coordinates() -> None:
     assert endpoints is not None
     assert endpoints.origin is origin
     assert endpoints.destination is destination
+    with pytest.raises(ValueError, match="does not match coordinate evidence"):
+        build_route_endpoints(
+            origin=origin, destination=destination, destination_facility_id="different"
+        )
     assert (
         build_route_endpoints(
             origin=None, destination=destination, destination_facility_id="100001"
@@ -239,3 +247,19 @@ def test_route_endpoints_require_both_provenance_bearing_coordinates() -> None:
         build_route_endpoints(origin=origin, destination=None, destination_facility_id="100001")
         is None
     )
+
+
+def test_fetch_snapshot_records_redirect_target_for_source_validation() -> None:
+    handle = MagicMock()
+    handle.read.return_value = b"payload"
+    handle.geturl.return_value = "https://untrusted.example/redirected-payload"
+    handle.__enter__.return_value = handle
+    handle.__exit__.return_value = False
+    with patch("lifescape.connectors.coordinate_evidence.urlopen", return_value=handle):
+        response = fetch_snapshot("https://data.cms.gov/requested-source")
+
+    assert response.source_url == "https://untrusted.example/redirected-payload"
+    with pytest.raises(CoordinateEvidenceError, match=r"HTTPS cms\.gov"):
+        parse_cms_emergency_hospitals(
+            response, dataset_version="2026-08-13", retrieved_at=date(2026, 8, 24)
+        )
