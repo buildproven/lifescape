@@ -24,6 +24,7 @@ dev = [
   "hatchling==1.31.0",
   "httpx2>=2,<3",
   "mypy>=1.11,<2",
+  "pip>=26.2,<27",
   "pip-audit>=2.10,<3",
   "playwright>=1.55,<2",
   "pytest>=9,<10",
