@@ -35,6 +35,9 @@ def test_quality_automation_matches_project_contract() -> None:
     assert package["scripts"]["quality:check"]
     assert package["scripts"]["security"] == "npm run security:check"
     assert package["scripts"]["security:check"]
+    assert package["engines"]["node"] == ">=24.18.0 <25"
+    assert package["volta"]["node"] == "24.18.0"
+    assert (repository / ".nvmrc").read_text(encoding="utf-8").strip() == "24.18.0"
     assert quality["maturity"] == "production-ready"
     assert quality["checks"]["coverage"] == {
         "enabled": True,
@@ -46,6 +49,7 @@ def test_quality_automation_matches_project_contract() -> None:
     assert "pull_request:\n" in workflow
     assert "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd" in workflow
     assert "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e" in workflow
+    assert 'node-version: "24.18.0"' in workflow
     assert "npm run quality:check" in workflow
     assert "npm run security:check" in workflow
     assert package["scripts"]["security:config"].endswith("bash scripts/run-gitleaks.sh")
