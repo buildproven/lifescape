@@ -6,6 +6,13 @@ A person can start Lifescape with one command, complete a guided retirement-town
 local browser, understand why towns ranked or failed, and download the underlying reports without
 learning the engine's file layout or CLI pipeline.
 
+## Version-one boundary
+
+The supported workflow accepts a reviewed evidence CSV. It does not acquire evidence for the
+user. AI discovery, live connectors, research packets, and evidence-promotion APIs are retained as
+experimental backend capabilities but are absent from the primary interface. See
+`docs/decisions/ADR-v1-product-boundary.md`.
+
 ## Requirements
 
 | ID | Requirement | Acceptance |
@@ -74,8 +81,10 @@ temporary run inputs ── execute_run (existing engine)
 ### Non-goals
 
 - Automated acquisition of real evidence.
+- AI town discovery or adapter review in the supported local journey.
 - Hosted multi-user accounts or remote persistence.
 - Treating the bundled synthetic benchmark as purchase research.
+- Producing a purchase recommendation.
 
 ## Requirements traceability
 

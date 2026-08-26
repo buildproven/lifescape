@@ -1,12 +1,13 @@
 # Lifescape
 
-Local-first, evidence-backed retirement planning for comparing U.S. towns. Lifescape turns
-non-negotiables, sourced town evidence, and future-life priorities into an explainable shortlist.
-Its decision engine provides strict YAML configuration, manual CSV evidence ingestion, SQLite
-provenance, hard gates, normalized scoring, Monte Carlo sensitivity, source-quality enforcement,
-and reproducible reports.
+Lifescape is a local, evidence-backed retirement-town comparison tool. A person supplies a
+reviewed CSV for two or more U.S. towns, sets the household decision frame, and receives an
+explainable comparison with hard gates, ranked preferences, sensitivity analysis, citations, and
+downloadable provenance.
 
-The governing rule is: **gates eliminate, weights rank, evidence decides, uncertainty stays visible.** Tier C discovery material cannot affect a gate or score, and unknown critical gates block a candidate.
+The governing rule is: **gates eliminate, weights rank, evidence decides, uncertainty stays
+visible.** Unknown critical evidence blocks a town. Lifescape never guesses a missing value or
+produces a purchase recommendation.
 
 ## Quick start
 
@@ -19,45 +20,43 @@ npm ci
 uv run lifescape app
 ```
 
-`lifescape app` opens a guided local workspace at `http://127.0.0.1:8765`. Set your
-budget and planning age, choose towns, review evidence completeness, then run and
-download the comparison. You can also import a CSV matching the documented evidence
-contract; the file is processed locally and validated before it reaches scoring.
+The command opens a private workspace at `http://127.0.0.1:8765`. The primary version-one
+journey is:
 
-The public deployment at `lifescape.buildproven.ai` is a static explanation and finished
-synthetic example. It exposes no comparison API, accepts no inputs, and stores no user data.
-Use the local app for your own evidence, computation, reports, and downloadable provenance.
+1. Set the maximum purchase budget, planning age, and household.
+2. Import a reviewed evidence CSV.
+3. Select at least two towns.
+4. Review completeness and blocking unknowns.
+5. Run the comparison.
+6. Download the Markdown report, ranking CSV, sensitivity CSV, and SQLite provenance database.
 
-### Find research leads and review public evidence (optional)
+The bundled dataset is synthetic and exists only to demonstrate and test the method. It must not
+be used as retirement research. Hosted mode likewise accepts no inputs and shows only a finished
+synthetic example.
 
-The local app can turn a short description of the retirement life you want, with optional
-example towns, into candidate **research leads**. Users provide intent, constraints, and
-examples—not broadband, weather, or other raw research data. This is optional and requires
-an Anthropic API key and model name in your local environment:
+## Evidence contract
+
+Use `data/benchmarks/evidence.csv` as the column contract, not as real evidence. Identity and
+source columns precede one column per configured metric. Blank cells remain missing. Every real
+row must retain its source, geography, retrieval date, observation period, confidence, and
+synthetic status.
+
+For real comparisons, use configuration whose `research_brief.yaml` sets
+`benchmark_only: false`:
 
 ```bash
-export ANTHROPIC_API_KEY="..."
-export LIFESCAPE_ANTHROPIC_MODEL="..."
-uv run lifescape app
+lifescape run \
+  --evidence path/to/reviewed-evidence.csv \
+  --profile path/to/user-profile.yaml \
+  --config-dir path/to/config \
+  --database outputs/run.sqlite \
+  --output-dir outputs/run
 ```
 
-Claude receives only the SearchBrief when you press **Find research leads**. Its output is
-Tier C discovery material: it can suggest towns and caveats, but cannot provide decision
-evidence, clear a gate, or change a ranking. After selecting at least two leads, the local
-app can fetch configured ACS and NOAA GSOY observations through reproducible connector
-adapters. Fetched values are read-only in the review screen: the source URL, geography,
-observation date, metric, named reviewer, and visible approve/reject decision are retained.
-An approved record is exported in the normal evidence CSV format. Lifescape permits that
-packet into a local decision run only after every candidate has complete approved critical
-evidence; rejected, stale, incompatible, finalist-only, and unknown records remain blocking.
+The app and CLI call the same `execute_run` authority. Tier C material cannot affect a gate or
+score. Failed and unknown critical gates stay visible and unranked.
 
-The adapters require system-owned geography configuration, never user-supplied evidence.
-Set `LIFESCAPE_RESEARCH_GEOGRAPHIES` to a JSON object keyed by the discovery lead ID, for
-example `{"asheville_nc":{"census_acs":"37:0210400","noaa_gsoy":"USW00003812:2024"}}`.
-ACS requires `CENSUS_API_KEY`. NOAA station observations remain explicitly station-level;
-the app will show them for review but will not silently convert a station into a town metric.
-
-For the command-line benchmark and QA Architect checks:
+## Verification
 
 ```bash
 uv run lifescape benchmark --output-dir outputs/benchmark
@@ -65,87 +64,22 @@ npm run quality:check
 npm run security:check
 ```
 
-The installed `lifescape benchmark` command includes its synthetic evidence and default configuration,
-so it works from any directory. Pass `--config-dir` only to exercise a custom configuration.
+The benchmark covers ten synthetic towns and must produce repeatable artifacts. Quality includes
+Python tests and coverage, Ruff, mypy, browser journeys, package construction, frontend linting,
+dependency audits, and secret scanning.
 
-The benchmark data is synthetic and exists only to exercise methodology. Generated artifacts include `comparison.md`, `comparison.csv`, and `sensitivity.csv`.
+## Experimental research tools
 
-## Manual evidence
+The repository retains research-packet APIs, AI discovery, ACS and NOAA connectors, evidence
+review and promotion, provenance auditing, and conditional research reports for continued
+experimentation. They are not part of the supported version-one journey and are not required for
+version-one completion.
 
-Use the benchmark CSV as the import contract. Identity and source columns, including an explicit `observed_at` date, precede one column per configured metric. Blank metric cells remain missing; they are never guessed.
+Commercial routing, FCC broadband aggregation, property and parcel providers, neighborhood
+verification, hosted accounts, remote persistence, and purchase recommendations are deferred.
+Their absence does not weaken the version-one contract because reviewed evidence enters through
+the same strict CSV boundary and missing critical evidence continues to block.
 
-For real evidence, use a config directory whose `research_brief.yaml` sets `benchmark_only: false`.
-
-```bash
-lifescape run \
-  --evidence path/to/evidence.csv \
-  --profile path/to/user_profile.yaml \
-  --config-dir config \
-  --database outputs/run.sqlite \
-  --output-dir outputs/run
-```
-
-See [the implementation plan](docs/implementation-plan.md), [source policy](docs/source-policy.md), and [limitations](docs/limitations.md).
-
-### Audit manual provenance
-
-The wide CSV contract has one row-level source block. Before using a manually researched
-CSV for a decision, audit every populated metric against a separate metric-specific evidence
-manifest. The audit does not modify, infer, or score evidence; it writes a deterministic JSON
-ledger and a blank correction template.
-
-```bash
-lifescape audit-evidence \
-  --evidence path/to/evidence.csv \
-  --config-dir config \
-  --output-dir outputs/evidence-audit
-```
-
-Populate the generated `evidence-manifest-template.csv` with the source that supports each
-individual metric, then re-run with `--manifest path/to/evidence-manifest.csv`. A record whose
-source, geography, freshness, confidence, or metric semantics cannot be validated remains
-`action_required` and never changes the strict scoring path.
-
-### Produce a conditional research shortlist
-
-For early-stage discovery, produce a bucketed research queue alongside the unchanged strict
-engine output. This command never ranks towns or treats missing critical evidence as a pass.
-Use `--investigate-place` only for town IDs that a researcher has deliberately selected as
-leads; repeat the option to include more than one lead.
-
-```bash
-lifescape research-report \
-  --evidence path/to/evidence.csv \
-  --profile path/to/user_profile.yaml \
-  --config-dir config \
-  --manifest path/to/evidence-manifest.csv \
-  --investigate-place lake_geneva_wi \
-  --output-dir outputs/research-report
-```
-
-The output contains three explicit buckets: **Investigate now**, **Known reject**, and
-**Insufficient evidence**. A town can be a known reject only when its failed gate has
-metric-specific provenance that passed the audit. All other unresolved critical evidence is
-listed with its next verification action.
-
-## Live snowfall evidence
-
-`lifescape live-run` can additionally fetch NOAA NCEI Global Summary of the Year
-(GSOY) snowfall. Because a weather station is not a town-wide aggregate, the
-station selection is explicit in the places YAML and remains visible in source
-provenance. Use a completed calendar year and a station you have independently
-determined represents the town; Lifescape neither finds a nearest station nor
-combines stations or years.
-
-```yaml
-lake_geneva_wi:
-  name: Lake Geneva
-  state: WI
-  census_acs: "55:43075"
-  noaa_gsoy: "USC00218450:2024"
-```
-
-The NOAA observation is GSOY's direct `SNOW` total in inches for that exact
-station-year. Empty, flagged, malformed, or unavailable station records produce
-missing evidence, so the critical winter gate stays UNKNOWN and blocks the
-candidate instead of receiving an inferred value.
+See the [v1 product-boundary decision](docs/decisions/ADR-v1-product-boundary.md),
+[local-app specification](docs/local-app-spec.md), [source policy](docs/source-policy.md), and
+[known limitations](docs/limitations.md).

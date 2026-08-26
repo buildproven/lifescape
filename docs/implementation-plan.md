@@ -4,6 +4,10 @@ This plan implements the Core Vertical Slice defined by the Retirement Decision 
 master specification plus the first intent-to-public-source research slice. The release is
 local-first, deterministic, evidence-backed, and usable without external APIs.
 
+The version-one product boundary is the reviewed-CSV local comparison defined in
+`docs/decisions/ADR-v1-product-boundary.md`. Research acquisition work below is retained as
+experimental history and does not block version-one completion.
+
 ## Acceptance path
 
 1. Load versioned YAML requirements, user profile, gate thresholds, scoring weights, and source policy.
@@ -37,11 +41,11 @@ local-first, deterministic, evidence-backed, and usable without external APIs.
 - `lifescape benchmark` produces a ten-town comparison from clearly synthetic data and blocks every failed or unknown critical gate.
 - Running the benchmark twice with identical inputs produces byte-identical reports.
 
-## Research-packet slice
+## Experimental research-packet slice
 
-The local app accepts user intent and optional exemplar towns, creates Tier C discovery
-leads, lets the user select a bounded pilot set, and fetches system-configured ACS and NOAA
-GSOY observations. The review queue preserves the adapter's source URL, source geography,
+The retained experimental API accepts user intent and optional exemplar towns, creates Tier C
+discovery leads, selects a bounded pilot set, and fetches system-configured ACS and NOAA GSOY
+observations. The review queue preserves the adapter's source URL, source geography,
 observation date, metric, and value; a named human must approve a record before it can be
 exported into the existing wide evidence CSV. `execute_run` receives only that export and
 fails closed while any candidate has an unknown critical metric.
@@ -78,15 +82,14 @@ missing critical evidence and blocks the candidate normally.
 
 The ACS connector now supports every Census state, district, and territory FIPS code rather than only the benchmark states. By default it resolves the newest *published* ACS 5-Year Data Profile vintage from the [official Census data catalog](https://api.census.gov/data.json), avoiding a date-derived guess before an annual release exists. Its `acs_year` constructor option pins a vintage when a reproducible research run requires one. Catalog failures or an absent published profile are explicit connector failures; the live-run orchestration records the affected evidence as missing, where critical gates remain blocked rather than silently falling back to a prior vintage.
 
-Remaining work: connectors for finalist-only metrics (FCC location-level broadband,
-address-aware ER routing after the versioned CMS/Census coordinate-evidence contract in
-`docs/decisions/ADR-er-coordinate-evidence.md`, and property/neighborhood verification),
-refresh/history behavior for reviewed adapter records, and automated candidate discovery
-quality beyond the bounded local pilot.
+Possible future work includes finalist-only connectors, address-aware ER routing,
+property/neighborhood verification, adapter refresh behavior, and automated candidate discovery.
+These items are not version-one blockers. They require a separate product decision before they
+can return to the supported surface.
 
-## Manual finalist-evidence slice
+## Experimental manual finalist-evidence slice
 
-The local app exposes the existing reviewed promotion path for finalist-only town metrics that
+The retained research API exposes a reviewed promotion path for finalist-only town metrics that
 cannot be fetched by a public adapter. A named human enters a metric-correct town aggregate,
 observation period and date, and complete Tier A/B source provenance. The same source-policy,
 geography, range, freshness, persistence, completeness, and approved CSV export controls used by

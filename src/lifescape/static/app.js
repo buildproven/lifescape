@@ -3,10 +3,7 @@ const state = {
   places: [],
   selected: new Set(),
   metricCount: 0,
-  metrics: [],
   evidenceToken: null,
-  researchPacket: null,
-  researchPacketSelected: false,
   result: null,
 };
 
@@ -95,7 +92,7 @@ function renderTowns() {
       <input type="checkbox" value="${escapeHtml(place.place_id)}" ${state.selected.has(place.place_id) ? "checked" : ""}>
       <span class="checkmark" aria-hidden="true"></span>
       <span class="town-name"><strong>${escapeHtml(place.name)}</strong><span>${escapeHtml(place.state)}</span></span>
-      <span class="town-source">${state.researchPacket ? "Generated lead" : state.evidenceToken ? "Imported evidence" : "Demo evidence"}</span>
+      <span class="town-source">${state.evidenceToken ? "Imported evidence" : "Demo evidence"}</span>
       <span class="town-readiness">${percentage}% ready</span>
     </label>`;
       })
@@ -235,7 +232,6 @@ async function runComparison() {
         future_self_age: Number($("input[name=age]:checked").value),
         household: $("input[name=household]:checked").value,
         evidence_token: state.evidenceToken,
-        research_packet_id: state.researchPacket ? state.researchPacket.packet_id : null,
       }),
     });
     const payload = await response.json();
@@ -256,8 +252,6 @@ async function importEvidence(file) {
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.detail || "This CSV could not be read.");
   state.evidenceToken = payload.evidence_token;
-  state.researchPacket = null;
-  state.researchPacketSelected = false;
   state.places = payload.places;
   state.metricCount = payload.metric_count;
   state.selected = new Set(state.places.map((place) => place.place_id));
@@ -275,292 +269,6 @@ async function importEvidence(file) {
   toast(`Imported ${state.places.length} towns from ${file.name}`);
 }
 
-function renderDiscovery(packet) {
-  state.researchPacket = packet;
-  const selectedPacket = state.researchPacketSelected;
-  const results = $("#discovery-results");
-  const fetchHistory = (packet.fetch_history || [])
-    .map(
-      (snapshot, index) =>
-        `<li>Refresh ${index + 1} · ${escapeHtml(snapshot.fetched_at)} · ${snapshot.result.observations.length} observations · ${Object.keys(snapshot.result.errors).length} source-error groups</li>`
-    )
-    .join("");
-  const evidenceByPlace = new Map();
-  packet.evidence.forEach((item) => {
-    const items = evidenceByPlace.get(item.place.place_id) || [];
-    items.push(item);
-    evidenceByPlace.set(item.place.place_id, items);
-  });
-  const cards = packet.leads
-    .map((lead) => {
-      const observations = evidenceByPlace.get(lead.place_id) || [];
-      const errors = packet.fetch_errors[lead.place_id] || [];
-      const evidence = observations.length
-        ? observations
-            .map((item) => {
-              const status =
-                packet.evidence_status[item.place.place_id]?.[item.metric_id] || "awaiting_review";
-              const reviewActions =
-                status === "awaiting_review"
-                  ? '<div class="review-actions"><label>Reviewer<input name="reviewer" autocomplete="name" placeholder="Your name" required /></label><button class="secondary-button" data-fetched-action="approve" type="button">Approve fetched record</button><button class="text-button" data-fetched-action="reject" type="button">Reject</button></div>'
-                  : `<p class="evidence-status">Decision: ${escapeHtml(status)}</p>`;
-              return `<div class="fetched-evidence" data-metric-id="${escapeHtml(item.metric_id)}">
-                <div><strong>${escapeHtml(item.metric_id.replaceAll("_", " "))}</strong><span>${escapeHtml(String(item.raw_value))}</span></div>
-                <small>${escapeHtml(item.source.title)} · ${escapeHtml(item.source.publisher)} · ${escapeHtml(item.source.geography)} · observed ${escapeHtml(item.observed_at)} · retrieved ${escapeHtml(item.source.retrieved_at)} · <a href="${escapeHtml(item.source.url)}" target="_blank" rel="noreferrer">source</a></small>
-                ${reviewActions}
-              </div>`;
-            })
-            .join("")
-        : `<p class="evidence-empty">No adapter observation is available yet.</p>${errors
-            .map((error) => `<p class="evidence-error">${escapeHtml(error)}</p>`)
-            .join("")}`;
-      const finalistMetrics = Object.entries(packet.evidence_status[lead.place_id] || {})
-        .filter(([, status]) => status === "finalist_verification")
-        .map(([metric]) => metric);
-      const manualEvidence = finalistMetrics
-        .map(
-          (metric) => `<details class="manual-evidence" data-metric-id="${escapeHtml(metric)}">
-            <summary>Add reviewed ${escapeHtml(metric.replaceAll("_", " "))} evidence</summary>
-            <p>Enter a town-level aggregate from a Tier A or B source. Address and property facts cannot satisfy this town metric.</p>
-            <div class="manual-evidence-grid">
-              <label>Value<input name="raw_value" type="number" step="any" required /></label>
-              <label>Observation period<input name="observed_period" placeholder="2025 annual or Jan–Jun 2026" required /></label>
-              <label>Observed date<input name="observed_at" type="date" required /></label>
-              <label>Source URL<input name="source_url" type="url" placeholder="https://…" required /></label>
-              <label>Source title<input name="source_title" required /></label>
-              <label>Publisher<input name="publisher" required /></label>
-              <label>Source tier<select name="tier"><option value="A">A</option><option value="B">B</option></select></label>
-              <label>Retrieved date<input name="retrieved_at" type="date" required /></label>
-              <label>Reviewer<input name="reviewer" autocomplete="name" required /></label>
-            </div>
-            <button class="secondary-button" data-manual-action="approve" type="button">Approve town evidence</button>
-          </details>`
-        )
-        .join("");
-      return `<article class="discovery-card" data-place-id="${escapeHtml(lead.place_id)}">
-        <label class="lead-select"><input type="checkbox" data-lead-select checked /><span>Select for evidence review</span></label>
-        <h3>${escapeHtml(lead.name)}, ${escapeHtml(lead.state)}</h3>
-        <p>${escapeHtml(lead.rationale)}</p>
-        <small>${lead.unresolved_critical_metrics.length} critical facts still need verification</small>
-        ${finalistMetrics.length ? `<p class="finalist-note">Manual town evidence required: ${escapeHtml(finalistMetrics.map((metric) => metric.replaceAll("_", " ")).join(", "))}</p>${manualEvidence}` : ""}
-        <details class="research-review" open><summary>Fetched evidence review</summary>
-          <p>Values below came from a public-source adapter. Approve or reject the record; do not retype its value.</p>
-          ${evidence}
-        </details>
-      </article>`;
-    })
-    .join("");
-  results.innerHTML = `<p class="discovery-disclosure">${escapeHtml(packet.disclosure)}</p>
-    <div class="discovery-actions"><button class="secondary-button" data-research-action="fetch" type="button" ${selectedPacket ? "" : "disabled"}>Fetch available public evidence</button><button class="secondary-button" data-research-action="select" type="button">${selectedPacket ? "Continue with selected leads" : "Review selected leads"}</button></div>
-    ${selectedPacket ? "" : '<p class="evidence-empty">Select the leads you want to compare before fetching public evidence.</p>'}
-    ${cards}<section class="review-ledger"><h3>Review decisions</h3>${packet.reviews.length ? packet.reviews.map((review) => `<p><strong>${escapeHtml(review.decision)}</strong> · ${escapeHtml(review.metric_id.replaceAll("_", " "))} · ${escapeHtml(review.reviewer)}${review.reason ? ` — ${escapeHtml(review.reason)}` : ""}</p>`).join("") : "<p>No source records reviewed yet.</p>"}</section>
-    <details class="research-history"><summary>Fetch history (${packet.fetch_history_count || 0})</summary>${fetchHistory ? `<ul>${fetchHistory}</ul>` : "<p>No public-source fetch has been recorded yet.</p>"}</details>`;
-  $$(`[data-fetched-action]`).forEach((button) =>
-    button.addEventListener("click", () => submitFetchedReview(button, packet))
-  );
-  $$(`[data-manual-action]`).forEach((button) =>
-    button.addEventListener("click", () => submitManualEvidence(button, packet))
-  );
-  $("[data-research-action=fetch]").addEventListener("click", () => fetchPacketEvidence(packet));
-  $("[data-research-action=select]").addEventListener("click", () =>
-    selectedPacket ? setStep("towns") : selectResearchLeads(packet)
-  );
-}
-
-async function submitManualEvidence(button, packet) {
-  const card = button.closest(".discovery-card");
-  const form = button.closest(".manual-evidence");
-  if (!form.reportValidity()) return;
-  const value = (name) => form.querySelector(`[name=${name}]`).value.trim();
-  const rawValue = value("raw_value");
-  if (rawValue === "") return;
-  const payload = {
-    packet_id: packet.packet_id,
-    reviewer: value("reviewer"),
-    place: packet.leads.find((lead) => lead.place_id === card.dataset.placeId),
-    metric_id: form.dataset.metricId,
-    raw_value: Number(rawValue),
-    observed_period: value("observed_period"),
-    observed_at: value("observed_at"),
-    source: {
-      url: value("source_url"),
-      title: value("source_title"),
-      publisher: value("publisher"),
-      tier: value("tier"),
-      retrieved_at: value("retrieved_at"),
-      geography: "town",
-      confidence: "high",
-      synthetic: false,
-    },
-  };
-  button.disabled = true;
-  try {
-    const response = await fetch("/api/research/promote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "Town evidence could not be approved.");
-    renderDiscovery(result);
-    toast("Reviewed town evidence approved and saved locally.");
-  } catch (error) {
-    toast(error.message);
-    button.disabled = false;
-  }
-}
-
-async function fetchPacketEvidence(packet) {
-  const button = $("[data-research-action=fetch]");
-  button.disabled = true;
-  try {
-    const response = await fetch("/api/research/fetch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        packet_id: packet.packet_id,
-        place_ids: packet.leads.map((lead) => lead.place_id),
-      }),
-    });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "Public evidence could not be fetched.");
-    renderDiscovery(payload);
-    toast("Available public evidence fetched. Review each record before running.");
-  } catch (error) {
-    toast(error.message);
-    button.disabled = false;
-  }
-}
-
-async function selectResearchLeads(packet) {
-  const placeIds = $$(`[data-lead-select]:checked`).map(
-    (input) => input.closest(".discovery-card").dataset.placeId
-  );
-  if (placeIds.length < 2) {
-    toast("Select at least two leads for evidence review.");
-    return;
-  }
-  try {
-    const response = await fetch("/api/research/select", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ packet_id: packet.packet_id, place_ids: placeIds }),
-    });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "The selected leads could not be opened.");
-    state.researchPacketSelected = true;
-    const fetchResponse = await fetch("/api/research/fetch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        packet_id: payload.packet_id,
-        place_ids: payload.leads.map((lead) => lead.place_id),
-      }),
-    });
-    const fetched = await fetchResponse.json();
-    if (!fetchResponse.ok) {
-      throw new Error(fetched.detail || "Public evidence could not be fetched.");
-    }
-    state.researchPacket = fetched;
-    state.evidenceToken = null;
-    state.places = fetched.leads.map((lead) => ({
-      place_id: lead.place_id,
-      name: lead.name,
-      state: lead.state,
-      complete_metrics: Object.values(fetched.evidence_status[lead.place_id] || {}).filter(
-        (status) => status === "approved"
-      ).length,
-      total_metrics: state.metricCount,
-    }));
-    state.selected = new Set(state.places.map((place) => place.place_id));
-    $("#dataset-label").textContent = "Generated town leads";
-    $("#dataset-meta").textContent = `${state.places.length} towns · evidence review`;
-    renderTowns();
-    renderDiscovery(fetched);
-    toast("Selected leads opened. Review each fetched record before continuing.");
-  } catch (error) {
-    toast(error.message);
-  }
-}
-
-async function submitFetchedReview(button, packet) {
-  const card = button.closest(".discovery-card");
-  const evidence = button.closest(".fetched-evidence");
-  const reviewer = evidence.querySelector("[name=reviewer]").value.trim();
-  const metricId = evidence.dataset.metricId;
-  const rejecting = button.dataset.fetchedAction === "reject";
-  const payload = rejecting
-    ? {
-        packet_id: packet.packet_id,
-        reviewer,
-        place: packet.leads.find((lead) => lead.place_id === card.dataset.placeId),
-        metric_id: metricId,
-        reason: "Reviewer rejected the fetched record after source review.",
-      }
-    : {
-        packet_id: packet.packet_id,
-        place_id: card.dataset.placeId,
-        metric_id: metricId,
-        reviewer,
-      };
-  button.disabled = true;
-  try {
-    const response = await fetch(
-      rejecting ? "/api/research/reject" : "/api/research/approve-fetched",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
-    );
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "Review could not be recorded.");
-    renderDiscovery(result);
-    toast(
-      rejecting ? "Rejection recorded. The metric remains unknown." : "Fetched evidence approved."
-    );
-  } catch (error) {
-    toast(error.message);
-    button.disabled = false;
-  }
-}
-
-async function discoverCandidates() {
-  const preferences = $("#discovery-preferences").value.trim();
-  const examples = [
-    $("#discovery-example-one").value.trim(),
-    $("#discovery-example-two").value.trim(),
-  ].filter(Boolean);
-  if (preferences.length < 20) {
-    toast("Describe the retirement life you want in at least a sentence.");
-    return;
-  }
-  const button = $("#discover-button");
-  button.disabled = true;
-  button.textContent = "Finding research leads…";
-  try {
-    const response = await fetch("/api/research/discover", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        preferences,
-        exemplar_towns: examples,
-        hard_constraints: [`Maximum purchase budget: ${money.format(Number($("#budget").value))}`],
-        exclusions: [],
-      }),
-    });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "Discovery could not run.");
-    state.researchPacketSelected = false;
-    renderDiscovery(payload);
-  } catch (error) {
-    toast(error.message);
-  } finally {
-    button.disabled = false;
-    button.innerHTML = "Find research leads <span>↗</span>";
-  }
-}
-
 async function initialize() {
   try {
     const response = await fetch("/api/bootstrap");
@@ -568,7 +276,6 @@ async function initialize() {
     const payload = await response.json();
     state.places = payload.places;
     state.metricCount = payload.metric_count;
-    state.metrics = payload.metrics;
     state.selected = new Set(state.places.map((place) => place.place_id));
     $("#budget").value = payload.defaults.purchase_budget_max;
     $("#dataset-meta").textContent = `${state.places.length} towns · ${state.metricCount} metrics`;
@@ -617,6 +324,4 @@ $("#evidence-file").addEventListener("change", async (event) => {
   }
   event.target.value = "";
 });
-$("#discover-button").addEventListener("click", discoverCandidates);
-
 initialize();
