@@ -18,14 +18,14 @@ SQLite provenance → hard gates → eligible set → normalization/scoring
 
 Configuration is immutable after validation. The run ID hashes canonical configuration and evidence content. Gates execute before ranking. The reporting path consumes the same evaluated domain records that are persisted, so it cannot silently reinterpret evidence.
 
-The connector protocol is defined under `src/lifescape/connectors`. ACS and NOAA GSOY
-adapters are available to the local research packet workflow; their fetched observations
-remain review-pending until a human approves them.
+The supported version-one interface ends at the reviewed CSV boundary. The connector protocol
+under `src/lifescape/connectors`, ACS/NOAA adapters, and research-packet workflow are experimental;
+their fetched observations remain review-pending until a human approves them.
 
-## AI-assisted discovery boundary
+## Experimental AI-assisted discovery boundary
 
-The local app may send a user-approved `SearchBrief` to an opt-in discovery provider
-and receive a session-local `ResearchPacket`. The packet contains candidate leads,
+The retained experimental API may send a `SearchBrief` to an opt-in discovery provider and
+receive a session-local `ResearchPacket`. The packet contains candidate leads,
 rationales, caveats, and optional discovery links only. It is not an evidence CSV or
 an engine input.
 
