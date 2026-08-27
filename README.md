@@ -1,13 +1,19 @@
 # Lifescape
 
-Lifescape is a local, evidence-backed retirement-town comparison tool. A person supplies a
-reviewed CSV for two or more U.S. towns, sets the household decision frame, and receives an
-explainable comparison with hard gates, ranked preferences, sensitivity analysis, citations, and
-downloadable provenance.
+Lifescape helps a U.S. household find places where they might want to live. Start with one or two
+towns you like or supported qualities you want. Lifescape finds explainable town matches, helps
+you shape a shortlist, and then uses verified evidence to test the finalists against hard
+requirements and household priorities.
 
-The governing rule is: **gates eliminate, weights rank, evidence decides, uncertainty stays
-visible.** Unknown critical evidence blocks a town. Lifescape never guesses a missing value or
-produces a purchase recommendation.
+The governing rule is: **preferences and examples discover; gates eliminate; weights rank;
+evidence decides; uncertainty stays visible.** Discovery data can suggest a town but cannot clear
+a gate or affect an evidence-backed score. Unknown critical evidence blocks a finalist. Lifescape
+never guesses a missing value or produces a purchase recommendation.
+
+The approved [place-discovery PRD](docs/prd/lifescape-place-discovery.md) is the product source of
+truth. Product work must cite its goal, functional requirement, non-functional requirement, or
+acceptance criterion. The [delivery tasks](docs/prd/lifescape-place-discovery-tasks.md) define the
+current vertical implementation sequence.
 
 ## Quick start
 
@@ -20,15 +26,16 @@ npm ci
 uv run lifescape app
 ```
 
-The command opens a private workspace at `http://127.0.0.1:8765`. The primary version-one
+The command opens a private workspace at `http://127.0.0.1:8765`. The primary product
 journey is:
 
-1. Set the maximum purchase budget, planning age, and household.
-2. Import a reviewed evidence CSV.
-3. Select at least two towns.
-4. Review completeness and blocking unknowns.
-5. Run the comparison.
-6. Download the Markdown report, ranking CSV, sensitivity CSV, and SQLite provenance database.
+1. Choose one or two exemplar towns or set at least two supported qualities.
+2. Set hard constraints, exclusions, and priorities.
+3. Explore explainable town recommendations and visible unknowns.
+4. Keep, reject, refine, and save a local shortlist.
+5. Move at least two finalists into evidence review.
+6. Run the strict comparison only when admissible evidence exists.
+7. Download the Markdown report, ranking CSV, sensitivity CSV, and SQLite provenance database.
 
 The bundled dataset is synthetic and exists only to demonstrate and test the method. It must not
 be used as retirement research. Hosted mode likewise accepts no inputs and shows only a finished
@@ -80,6 +87,7 @@ verification, hosted accounts, remote persistence, and purchase recommendations 
 Their absence does not weaken the version-one contract because reviewed evidence enters through
 the same strict CSV boundary and missing critical evidence continues to block.
 
-See the [v1 product-boundary decision](docs/decisions/ADR-v1-product-boundary.md),
+See the [place-discovery contract](docs/decisions/ADR-place-discovery-contract.md), the
+[superseded CSV-only boundary](docs/decisions/ADR-v1-product-boundary.md),
 [local-app specification](docs/local-app-spec.md), [source policy](docs/source-policy.md), and
 [known limitations](docs/limitations.md).

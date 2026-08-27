@@ -7,16 +7,16 @@
   - Delivers: approved work is isolated from the primary checkout.
   - Blocked by: none.
   - Verification: `git branch --show-current` prints `docs/bui-334-place-discovery-prd`.
-- [ ] 1.0 Make the approved PRD the enforceable product contract
+- [x] 1.0 Make the approved PRD the enforceable product contract
   - Delivers: contributors can identify Lifescape's front door and must trace product work to an
     approved requirement.
   - Blocked by: 0.0.
   - Verification: `uv run --extra dev pytest tests/test_product_contract.py`.
-  - [ ] 1.1 Approve `docs/prd/lifescape-place-discovery.md` and add machine-verifiable criteria.
-  - [ ] 1.2 Supersede the CSV-only product boundary without weakening evidence invariants.
-  - [ ] 1.3 Link the PRD from README, implementation guidance, and the PR template.
-  - [ ] 1.4 Add product-contract tests through the versioned repository surface.
-  - [ ] 1.5 Run the evidence-backed affected tests; if green, commit.
+  - [x] 1.1 Approve `docs/prd/lifescape-place-discovery.md` and add machine-verifiable criteria.
+  - [x] 1.2 Supersede the CSV-only product boundary without weakening evidence invariants.
+  - [x] 1.3 Link the PRD from README, implementation guidance, and the PR template.
+  - [x] 1.4 Add product-contract tests through the versioned repository surface.
+  - [x] 1.5 Run the evidence-backed affected tests; if green, commit.
 - [ ] 2.0 Find places from exemplar towns and explicit criteria
   - Delivers: a user can choose zero to two liked towns and criteria and receive deterministic,
     explainable recommendations from a real, versioned U.S. place catalog.

@@ -1,6 +1,7 @@
 ## Requirements and design
 
-- Specification / requirement IDs:
+- PRD trace (`docs/prd/lifescape-place-discovery.md` goal / FR / NFR / AC IDs):
+- User-visible vertical behavior:
 - Design impact:
 - Failure and degradation behavior:
 
