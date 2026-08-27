@@ -11,7 +11,7 @@
   - Delivers: contributors can identify Lifescape's front door and must trace product work to an
     approved requirement.
   - Blocked by: 0.0.
-  - Verification: `uv run pytest tests/test_product_contract.py`.
+  - Verification: `uv run --extra dev pytest tests/test_product_contract.py`.
   - [ ] 1.1 Approve `docs/prd/lifescape-place-discovery.md` and add machine-verifiable criteria.
   - [ ] 1.2 Supersede the CSV-only product boundary without weakening evidence invariants.
   - [ ] 1.3 Link the PRD from README, implementation guidance, and the PR template.
@@ -21,18 +21,20 @@
   - Delivers: a user can choose zero to two liked towns and criteria and receive deterministic,
     explainable recommendations from a real, versioned U.S. place catalog.
   - Blocked by: 1.0.
-  - Verification: `uv run pytest tests/test_discovery.py tests/test_web.py -k discovery`.
+  - Verification: `uv run --extra dev pytest tests/test_discovery.py tests/test_web.py -k
+    discovery`.
   - [ ] 2.1 Add the reviewed discovery architecture decision and source manifest.
   - [ ] 2.2 Build a reproducible catalog from official Census geography and ACS bulk files.
   - [ ] 2.3 Add a deep discovery module for profiles, constraints, similarity, and explanations.
-  - [ ] 2.4 Expose validated place lookup and discovery-search HTTP resources.
+  - [ ] 2.4 Expose validated place lookup and stateless place-recommendation HTTP resources.
   - [ ] 2.5 Add red-capable module and API behavior tests with independent fixture oracles.
   - [ ] 2.6 Run the evidence-backed affected tests; if green, commit.
 - [ ] 3.0 Explore and understand recommendations in the local app
   - Delivers: a user can enter the search journey, see 10 recommendations, and inspect the match
     reasons, differences, unknowns, dates, and source boundary for each town.
   - Blocked by: 2.0.
-  - Verification: `uv run pytest tests/test_user_journey.py -k discovery` at mobile and desktop.
+  - Verification: `uv run --extra dev pytest tests/test_user_journey.py -k discovery` at mobile
+    and desktop.
   - [ ] 3.1 Replace CSV import as the primary screen action with the staged discovery profile.
   - [ ] 3.2 Render recommendation order, match contributions, reasons, trade-offs, and unknowns.
   - [ ] 3.3 Add loading, validation, empty, failure, keyboard, focus, and narrow-screen states.
@@ -45,8 +47,9 @@
     versioned shortlist after reloading the local app.
   - Blocked by: 3.0.
   - Verification: the shortlist persistence section of
-    `uv run pytest tests/test_user_journey.py -k discovery`.
-  - [ ] 4.1 Add a versioned local scenario schema and explicit incompatible-version recovery.
+    `uv run --extra dev pytest tests/test_user_journey.py -k discovery`.
+  - [ ] 4.1 Add the versioned local scenario schema, migration rule, backup/export path, and stale
+    catalog behavior.
   - [ ] 4.2 Add Keep, Not for me, Unsure, refinement, and movement explanations.
   - [ ] 4.3 Add manual-town entry through the normalized catalog lookup.
   - [ ] 4.4 Test local persistence, reload, reset, and malformed-state recovery.
@@ -55,7 +58,8 @@
   - Delivers: a user can move two or more kept towns into evidence review, see every missing
     critical metric, and use reviewed CSV import without letting discovery clear a gate.
   - Blocked by: 4.0.
-  - Verification: `uv run pytest tests/test_user_journey.py -k evidence_handoff` plus AC6.
+  - Verification: `uv run --extra dev pytest tests/test_user_journey.py -k evidence_handoff` plus
+    AC6.
   - [ ] 5.1 Map shortlist identity and relevant profile values into the evidence-review entrance.
   - [ ] 5.2 Show verified, missing, and blocked evidence states before comparison.
   - [ ] 5.3 Keep the run action disabled until admissible evidence exists for at least two towns.

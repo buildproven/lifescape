@@ -49,8 +49,9 @@ This PRD corrects a gap between the original implementation milestone and the in
 
 ## 2. Goals
 
-- G1: A first-time user can go from no shortlist to 10 explainable U.S. town recommendations by
-  supplying one or two liked towns, desired qualities, hard constraints, or a combination.
+- G1: A first-time user can go from no shortlist to 10 explainable U.S. town recommendations when
+  at least 10 catalog places satisfy the known hard constraints, by supplying one or two liked
+  towns, supported desired qualities, hard constraints, or a combination.
 - G2: A user can refine the recommendations and save at least three towns as a shortlist without
   preparing files or entering metric values.
 - G3: Every recommendation shows the criteria that caused it to appear, important trade-offs,
@@ -100,10 +101,15 @@ This PRD corrects a gap between the original implementation milestone and the in
 - FR3: Desired qualities and hard constraints are separate inputs. A quality changes discovery
   relevance. A hard constraint excludes a town only when the discovery dataset contains a value
   that proves failure; an unknown value remains visible and does not count as a pass.
-- FR4: The first release supports these discovery dimensions: climate, town size, housing cost,
-  walkable-town form, healthcare access, nature and outdoor access, airport access, cultural and
-  social activity, and preferred or excluded states or regions. Each dimension has a documented
-  field definition, unit, observation date, and source or derivation.
+- FR4: The first catalog supports town size, housing cost, population density, car-light commute
+  share, college-educated share, older-adult share, and preferred or excluded states or regions.
+  **Car-light commute share is an ACS commute-mode proxy, not a walkability score.** Each supported
+  dimension has a documented field definition, unit, observation date, source or derivation, and
+  a non-null value for at least 80% of catalog places with population of 2,500 or more. Climate,
+  healthcare access, nature and outdoor access, airport access, and cultural or social activity
+  remain named discovery needs, but the first catalog does not accept them as scored qualities or
+  claim matches for them. Adding one requires a PRD amendment with a source and shipped-catalog
+  coverage criterion.
 - FR5: Discovery uses a versioned catalog of U.S. incorporated places and Census-designated
   places. The catalog contains normalized place identity and the available discovery dimensions.
   Missing fields remain null.
@@ -115,8 +121,10 @@ This PRD corrects a gap between the original implementation milestone and the in
   recommendation. If fewer than 10 places qualify, it returns all qualifying places and states
   the number excluded by each hard constraint.
 - FR8: Each recommendation includes its place and state, total discovery-match score, component
-  match contributions, two or more concrete match reasons when available, important differences
+  match contributions, two or more concrete match reasons, important differences
   from the search profile or exemplars, missing discovery fields, catalog version, and data date.
+- FR8a: A candidate requires at least two non-null, non-region match components. A candidate with
+  fewer than two components is not recommended and is counted in insufficient-data diagnostics.
 - FR9: Generated prose can summarize structured match data, but it cannot create a match reason,
   fact, value, or constraint result that is absent from the structured discovery result.
 - FR10: The user can mark a recommendation **Keep**, **Not for me**, or **Unsure**. The user can
@@ -137,18 +145,25 @@ This PRD corrects a gap between the original implementation milestone and the in
 - FR15: Reviewed CSV import remains available under an **Advanced evidence import** action for an
   expert who already has a shortlist. It is not required to discover, refine, or save candidate
   towns.
-- FR16: The read-only hosted example demonstrates the same discovery-to-shortlist-to-verification
-  story with clearly synthetic data. It accepts no personal input until a separate hosted-product
-  PRD is approved.
+- FR16: The read-only hosted example uses static, clearly synthetic content to illustrate the
+  discovery-to-shortlist-to-verification sequence. It does not execute discovery, accept personal
+  input, or add hosted API routes until a separate hosted-product PRD is approved.
 
 ## 6. Non-functional requirements
 
-- Performance: After the catalog is loaded, a search across the supported U.S. place catalog
-  returns in at most 2 seconds at the 95th percentile on the repository's CI runner.
+- Performance: Catalog integrity verification and loading complete in at most 3 seconds, and a
+  subsequent search across the supported U.S. place catalog returns in at most 2 seconds at the
+  95th percentile on the repository's CI runner.
 - Reproducibility: The search profile, catalog version, normalization configuration, and algorithm
   version are sufficient to reproduce the ordered result and component scores byte for byte.
 - Privacy: Search profiles and user decisions remain local. No profile content leaves the device
   unless the user explicitly enables a provider in a later approved product requirement.
+- Local-state compatibility: The browser state uses integer `schema_version: 1`. Additive optional
+  fields do not change that version. A breaking shape change requires a tested migration to the
+  next integer version. Without a migration, the app preserves the original value under a backup
+  key, offers JSON export and reset, and does not partly load it. A matching-schema shortlist from
+  an older catalog remains readable with its original recommendations and catalog label; the app
+  offers a rerun but does not silently rescore or reset it.
 - Security: Search text is treated as untrusted input. It cannot select file paths, execute code,
   or inject markup into the result page.
 - Accessibility: The complete search, refinement, shortlist, and handoff journey meets WCAG 2.1
@@ -205,6 +220,10 @@ is necessary for this journey.
   controls below and accept infrastructure only when it unlocks an approved vertical slice.
 - Risk: A model invents a rationale. → Mitigation: Generate every reason from typed component data
   and test that prose contains no unsupported claims.
+- Risk: A damaged or partial packaged catalog produces confident recommendations from an
+  incomplete universe. → Mitigation: Verify the manifest output hash and row count before exposing
+  discovery. A mismatch returns a visible `CATALOG_UNAVAILABLE` failure and no recommendations;
+  it never loads partial rows.
 
 ## 10. Open questions
 
@@ -238,21 +257,26 @@ Lifescape does; architecture decisions control how approved requirements are imp
 
 ## Acceptance criteria (must be machine-verifiable)
 
-- [ ] AC1: `uv run pytest tests/test_product_contract.py` confirms that the README, implementation
-  plan, PR template, and active product-boundary ADR reference this PRD and its traceability rule.
-- [ ] AC2: `uv run pytest tests/test_discovery.py` confirms that a fixed catalog and profile produce
-  the specified ordered recommendations, component contributions, hard-constraint exclusions,
-  null handling, exemplar exclusion, and byte-identical repeat output.
-- [ ] AC3: `uv run pytest tests/test_web.py -k discovery` confirms that `GET /api/places` validates
-  lookup input and that `POST /api/discovery-searches` returns the documented success or error
-  envelope without invoking `execute_run`.
-- [ ] AC4: `uv run pytest tests/test_user_journey.py -k discovery` confirms at 390 px and 1440 px
+- [ ] AC1: `uv run --extra dev pytest tests/test_product_contract.py` confirms that the README,
+  implementation plan, PR template, and active product-boundary ADR reference this PRD and its
+  traceability rule.
+- [ ] AC2: `uv run --extra dev pytest tests/test_discovery.py` confirms that a fixed catalog and
+  profile produce the specified ordered recommendations, at least two non-region reasons per
+  candidate, component contributions, hard-constraint exclusions, null handling, exemplar
+  exclusion, catalog-integrity failure, and byte-identical repeat output. The same test confirms
+  at least 80% non-null coverage for every supported field among shipped catalog places with
+  population of 2,500 or more.
+- [ ] AC3: `uv run --extra dev pytest tests/test_web.py -k discovery` confirms that
+  `GET /api/places` validates lookup input and that `POST /api/place-recommendations` returns the
+  documented success or error envelope without server persistence or an `execute_run` call.
+- [ ] AC4: `uv run --extra dev pytest tests/test_user_journey.py -k discovery` confirms at 390 px
+  and 1440 px
   that a user can choose an exemplar, set criteria, receive recommendations, inspect reasons and
   unknowns, keep three towns, reload the page, and recover the same shortlist.
-- [ ] AC5: `uv run pytest tests/test_user_journey.py -k evidence_handoff` confirms that two kept
-  towns reach evidence review, every critical metric is visible as verified or missing, and a
-  discovery record alone cannot enable the comparison action.
-- [ ] AC6: `uv run pytest tests/test_source_policy.py tests/test_missing_data.py
+- [ ] AC5: `uv run --extra dev pytest tests/test_user_journey.py -k evidence_handoff` confirms that
+  two kept towns reach evidence review, every critical metric is visible as verified or missing,
+  and a discovery record alone cannot enable the comparison action.
+- [ ] AC6: `uv run --extra dev pytest tests/test_source_policy.py tests/test_missing_data.py
   tests/test_discovery.py` confirms that Tier C, synthetic, and missing discovery fields cannot
   satisfy a gate or affect an evidence-backed score.
 - [ ] AC7: `uv run lifescape benchmark --output-dir outputs/benchmark` produces 5 eligible and 5

@@ -23,20 +23,37 @@ catalog and algorithm versions, and deterministic tie-breaking. The web API and 
 interface; they do not calculate recommendation scores.
 
 The default provider is a packaged, versioned discovery catalog built from official U.S. Census
-Gazetteer and American Community Survey bulk files. A checked-in build script and manifest record
-source URLs, source vintage, hashes, selected fields, derivations, output hash, and row count.
-Discovery fields remain discovery data. They do not become `ObservationRecord` values and cannot
-enter `execute_run`.
+Gazetteer and American Community Survey bulk files. Its first supported dimensions are population,
+housing cost, population density, car-light commute share, college-educated share, older-adult
+share, and state or region. It does not claim climate, healthcare, nature, airport, culture, or
+walkability matches. A checked-in build script and manifest record source URLs, source vintage,
+hashes, selected fields, derivations, output hash, row count, and per-field coverage. A shipped
+field is supported only when at least 80% of catalog places with population of 2,500 or more have
+a non-null value. Discovery fields remain discovery data. They do not become `ObservationRecord`
+values and cannot enter `execute_run`.
 
 The local browser stores only a versioned search profile, recommendation dispositions, and
-shortlist identity. It does not store evidence claims. An incompatible or malformed local record
-fails visibly and offers a reset; it is never silently repaired or partly loaded.
+shortlist identity. It does not store evidence claims. The state uses integer `schema_version: 1`.
+Additive optional fields retain the version. A breaking change must increment the integer and ship
+a tested migration. Without a migration, the app preserves the original value under a backup key,
+offers JSON export and reset, and does not partly load it. A matching-schema shortlist from an
+older catalog stays readable with its original recommendations and catalog label; the app offers a
+rerun but does not silently rescore or reset it.
 
 Expose two resources:
 
 - `GET /api/places?query=<text>&limit=<n>` for normalized exemplar/manual-town lookup.
-- `POST /api/discovery-searches` for an immutable search result with a success `data` envelope or
-  error envelope.
+- `POST /api/place-recommendations` as a stateless calculation. It returns HTTP 200 with
+  `{ "data": { "profile": ..., "recommendations": ..., "diagnostics": ... } }`, creates no
+  server record, returns no resource ID or `Location` header, and has no corresponding `GET`.
+
+New discovery endpoints use `{ "data": ... }` for success and
+`{ "error": { "code": string, "message": string, "details"?: object } }` for failure. Lookup and
+recommendation success return 200. Invalid syntax returns 400. Valid syntax with invalid semantics
+returns 422. A catalog hash, row-count, parse, or load failure returns 503 with code
+`CATALOG_UNAVAILABLE`. Fewer than 10 qualifying recommendations is a 200 success with exclusion
+and insufficient-data counts in `diagnostics`. Existing API endpoints retain their historical bare
+response shapes in this revision; this intentional inconsistency prevents an unrelated migration.
 
 The existing `/api/research/*` packet and provider endpoints remain an experimental evidence
 research surface. They are not the default discovery provider and are not called by the primary
@@ -72,6 +89,8 @@ spread those policies into the API, browser, and tests.
 - Synthetic catalog fixtures remain visibly synthetic and cannot ship as the real catalog.
 - Search profiles and shortlist decisions remain local unless a later approved PRD changes that
   privacy boundary.
+- The packaged catalog hash and row count are verified before any row is searchable. Integrity
+  failure disables discovery and returns `CATALOG_UNAVAILABLE`; partial catalogs are never used.
 
 ## Migration and rollback
 
@@ -93,4 +112,10 @@ later compatible version can ignore or explicitly reset.
 
 ## Review record
 
-Pending independent review before implementation.
+Claude independently reviewed commit `b25a7dd` before implementation and reported six blocking
+and five non-blocking findings. This revision resolves them by limiting first-release dimensions
+to populated Census fields with an 80% coverage gate; defining stateless API and envelope
+semantics; defining local-state compatibility, backup, export, and stale-catalog behavior; failing
+closed on catalog integrity errors; making the hosted example explicitly static; conditioning the
+10-result goal; aligning clean-checkout test commands; requiring two match components; and adding
+a catalog-load budget. A second independent review is required before implementation starts.
