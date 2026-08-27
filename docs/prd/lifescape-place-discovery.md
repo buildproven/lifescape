@@ -100,10 +100,15 @@ This PRD corrects a gap between the original implementation milestone and the in
   hard constraints, exclusions, and relative priority weights. The user must supply at least one
   exemplar town or two supported desired qualities. An exemplar supplies targets for every
   supported dimension that is non-null for that exemplar.
+- FR2a: An explicit user target overrides exemplar targets for that dimension. Without an explicit
+  target, a candidate's dimension similarity is its highest similarity to either exemplar; the
+  dimension contributes only once. The component records all available exemplar targets and the
+  exemplar target that produced the highest similarity. Lifescape does not average exemplar
+  values into a town that resembles neither example.
 - FR3: Desired qualities and hard constraints are separate inputs. A quality changes discovery
   relevance. A hard constraint excludes a town only when the discovery dataset contains a value
   that proves failure; an unknown value remains visible and does not count as a pass.
-- FR4: The first catalog supports town size, housing cost, population density, car-light commute
+- FR4: The first catalog supports population, housing cost, population density, car-light commute
   share, college-educated share, older-adult share, and preferred or excluded states or regions.
   **Car-light commute share is an ACS commute-mode proxy, not a walkability score.** Each supported
   dimension has a documented field definition, unit, observation date, source or derivation, and
@@ -130,8 +135,9 @@ This PRD corrects a gap between the original implementation milestone and the in
   fewer than two components is not recommended and is counted in insufficient-data diagnostics.
   A match component is one supported discovery dimension for which the profile has a target and
   the candidate has a non-null catalog value; it records the target, candidate value, normalized
-  similarity, weight, and weighted contribution. State or region inclusion is a filter, not a
-  match component.
+  similarity, weight, and weighted contribution. An exemplar-derived component records the list
+  of available exemplar targets and the one it matched. State or region inclusion is a filter,
+  not a match component.
 - FR9: Generated prose can summarize structured match data, but it cannot create a match reason,
   fact, value, or constraint result that is absent from the structured discovery result.
 - FR10: The user can mark a recommendation **Keep**, **Not for me**, or **Unsure**. The user can
@@ -175,6 +181,10 @@ This PRD corrects a gap between the original implementation milestone and the in
 - Local-state corruption: JSON parse failure, missing required fields, invalid enum values, or any
   other schema-validation failure follows the same backup, JSON export, and explicit reset path as
   an unsupported schema version. The app never partly loads a malformed state.
+- Stale result display: A saved result snapshot retains the component label, definition, values,
+  and source catalog version needed by **Why this place?**. If a later catalog removes that
+  dimension, the app renders the saved component as historical discovery data from its original
+  catalog and does not apply current-catalog coverage rules to the snapshot.
 - Security: Search text is treated as untrusted input. It cannot select file paths, execute code,
   or inject markup into the result page.
 - Accessibility: The complete search, refinement, shortlist, and handoff journey meets WCAG 2.1
@@ -215,10 +225,13 @@ is necessary for this journey.
 - Guardrail: Synthetic or missing data remains visibly labeled in every browser fixture and
   exported artifact that contains it.
 
-The primary, activation, and explanation metrics are external pilot-validation gates, not
+For the pilot, **genuinely interesting** means the participant answers yes to “Would you spend at
+least 30 minutes researching this town after this session?” for that saved town. The primary,
+activation, and explanation metrics are external pilot-validation gates, not
 deterministic source-release gates. A dated pilot record must identify five distinct household
 sessions, each session's start and shortlist timestamps, shortlist size, and answers to the
-reason/trade-off checks. Catalog-field expansion remains separately machine-gated by FR4 and AC2.
+interest/reason/trade-off checks. Catalog-field expansion remains separately machine-gated by FR4
+and AC2.
 
 ## 9. Risks
 

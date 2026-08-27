@@ -43,6 +43,9 @@ older catalog stays readable with its original recommendations and catalog label
 rerun but does not silently rescore or reset it.
 JSON parse failure, missing required fields, invalid enums, or any other schema-validation failure
 uses the same backup, JSON export, and explicit reset path. The raw value is never partly loaded.
+A stale snapshot embeds each component's label, definition, values, and source catalog version. If
+a current catalog no longer supports that field, **Why this place?** labels it as historical
+discovery data and does not rescore or apply current coverage rules to it.
 
 Expose two resources:
 
@@ -52,6 +55,30 @@ Expose two resources:
   `{ "profile": ..., "catalog_version": ..., "algorithm_version": ...,
   "normalization_version": ..., "recommendations": ..., "diagnostics": ... }`, creates no server
   record, returns no resource ID or `Location` header, and has no corresponding `GET`.
+
+`POST /api/place-recommendations` calls the existing `_validate_mutation_origin` guard before
+reading the profile or calculating results. A missing or foreign origin receives the existing 403
+`detail` response. Stateless calculation does not exempt a local endpoint from the local-origin
+privacy boundary.
+
+The response `diagnostics` object has this stable shape:
+
+```json
+{
+  "catalog_places": 32000,
+  "known_constraint_exclusions": [
+    {"constraint_id": "population_max", "excluded_count": 1200, "unknown_count": 34}
+  ],
+  "insufficient_match_data_count": 41,
+  "recommendable_count": 20725,
+  "returned_count": 10
+}
+```
+
+`known_constraint_exclusions` contains one entry for every submitted hard constraint, including
+zero counts, ordered by `constraint_id`. `excluded_count` counts known failures. `unknown_count`
+counts candidates whose null value neither passes nor fails that constraint. The other counts are
+nonnegative integers over the catalog after exemplar removal.
 
 New discovery endpoints follow the repository's existing FastAPI response convention: a bare JSON
 success body and `{ "detail": string | list }` for errors. Lookup and recommendation success return
@@ -86,7 +113,8 @@ spread those policies into the API, browser, and tests.
 
 ## Invariants
 
-- The same profile, catalog version, and algorithm version produce byte-identical ordered results.
+- The same profile, catalog version, algorithm version, and normalization version produce
+  byte-identical ordered results.
 - Unknown discovery data does not count as either a constraint pass or a similarity match.
 - A known failed hard constraint excludes a candidate and records the reason.
 - An exemplar cannot be returned as its own recommendation.
@@ -94,6 +122,9 @@ spread those policies into the API, browser, and tests.
 - A match component is a supported non-region dimension with a profile target and non-null
   candidate value. It includes target, candidate value, normalized similarity, weight, and weighted
   contribution. A recommendable candidate has at least two match components.
+- An explicit target overrides exemplar targets for its dimension. Otherwise, a dimension uses the
+  highest similarity to either exemplar, contributes once, and records every available target plus
+  the matched exemplar target.
 - Generated reasons contain no fact absent from the structured result.
 - Discovery data cannot satisfy a gate, change an evidence-backed score, or invoke `execute_run`.
 - Synthetic catalog fixtures remain visibly synthetic and cannot ship as the real catalog.
