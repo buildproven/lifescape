@@ -97,7 +97,8 @@ This PRD corrects a gap between the original implementation milestone and the in
 - FR1: The primary local-app action is **Find places**, not CSV import. The first screen explains
   that Lifescape finds candidate towns and then verifies finalists.
 - FR2: A search profile accepts zero to two normalized U.S. exemplar towns, desired qualities,
-  hard constraints, exclusions, and relative priority weights. The user must supply at least one
+  hard constraints, exclusions, and integer priority weights from 1 to 5. A target defaults to
+  weight 3 when the user does not change its priority. The user must supply at least one
   exemplar town or two supported desired qualities. An exemplar supplies targets for every
   supported dimension that is non-null for that exemplar.
 - FR2a: An explicit user target overrides exemplar targets for that dimension. Without an explicit
@@ -105,6 +106,10 @@ This PRD corrects a gap between the original implementation milestone and the in
   dimension contributes only once. The component records all available exemplar targets and the
   exemplar target that produced the highest similarity. Lifescape does not average exemplar
   values into a town that resembles neither example.
+- FR2c: A candidate's total match is the sum of `weight * similarity` for present match components
+  divided by the sum of weights for every profile target. A missing candidate value contributes
+  zero to the numerator but its target weight remains in the denominator. Thus missing data cannot
+  improve a score or reward a sparse candidate.
 - FR2b: After exemplar lookup and explicit-target validation, the profile must contain targets for
   at least two supported non-region dimensions. Otherwise the API returns 422 and tells the user
   to choose another exemplar or add supported qualities. The search does not run with a profile
@@ -144,7 +149,8 @@ This PRD corrects a gap between the original implementation milestone and the in
   the candidate has a non-null catalog value; it records the target, candidate value, normalized
   similarity, weight, and weighted contribution. An exemplar-derived component records the list
   of available exemplar targets and the one it matched. State or region inclusion is a filter,
-  not a match component.
+  not a match component. Each component records raw values and whether target or candidate
+  normalization clipped the raw value to a catalog bound.
 - FR9: Generated prose can summarize structured match data, but it cannot create a match reason,
   fact, value, or constraint result that is absent from the structured discovery result.
 - FR10: The user can mark a recommendation **Keep**, **Not for me**, or **Unsure**. The user can
@@ -152,7 +158,9 @@ This PRD corrects a gap between the original implementation milestone and the in
   local scenario and shows whether a recommendation moved because an input changed.
 - FR11: The user can open a **Why this place?** view that compares the candidate with each exemplar
   and the user's criteria. The view labels every field as discovery data, missing, or verified
-  evidence; it does not use a single unexplained score as the rationale.
+  evidence; it does not use a single unexplained score as the rationale. When normalization clips
+  a raw value, the view states the raw value, bound, and that similarity at the catalog edge is not
+  an exact raw-value match.
 - FR12: The user can save at least three recommendations to a shortlist and add a town manually.
   A shortlist records the search profile, catalog version, recommendation details, and user
   decisions in local storage controlled by the application. It also records the discovery

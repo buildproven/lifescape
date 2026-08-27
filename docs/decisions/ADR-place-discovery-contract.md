@@ -32,6 +32,11 @@ field is supported only when at least 80% of catalog places with population of 2
 a non-null value. Discovery fields remain discovery data. They do not become `ObservationRecord`
 values and cannot enter `execute_run`.
 
+Every selected first-release field has a nonnegative valid domain. During the catalog build, any
+negative ACS estimate or documented ACS missing/suppression annotation value, including
+`-666666666` and `-999999999`, becomes null before derivation, coverage, bounds, or output. The
+manifest records the sentinel policy, and catalog tests assert that no negative value remains.
+
 The full catalog is available for lookup and manual addition. The generated-candidate serving
 universe is limited to places with population of 2,500 or more. Catalog coverage and normalization
 bounds use that same serving universe. Smaller exemplar towns may supply their non-null values as
@@ -42,6 +47,15 @@ percentile bounds over the serving universe in the catalog manifest. Values are 
 bounds and mapped linearly to 0–1. Candidate-to-target similarity is
 `1 - abs(normalized_candidate - normalized_target)`. Changing fields, percentiles, serving
 population, clipping, mapping, or similarity requires a new normalization version.
+Every component retains the raw target and candidate values, normalized values, lower and upper
+bounds, and `target_clipped` and `candidate_clipped` booleans. The explanation view displays a
+clipping notice and never calls clipped equality an exact raw-value match.
+
+Profile priorities are integers 1–5 and default to 3 per target. A candidate total is
+`sum(weight * similarity for present components) / sum(weight for all profile targets)`. A missing
+candidate field contributes no numerator while its weight stays in the denominator. This prevents
+missing fields from increasing a score. The total is in 0–1 and is reported as a rounded 0–100
+display percentage only at the presentation boundary.
 
 The local browser stores a versioned search profile, the complete structured recommendation result
 snapshot, recommendation dispositions, and shortlist identity. The snapshot includes catalog,
@@ -84,7 +98,7 @@ The response `diagnostics` object has this stable shape:
 {
   "catalog_places": 32000,
   "serving_places": 21000,
-  "exemplar_count": 1,
+  "serving_exemplar_count": 1,
   "known_constraint_exclusions": [
     {"constraint_id": "population_max", "excluded_count": 1200, "unknown_count": 34}
   ],
@@ -99,11 +113,14 @@ The response `diagnostics` object has this stable shape:
 zero counts, ordered by `constraint_id`. `excluded_count` counts known failures. `unknown_count`
 counts candidates whose null value neither passes nor fails that constraint. The other counts are
 nonnegative integers. Per-constraint exclusion sets may overlap and their counts are not additive.
-`excluded_any_constraint_count` is the union count. `insufficient_match_data_count` is evaluated
-only after constraint exclusion. This identity must hold:
+`serving_exemplar_count` counts only exemplars inside the serving universe. Serving exemplars are
+removed before constraint evaluation and cannot appear in a later exclusion count.
+`excluded_any_constraint_count` is the union count after exemplar removal.
+`insufficient_match_data_count` is evaluated only after constraint exclusion. These sets are
+disjoint and this identity must hold:
 
 ```text
-serving_places - exemplar_count - excluded_any_constraint_count
+serving_places - serving_exemplar_count - excluded_any_constraint_count
 - insufficient_match_data_count = recommendable_count
 ```
 
@@ -113,8 +130,8 @@ New discovery endpoints follow the repository's existing FastAPI response conven
 success body and `{ "detail": string | list }` for errors. Lookup and recommendation success return
 200. Invalid syntax or query bounds return FastAPI's existing 422 validation response. A catalog
 hash, row-count, parse, or load failure returns 503 with `detail` equal to a safe
-`CATALOG_UNAVAILABLE: ...` message. Origin, body-size, rate-limit, and hosted-boundary middleware
-retain their current `detail` responses. Fewer than 10 qualifying recommendations is a 200 success
+`CATALOG_UNAVAILABLE: ...` message. Origin, body-size, and hosted-boundary controls retain their
+current `detail` responses. Fewer than 10 qualifying recommendations is a 200 success
 with exclusion and insufficient-data counts in `diagnostics`. A repository-wide response-envelope
 migration is outside this PRD and must not be introduced in this slice.
 
@@ -154,6 +171,11 @@ spread those policies into the API, browser, and tests.
 - An explicit target overrides exemplar targets for its dimension. Otherwise, a dimension uses the
   highest similarity to either exemplar, contributes once, and records every available target plus
   the matched exemplar target.
+- Target weights are integers 1–5 with default 3. Total match divides present weighted similarity
+  by the full profile-target weight, so missing candidate fields contribute zero without shrinking
+  the denominator.
+- Components record normalization bounds and target/candidate clipping; explanations disclose
+  clipping and preserve raw values.
 - A validated profile has at least two supported non-region targets after exemplar resolution.
 - Recommendations order by total weighted match descending, then canonical `place_id` ascending.
 - Generated reasons contain no fact absent from the structured result.
