@@ -37,16 +37,19 @@ negative ACS estimate or documented ACS missing/suppression annotation value, in
 `-666666666` and `-999999999`, becomes null before derivation, coverage, bounds, or output. The
 manifest records the sentinel policy, and catalog tests assert that no negative value remains.
 
-The full catalog is available for lookup and manual addition. The generated-candidate serving
-universe is limited to places with population of 2,500 or more. Catalog coverage and normalization
-bounds use that same serving universe. Smaller exemplar towns may supply their non-null values as
-targets but are not generated as recommendations.
+The full catalog is available for lookup and manual addition. The exemplar and generated-candidate
+serving universe is limited to places with known population of 2,500 or more. A null population or
+population below 2,500 excludes a place from that universe. Catalog coverage and normalization
+bounds use that same serving universe. Smaller or unknown-population towns can be manually added
+to a shortlist but cannot be exemplars or generated recommendations in this release.
 
 Normalization version `discovery-winsorized-minmax-v1` stores each supported field's 5th and 95th
 percentile bounds over the serving universe in the catalog manifest. Values are clipped to those
 bounds and mapped linearly to 0–1. Candidate-to-target similarity is
 `1 - abs(normalized_candidate - normalized_target)`. Changing fields, percentiles, serving
 population, clipping, mapping, or similarity requires a new normalization version.
+Percentiles use the nearest-rank rule: sort non-null values ascending and select
+`ceil(percentile * count) - 1`, bounded to the first and last index.
 Every component retains the raw target and candidate values, normalized values, lower and upper
 bounds, and `target_clipped` and `candidate_clipped` booleans. The explanation view displays a
 clipping notice and never calls clipped equality an exact raw-value match.
@@ -83,14 +86,18 @@ Expose two resources:
 
 Both routes explicitly return 404 when `hosted_demo=True`, in addition to the static-boundary
 middleware. The discovery service verifies and loads the catalog once during local `create_app`
-construction. Stateless means the POST retains no per-user server state; it does not mean the
-catalog is reloaded per request.
+construction. A load or integrity error is retained as a degraded-service state rather than raised
+from `create_app`; lookup and recommendation routes convert that state to the specified 503 while
+the local page and advanced evidence flow remain available. Stateless means the POST retains no
+per-user server state; it does not mean the catalog is reloaded per request.
 
 `POST /api/place-recommendations` calls the existing `_validate_mutation_origin` guard with
 `require_origin=True` before reading the profile or calculating results. A missing or foreign
 origin receives the existing 403 `detail` response. Stateless calculation does not exempt a local
 endpoint from the local-origin privacy boundary. `BodyLimitMiddleware` is extended to reject this
-route above 65,536 bytes before JSON parsing, with the existing 413 `detail` shape.
+route above 65,536 bytes before JSON parsing. The middleware accepts per-path limits and messages;
+this route returns 413 with `detail` equal to “recommendation request exceeds the 64 KB limit,”
+while evidence import retains its existing 5 MB message.
 
 The response `diagnostics` object has this stable shape:
 
@@ -99,11 +106,13 @@ The response `diagnostics` object has this stable shape:
   "catalog_places": 32000,
   "serving_places": 21000,
   "serving_exemplar_count": 1,
+  "missing_population_count": 6000,
   "known_constraint_exclusions": [
     {"constraint_id": "population_max", "excluded_count": 1200, "unknown_count": 34}
   ],
   "excluded_any_constraint_count": 1200,
   "insufficient_match_data_count": 41,
+  "recommendable_with_unknown_constraints_count": 34,
   "recommendable_count": 19758,
   "returned_count": 10
 }
@@ -125,6 +134,15 @@ serving_places - serving_exemplar_count - excluded_any_constraint_count
 ```
 
 `returned_count` is `min(10, recommendable_count)`.
+Unknown constraint values do not remove a candidate. Every affected recommendation lists its
+`unknown_constraints`; `recommendable_with_unknown_constraints_count` counts the union of such
+recommendable candidates and is less than or equal to `recommendable_count`. Per-constraint
+`unknown_count` values can overlap and are not additive. `missing_population_count` reports full
+catalog places excluded before the serving universe is formed.
+
+`DEFAULT_RECOMMENDATION_LIMIT` is 10 for algorithm version `place-discovery-v1` and defines the
+literal used by G1, FR7, the API, and `returned_count`. Changing it requires a new algorithm
+version and PRD amendment.
 
 New discovery endpoints follow the repository's existing FastAPI response convention: a bare JSON
 success body and `{ "detail": string | list }` for errors. Lookup and recommendation success return
@@ -171,6 +189,8 @@ spread those policies into the API, browser, and tests.
 - An explicit target overrides exemplar targets for its dimension. Otherwise, a dimension uses the
   highest similarity to either exemplar, contributes once, and records every available target plus
   the matched exemplar target.
+- State and region are filters only. They are never profile score targets, match components, or
+  members of the score denominator.
 - Target weights are integers 1–5 with default 3. Total match divides present weighted similarity
   by the full profile-target weight, so missing candidate fields contribute zero without shrinking
   the denominator.

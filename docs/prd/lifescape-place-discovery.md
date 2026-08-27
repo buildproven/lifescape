@@ -100,7 +100,8 @@ This PRD corrects a gap between the original implementation milestone and the in
   hard constraints, exclusions, and integer priority weights from 1 to 5. A target defaults to
   weight 3 when the user does not change its priority. The user must supply at least one
   exemplar town or two supported desired qualities. An exemplar supplies targets for every
-  supported dimension that is non-null for that exemplar.
+  supported numeric dimension that is non-null for that exemplar. State and region are filters,
+  not targets, and never enter the score denominator.
 - FR2a: An explicit user target overrides exemplar targets for that dimension. Without an explicit
   target, a candidate's dimension similarity is its highest similarity to either exemplar; the
   dimension contributes only once. The component records all available exemplar targets and the
@@ -129,9 +130,10 @@ This PRD corrects a gap between the original implementation milestone and the in
 - FR5: Discovery uses a versioned catalog of U.S. incorporated places and Census-designated
   places. The catalog contains normalized place identity and the available discovery dimensions.
   Missing fields remain null. Lookup includes the complete catalog. Automated recommendations use
-  the serving universe of catalog places with population of 2,500 or more; a smaller place can be
-  selected as an exemplar or added manually but is not generated as a recommendation in this
-  release. FR4 coverage applies to this serving universe.
+  the serving universe of catalog places with known population of 2,500 or more. Places with null
+  population or population below 2,500 are excluded from the serving universe. They can be added
+  manually to a shortlist but cannot be exemplars or generated recommendations in this release.
+  FR4 coverage applies to the serving universe.
 - FR6: For the same catalog version and search profile, candidate generation is deterministic.
   It uses a documented similarity calculation over normalized discovery fields and applies hard
   exclusions before ordering candidates.
@@ -143,6 +145,7 @@ This PRD corrects a gap between the original implementation milestone and the in
 - FR8: Each recommendation includes its place and state, total discovery-match score, component
   match contributions, two or more concrete match reasons, important differences
   from the search profile or exemplars, missing discovery fields, catalog version, and data date.
+  It also lists every submitted hard constraint whose candidate value is unknown.
 - FR8a: A candidate requires at least two non-null, non-region match components. A candidate with
   fewer than two components is not recommended and is counted in insufficient-data diagnostics.
   A match component is one supported discovery dimension for which the profile has a target and
