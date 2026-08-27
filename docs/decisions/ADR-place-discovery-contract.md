@@ -32,28 +32,35 @@ field is supported only when at least 80% of catalog places with population of 2
 a non-null value. Discovery fields remain discovery data. They do not become `ObservationRecord`
 values and cannot enter `execute_run`.
 
-The local browser stores only a versioned search profile, recommendation dispositions, and
-shortlist identity. It does not store evidence claims. The state uses integer `schema_version: 1`.
+The local browser stores a versioned search profile, the complete structured recommendation result
+snapshot, recommendation dispositions, and shortlist identity. The snapshot includes catalog,
+algorithm, and normalization versions so it remains explainable without silently recalculating.
+It does not store evidence claims. The state uses integer `schema_version: 1`.
 Additive optional fields retain the version. A breaking change must increment the integer and ship
 a tested migration. Without a migration, the app preserves the original value under a backup key,
 offers JSON export and reset, and does not partly load it. A matching-schema shortlist from an
 older catalog stays readable with its original recommendations and catalog label; the app offers a
 rerun but does not silently rescore or reset it.
+JSON parse failure, missing required fields, invalid enums, or any other schema-validation failure
+uses the same backup, JSON export, and explicit reset path. The raw value is never partly loaded.
 
 Expose two resources:
 
-- `GET /api/places?query=<text>&limit=<n>` for normalized exemplar/manual-town lookup.
+- `GET /api/places?query=<text>&limit=<n>` for normalized exemplar/manual-town lookup. `query`
+  contains 2–120 characters. `limit` defaults to 10 and accepts 1–20.
 - `POST /api/place-recommendations` as a stateless calculation. It returns HTTP 200 with
-  `{ "data": { "profile": ..., "recommendations": ..., "diagnostics": ... } }`, creates no
-  server record, returns no resource ID or `Location` header, and has no corresponding `GET`.
+  `{ "profile": ..., "catalog_version": ..., "algorithm_version": ...,
+  "normalization_version": ..., "recommendations": ..., "diagnostics": ... }`, creates no server
+  record, returns no resource ID or `Location` header, and has no corresponding `GET`.
 
-New discovery endpoints use `{ "data": ... }` for success and
-`{ "error": { "code": string, "message": string, "details"?: object } }` for failure. Lookup and
-recommendation success return 200. Invalid syntax returns 400. Valid syntax with invalid semantics
-returns 422. A catalog hash, row-count, parse, or load failure returns 503 with code
-`CATALOG_UNAVAILABLE`. Fewer than 10 qualifying recommendations is a 200 success with exclusion
-and insufficient-data counts in `diagnostics`. Existing API endpoints retain their historical bare
-response shapes in this revision; this intentional inconsistency prevents an unrelated migration.
+New discovery endpoints follow the repository's existing FastAPI response convention: a bare JSON
+success body and `{ "detail": string | list }` for errors. Lookup and recommendation success return
+200. Invalid syntax or query bounds return FastAPI's existing 422 validation response. A catalog
+hash, row-count, parse, or load failure returns 503 with `detail` equal to a safe
+`CATALOG_UNAVAILABLE: ...` message. Origin, body-size, rate-limit, and hosted-boundary middleware
+retain their current `detail` responses. Fewer than 10 qualifying recommendations is a 200 success
+with exclusion and insufficient-data counts in `diagnostics`. A repository-wide response-envelope
+migration is outside this PRD and must not be introduced in this slice.
 
 The existing `/api/research/*` packet and provider endpoints remain an experimental evidence
 research surface. They are not the default discovery provider and are not called by the primary
@@ -84,6 +91,9 @@ spread those policies into the API, browser, and tests.
 - A known failed hard constraint excludes a candidate and records the reason.
 - An exemplar cannot be returned as its own recommendation.
 - Every score contribution refers to a typed catalog field and includes the compared values.
+- A match component is a supported non-region dimension with a profile target and non-null
+  candidate value. It includes target, candidate value, normalized similarity, weight, and weighted
+  contribution. A recommendable candidate has at least two match components.
 - Generated reasons contain no fact absent from the structured result.
 - Discovery data cannot satisfy a gate, change an evidence-backed score, or invoke `execute_run`.
 - Synthetic catalog fixtures remain visibly synthetic and cannot ship as the real catalog.
@@ -103,7 +113,8 @@ later compatible version can ignore or explicitly reset.
 ## Verification
 
 - Module tests use a small independent fixture with worked expected ordering and contributions.
-- API tests cover lookup, validation, success/error envelopes, deterministic repeat output, and
+- API tests cover lookup, validation, success and `detail` error bodies, deterministic repeat
+  output, and
   proof that `execute_run` is not called.
 - Browser tests cover search, explanation, shortlist persistence, recovery, and evidence handoff.
 - Boundary tests attempt to pass discovery records to evidence and scoring seams and assert
@@ -118,4 +129,10 @@ to populated Census fields with an 80% coverage gate; defining stateless API and
 semantics; defining local-state compatibility, backup, export, and stale-catalog behavior; failing
 closed on catalog integrity errors; making the hosted example explicitly static; conditioning the
 10-result goal; aligning clean-checkout test commands; requiring two match components; and adding
-a catalog-load budget. A second independent review is required before implementation starts.
+a catalog-load budget. The second review of commit `6a8452d` confirmed the evidence boundary,
+catalog coverage, stateless lifecycle, corruption behavior, and hosted boundary, but found six
+remaining contract contradictions. This revision aligns new errors with the existing FastAPI
+shape; defines recommendable places and match components; requires an exemplar or two qualities;
+stores a complete versioned result snapshot; defines malformed-state recovery; marks the prior
+product ADR superseded; and adds algorithm, normalization, and lookup-bound contracts. A third
+independent review is required before implementation starts.

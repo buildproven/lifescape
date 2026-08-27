@@ -50,8 +50,9 @@ This PRD corrects a gap between the original implementation milestone and the in
 ## 2. Goals
 
 - G1: A first-time user can go from no shortlist to 10 explainable U.S. town recommendations when
-  at least 10 catalog places satisfy the known hard constraints, by supplying one or two liked
-  towns, supported desired qualities, hard constraints, or a combination.
+  at least 10 recommendable catalog places remain after known hard-constraint and minimum-data
+  checks, by supplying one or two liked towns, supported desired qualities, hard constraints, or
+  a combination.
 - G2: A user can refine the recommendations and save at least three towns as a shortlist without
   preparing files or entering metric values.
 - G3: Every recommendation shows the criteria that caused it to appear, important trade-offs,
@@ -97,7 +98,8 @@ This PRD corrects a gap between the original implementation milestone and the in
   that Lifescape finds candidate towns and then verifies finalists.
 - FR2: A search profile accepts zero to two normalized U.S. exemplar towns, desired qualities,
   hard constraints, exclusions, and relative priority weights. The user must supply at least one
-  exemplar town or one desired quality.
+  exemplar town or two supported desired qualities. An exemplar supplies targets for every
+  supported dimension that is non-null for that exemplar.
 - FR3: Desired qualities and hard constraints are separate inputs. A quality changes discovery
   relevance. A hard constraint excludes a town only when the discovery dataset contains a value
   that proves failure; an unknown value remains visible and does not count as a pass.
@@ -117,14 +119,19 @@ This PRD corrects a gap between the original implementation milestone and the in
   It uses a documented similarity calculation over normalized discovery fields and applies hard
   exclusions before ordering candidates.
 - FR7: A successful initial search returns 10 distinct recommendations when at least 10 catalog
-  places satisfy the known hard constraints. It never returns either exemplar town as a new
-  recommendation. If fewer than 10 places qualify, it returns all qualifying places and states
-  the number excluded by each hard constraint.
+  places satisfy the known hard constraints and the FR8a minimum-data rule. It never returns either
+  exemplar town as a new recommendation. If fewer than 10 places are recommendable, it returns all
+  recommendable places and states the number excluded by each hard constraint and by insufficient
+  match data.
 - FR8: Each recommendation includes its place and state, total discovery-match score, component
   match contributions, two or more concrete match reasons, important differences
   from the search profile or exemplars, missing discovery fields, catalog version, and data date.
 - FR8a: A candidate requires at least two non-null, non-region match components. A candidate with
   fewer than two components is not recommended and is counted in insufficient-data diagnostics.
+  A match component is one supported discovery dimension for which the profile has a target and
+  the candidate has a non-null catalog value; it records the target, candidate value, normalized
+  similarity, weight, and weighted contribution. State or region inclusion is a filter, not a
+  match component.
 - FR9: Generated prose can summarize structured match data, but it cannot create a match reason,
   fact, value, or constraint result that is absent from the structured discovery result.
 - FR10: The user can mark a recommendation **Keep**, **Not for me**, or **Unsure**. The user can
@@ -135,7 +142,8 @@ This PRD corrects a gap between the original implementation milestone and the in
   evidence; it does not use a single unexplained score as the rationale.
 - FR12: The user can save at least three recommendations to a shortlist and add a town manually.
   A shortlist records the search profile, catalog version, recommendation details, and user
-  decisions in local storage controlled by the application.
+  decisions in local storage controlled by the application. It also records the discovery
+  algorithm version and normalization version returned by the search.
 - FR13: The user can promote any two or more shortlisted towns into evidence review. The evidence
   flow reuses the search profile where its fields map to existing gates or weights, displays every
   required metric and its evidence state, and invokes `execute_run` only with admissible evidence.
@@ -164,6 +172,9 @@ This PRD corrects a gap between the original implementation milestone and the in
   key, offers JSON export and reset, and does not partly load it. A matching-schema shortlist from
   an older catalog remains readable with its original recommendations and catalog label; the app
   offers a rerun but does not silently rescore or reset it.
+- Local-state corruption: JSON parse failure, missing required fields, invalid enum values, or any
+  other schema-validation failure follows the same backup, JSON export, and explicit reset path as
+  an unsupported schema version. The app never partly loads a malformed state.
 - Security: Search text is treated as untrusted input. It cannot select file paths, execute code,
   or inject markup into the result page.
 - Accessibility: The complete search, refinement, shortlist, and handoff journey meets WCAG 2.1
@@ -203,6 +214,11 @@ is necessary for this journey.
   evidence-backed score without promotion through the existing admissible-evidence contract.
 - Guardrail: Synthetic or missing data remains visibly labeled in every browser fixture and
   exported artifact that contains it.
+
+The primary, activation, and explanation metrics are external pilot-validation gates, not
+deterministic source-release gates. A dated pilot record must identify five distinct household
+sessions, each session's start and shortlist timestamps, shortlist size, and answers to the
+reason/trade-off checks. Catalog-field expansion remains separately machine-gated by FR4 and AC2.
 
 ## 9. Risks
 
@@ -268,7 +284,8 @@ Lifescape does; architecture decisions control how approved requirements are imp
   population of 2,500 or more.
 - [ ] AC3: `uv run --extra dev pytest tests/test_web.py -k discovery` confirms that
   `GET /api/places` validates lookup input and that `POST /api/place-recommendations` returns the
-  documented success or error envelope without server persistence or an `execute_run` call.
+  documented success body or existing FastAPI `detail` error body without server persistence or
+  an `execute_run` call.
 - [ ] AC4: `uv run --extra dev pytest tests/test_user_journey.py -k discovery` confirms at 390 px
   and 1440 px
   that a user can choose an exemplar, set criteria, receive recommendations, inspect reasons and

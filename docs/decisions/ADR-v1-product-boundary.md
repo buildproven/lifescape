@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted for BUI-800.
+Superseded by `docs/prd/lifescape-place-discovery.md` for BUI-334. The evidence invariants below
+remain active; reviewed CSV import is now an advanced path instead of Lifescape's product entrance.
 
 ## Decision
 
