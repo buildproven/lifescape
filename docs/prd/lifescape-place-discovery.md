@@ -105,6 +105,10 @@ This PRD corrects a gap between the original implementation milestone and the in
   dimension contributes only once. The component records all available exemplar targets and the
   exemplar target that produced the highest similarity. Lifescape does not average exemplar
   values into a town that resembles neither example.
+- FR2b: After exemplar lookup and explicit-target validation, the profile must contain targets for
+  at least two supported non-region dimensions. Otherwise the API returns 422 and tells the user
+  to choose another exemplar or add supported qualities. The search does not run with a profile
+  that cannot produce the FR8a minimum.
 - FR3: Desired qualities and hard constraints are separate inputs. A quality changes discovery
   relevance. A hard constraint excludes a town only when the discovery dataset contains a value
   that proves failure; an unknown value remains visible and does not count as a pass.
@@ -119,7 +123,10 @@ This PRD corrects a gap between the original implementation milestone and the in
   coverage criterion.
 - FR5: Discovery uses a versioned catalog of U.S. incorporated places and Census-designated
   places. The catalog contains normalized place identity and the available discovery dimensions.
-  Missing fields remain null.
+  Missing fields remain null. Lookup includes the complete catalog. Automated recommendations use
+  the serving universe of catalog places with population of 2,500 or more; a smaller place can be
+  selected as an exemplar or added manually but is not generated as a recommendation in this
+  release. FR4 coverage applies to this serving universe.
 - FR6: For the same catalog version and search profile, candidate generation is deterministic.
   It uses a documented similarity calculation over normalized discovery fields and applies hard
   exclusions before ordering candidates.
@@ -165,7 +172,8 @@ This PRD corrects a gap between the original implementation milestone and the in
 
 ## 6. Non-functional requirements
 
-- Performance: Catalog integrity verification and loading complete in at most 3 seconds, and a
+- Performance: Catalog integrity verification and loading occur once when the local app process
+  starts and complete in at most 3 seconds. A
   subsequent search across the supported U.S. place catalog returns in at most 2 seconds at the
   95th percentile on the repository's CI runner.
 - Reproducibility: The search profile, catalog version, normalization configuration, and algorithm
@@ -298,7 +306,8 @@ Lifescape does; architecture decisions control how approved requirements are imp
 - [ ] AC3: `uv run --extra dev pytest tests/test_web.py -k discovery` confirms that
   `GET /api/places` validates lookup input and that `POST /api/place-recommendations` returns the
   documented success body or existing FastAPI `detail` error body without server persistence or
-  an `execute_run` call.
+  an `execute_run` call. It also confirms explicit hosted 404, missing/foreign-origin 403, 64 KB
+  body limit, and fewer-than-two-target 422 behavior.
 - [ ] AC4: `uv run --extra dev pytest tests/test_user_journey.py -k discovery` confirms at 390 px
   and 1440 px
   that a user can choose an exemplar, set criteria, receive recommendations, inspect reasons and

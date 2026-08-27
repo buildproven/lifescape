@@ -32,6 +32,17 @@ field is supported only when at least 80% of catalog places with population of 2
 a non-null value. Discovery fields remain discovery data. They do not become `ObservationRecord`
 values and cannot enter `execute_run`.
 
+The full catalog is available for lookup and manual addition. The generated-candidate serving
+universe is limited to places with population of 2,500 or more. Catalog coverage and normalization
+bounds use that same serving universe. Smaller exemplar towns may supply their non-null values as
+targets but are not generated as recommendations.
+
+Normalization version `discovery-winsorized-minmax-v1` stores each supported field's 5th and 95th
+percentile bounds over the serving universe in the catalog manifest. Values are clipped to those
+bounds and mapped linearly to 0–1. Candidate-to-target similarity is
+`1 - abs(normalized_candidate - normalized_target)`. Changing fields, percentiles, serving
+population, clipping, mapping, or similarity requires a new normalization version.
+
 The local browser stores a versioned search profile, the complete structured recommendation result
 snapshot, recommendation dispositions, and shortlist identity. The snapshot includes catalog,
 algorithm, and normalization versions so it remains explainable without silently recalculating.
@@ -56,21 +67,30 @@ Expose two resources:
   "normalization_version": ..., "recommendations": ..., "diagnostics": ... }`, creates no server
   record, returns no resource ID or `Location` header, and has no corresponding `GET`.
 
-`POST /api/place-recommendations` calls the existing `_validate_mutation_origin` guard before
-reading the profile or calculating results. A missing or foreign origin receives the existing 403
-`detail` response. Stateless calculation does not exempt a local endpoint from the local-origin
-privacy boundary.
+Both routes explicitly return 404 when `hosted_demo=True`, in addition to the static-boundary
+middleware. The discovery service verifies and loads the catalog once during local `create_app`
+construction. Stateless means the POST retains no per-user server state; it does not mean the
+catalog is reloaded per request.
+
+`POST /api/place-recommendations` calls the existing `_validate_mutation_origin` guard with
+`require_origin=True` before reading the profile or calculating results. A missing or foreign
+origin receives the existing 403 `detail` response. Stateless calculation does not exempt a local
+endpoint from the local-origin privacy boundary. `BodyLimitMiddleware` is extended to reject this
+route above 65,536 bytes before JSON parsing, with the existing 413 `detail` shape.
 
 The response `diagnostics` object has this stable shape:
 
 ```json
 {
   "catalog_places": 32000,
+  "serving_places": 21000,
+  "exemplar_count": 1,
   "known_constraint_exclusions": [
     {"constraint_id": "population_max", "excluded_count": 1200, "unknown_count": 34}
   ],
+  "excluded_any_constraint_count": 1200,
   "insufficient_match_data_count": 41,
-  "recommendable_count": 20725,
+  "recommendable_count": 19758,
   "returned_count": 10
 }
 ```
@@ -78,7 +98,16 @@ The response `diagnostics` object has this stable shape:
 `known_constraint_exclusions` contains one entry for every submitted hard constraint, including
 zero counts, ordered by `constraint_id`. `excluded_count` counts known failures. `unknown_count`
 counts candidates whose null value neither passes nor fails that constraint. The other counts are
-nonnegative integers over the catalog after exemplar removal.
+nonnegative integers. Per-constraint exclusion sets may overlap and their counts are not additive.
+`excluded_any_constraint_count` is the union count. `insufficient_match_data_count` is evaluated
+only after constraint exclusion. This identity must hold:
+
+```text
+serving_places - exemplar_count - excluded_any_constraint_count
+- insufficient_match_data_count = recommendable_count
+```
+
+`returned_count` is `min(10, recommendable_count)`.
 
 New discovery endpoints follow the repository's existing FastAPI response convention: a bare JSON
 success body and `{ "detail": string | list }` for errors. Lookup and recommendation success return
@@ -125,6 +154,8 @@ spread those policies into the API, browser, and tests.
 - An explicit target overrides exemplar targets for its dimension. Otherwise, a dimension uses the
   highest similarity to either exemplar, contributes once, and records every available target plus
   the matched exemplar target.
+- A validated profile has at least two supported non-region targets after exemplar resolution.
+- Recommendations order by total weighted match descending, then canonical `place_id` ascending.
 - Generated reasons contain no fact absent from the structured result.
 - Discovery data cannot satisfy a gate, change an evidence-backed score, or invoke `execute_run`.
 - Synthetic catalog fixtures remain visibly synthetic and cannot ship as the real catalog.
