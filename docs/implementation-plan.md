@@ -1,12 +1,18 @@
-# Milestone 1 implementation plan
+# Engine foundation and product delivery plan
+
+The approved `docs/prd/lifescape-place-discovery.md` is the product source of truth. This document
+records the engine foundation and retained research history; it cannot redefine the product
+entrance, user journey, scope, or success metric. Current product delivery follows
+`docs/prd/lifescape-place-discovery-tasks.md` from discovery through shortlist and evidence-backed
+finalist verification.
 
 This plan implements the Core Vertical Slice defined by the Retirement Decision Engine v6
 master specification plus the first intent-to-public-source research slice. The release is
 local-first, deterministic, evidence-backed, and usable without external APIs.
 
-The version-one product boundary is the reviewed-CSV local comparison defined in
-`docs/decisions/ADR-v1-product-boundary.md`. Research acquisition work below is retained as
-experimental history and does not block version-one completion.
+The reviewed-CSV comparison remains the evidence-engine foundation and an advanced import path.
+The CSV-only product boundary in `docs/decisions/ADR-v1-product-boundary.md` is superseded. The
+deterministic discovery contract is `docs/decisions/ADR-place-discovery-contract.md`.
 
 ## Acceptance path
 

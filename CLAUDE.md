@@ -2,9 +2,11 @@
 
 ## Purpose
 
-This repository implements a local-first, evidence-backed retirement location
-decision engine. Preserve the governing rule: gates eliminate, weights rank,
-evidence decides, and uncertainty remains visible.
+This repository implements local-first place discovery and evidence-backed retirement location
+decisions. The approved product source of truth is
+`docs/prd/lifescape-place-discovery.md`. Every product issue and PR must cite a specific PRD goal,
+requirement, or acceptance criterion. Preserve the governing rule: preferences and examples
+discover; gates eliminate; weights rank; evidence decides; uncertainty remains visible.
 
 ## Development
 
