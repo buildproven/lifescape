@@ -98,10 +98,11 @@ This PRD corrects a gap between the original implementation milestone and the in
   that Lifescape finds candidate towns and then verifies finalists.
 - FR2: A search profile accepts zero to two normalized U.S. exemplar towns, desired qualities,
   hard constraints, exclusions, and integer priority weights from 1 to 5. A target defaults to
-  weight 3 when the user does not change its priority. The user must supply at least one
-  exemplar town or two supported desired qualities. An exemplar supplies targets for every
-  supported numeric dimension that is non-null for that exemplar. State and region are filters,
-  not targets, and never enter the score denominator.
+  weight 3 when the user does not change its priority. The user can start with at least one
+  serving-eligible exemplar town or two supported desired qualities, but search is enabled only
+  when those inputs resolve to the FR2b minimum of two supported non-region targets. An exemplar
+  supplies targets for every supported numeric dimension that is non-null for that exemplar. State
+  and region are filters, not targets, and never enter the score denominator.
 - FR2a: An explicit user target overrides exemplar targets for that dimension. Without an explicit
   target, a candidate's dimension similarity is its highest similarity to either exemplar; the
   dimension contributes only once. The component records all available exemplar targets and the
@@ -114,7 +115,8 @@ This PRD corrects a gap between the original implementation milestone and the in
 - FR2b: After exemplar lookup and explicit-target validation, the profile must contain targets for
   at least two supported non-region dimensions. Otherwise the API returns 422 and tells the user
   to choose another exemplar or add supported qualities. The search does not run with a profile
-  that cannot produce the FR8a minimum.
+  that cannot produce the FR8a minimum. The browser shows the resolved target count before submit
+  and disables search while this requirement is not met.
 - FR3: Desired qualities and hard constraints are separate inputs. A quality changes discovery
   relevance. A hard constraint excludes a town only when the discovery dataset contains a value
   that proves failure; an unknown value remains visible and does not count as a pass.
@@ -133,7 +135,9 @@ This PRD corrects a gap between the original implementation milestone and the in
   the serving universe of catalog places with known population of 2,500 or more. Places with null
   population or population below 2,500 are excluded from the serving universe. They can be added
   manually to a shortlist but cannot be exemplars or generated recommendations in this release.
-  FR4 coverage applies to the serving universe.
+  FR4 coverage applies to the serving universe. Every lookup result includes `serving_eligible`.
+  The browser disables **Use as example** and explains why when it is false, while preserving
+  **Add manually**. The recommendation API rejects a non-eligible exemplar with 422.
 - FR6: For the same catalog version and search profile, candidate generation is deterministic.
   It uses a documented similarity calculation over normalized discovery fields and applies hard
   exclusions before ordering candidates.
@@ -143,9 +147,11 @@ This PRD corrects a gap between the original implementation milestone and the in
   recommendable places and states the number excluded by each hard constraint and by insufficient
   match data.
 - FR8: Each recommendation includes its place and state, total discovery-match score, component
-  match contributions, two or more concrete match reasons, important differences
+  count and match contributions, two or more concrete match reasons, important differences
   from the search profile or exemplars, missing discovery fields, catalog version, and data date.
-  It also lists every submitted hard constraint whose candidate value is unknown.
+  It also lists every submitted hard constraint whose candidate value is unknown. Equal total
+  scores rank the candidate with more present match components first so a sparse result does not
+  win a tie through place identity alone.
 - FR8a: A candidate requires at least two non-null, non-region match components. A candidate with
   fewer than two components is not recommended and is counted in insufficient-data diagnostics.
   A match component is one supported discovery dimension for which the profile has a target and
@@ -184,9 +190,11 @@ This PRD corrects a gap between the original implementation milestone and the in
 ## 6. Non-functional requirements
 
 - Performance: Catalog integrity verification and loading occur once when the local app process
-  starts and complete in at most 3 seconds. A
-  subsequent search across the supported U.S. place catalog returns in at most 2 seconds at the
-  95th percentile on the repository's CI runner.
+  starts. Three seconds is a release-benchmark target, not a runtime timeout: the benchmark fails
+  above that target, but local startup continues to verify the complete catalog and records the
+  elapsed time. Only an integrity or load error produces `CATALOG_UNAVAILABLE`. A subsequent search
+  across the supported U.S. place catalog returns in at most 2 seconds at the 95th percentile on
+  the repository's CI runner.
 - Reproducibility: The search profile, catalog version, normalization configuration, and algorithm
   version are sufficient to reproduce the ordered result and component scores byte for byte.
 - Privacy: Search profiles and user decisions remain local. No profile content leaves the device

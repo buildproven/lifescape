@@ -41,7 +41,10 @@ The full catalog is available for lookup and manual addition. The exemplar and g
 serving universe is limited to places with known population of 2,500 or more. A null population or
 population below 2,500 excludes a place from that universe. Catalog coverage and normalization
 bounds use that same serving universe. Smaller or unknown-population towns can be manually added
-to a shortlist but cannot be exemplars or generated recommendations in this release.
+to a shortlist but cannot be exemplars or generated recommendations in this release. Every lookup
+item includes boolean `serving_eligible`. The browser disables exemplar selection and explains the
+population boundary when it is false, but still permits manual shortlist addition. A recommendation
+request naming a non-eligible exemplar returns 422 before profile resolution.
 
 Normalization version `discovery-winsorized-minmax-v1` stores each supported field's 5th and 95th
 percentile bounds over the serving universe in the catalog manifest. Values are clipped to those
@@ -53,12 +56,17 @@ Percentiles use the nearest-rank rule: sort non-null values ascending and select
 Every component retains the raw target and candidate values, normalized values, lower and upper
 bounds, and `target_clipped` and `candidate_clipped` booleans. The explanation view displays a
 clipping notice and never calls clipped equality an exact raw-value match.
+Two raw values clipped to the same catalog edge therefore receive similarity 1.0 by design; the
+structured component and explanation disclose both raw values and the clipping caveat.
 
 Profile priorities are integers 1–5 and default to 3 per target. A candidate total is
 `sum(weight * similarity for present components) / sum(weight for all profile targets)`. A missing
 candidate field contributes no numerator while its weight stays in the denominator. This prevents
 missing fields from increasing a score. The total is in 0–1 and is reported as a rounded 0–100
 display percentage only at the presentation boundary.
+Recommendations order by total descending, then present match-component count descending, then
+canonical `place_id` ascending. This preserves deterministic ordering while preferring the result
+supported by more profile dimensions when totals tie.
 
 The local browser stores a versioned search profile, the complete structured recommendation result
 snapshot, recommendation dispositions, and shortlist identity. The snapshot includes catalog,
@@ -78,7 +86,8 @@ discovery data and does not rescore or apply current coverage rules to it.
 Expose two resources:
 
 - `GET /api/places?query=<text>&limit=<n>` for normalized exemplar/manual-town lookup. `query`
-  contains 2–120 characters. `limit` defaults to 10 and accepts 1–20.
+  contains 2–120 characters. `limit` defaults to 10 and accepts 1–20. Each item contains canonical
+  place identity, display name, state, population when known, and `serving_eligible`.
 - `POST /api/place-recommendations` as a stateless calculation. It returns HTTP 200 with
   `{ "profile": ..., "catalog_version": ..., "algorithm_version": ...,
   "normalization_version": ..., "recommendations": ..., "diagnostics": ... }`, creates no server
@@ -90,6 +99,9 @@ construction. A load or integrity error is retained as a degraded-service state 
 from `create_app`; lookup and recommendation routes convert that state to the specified 503 while
 the local page and advanced evidence flow remain available. Stateless means the POST retains no
 per-user server state; it does not mean the catalog is reloaded per request.
+Catalog verification and loading have no runtime deadline because partial verification is unsafe.
+The app records elapsed load time. A release benchmark fails when it exceeds three seconds on the
+repository CI runner, but elapsed time alone never creates degraded-service state.
 
 `POST /api/place-recommendations` calls the existing `_validate_mutation_origin` guard with
 `require_origin=True` before reading the profile or calculating results. A missing or foreign
@@ -107,6 +119,7 @@ The response `diagnostics` object has this stable shape:
   "serving_places": 21000,
   "serving_exemplar_count": 1,
   "missing_population_count": 6000,
+  "below_minimum_population_count": 5000,
   "known_constraint_exclusions": [
     {"constraint_id": "population_max", "excluded_count": 1200, "unknown_count": 34}
   ],
@@ -138,7 +151,12 @@ Unknown constraint values do not remove a candidate. Every affected recommendati
 `unknown_constraints`; `recommendable_with_unknown_constraints_count` counts the union of such
 recommendable candidates and is less than or equal to `recommendable_count`. Per-constraint
 `unknown_count` values can overlap and are not additive. `missing_population_count` reports full
-catalog places excluded before the serving universe is formed.
+catalog places with null population. `below_minimum_population_count` reports places with known
+population below 2,500. The catalog partition must satisfy:
+
+```text
+catalog_places = missing_population_count + below_minimum_population_count + serving_places
+```
 
 `DEFAULT_RECOMMENDATION_LIMIT` is 10 for algorithm version `place-discovery-v1` and defines the
 literal used by G1, FR7, the API, and `returned_count`. Changing it requires a new algorithm
@@ -197,7 +215,8 @@ spread those policies into the API, browser, and tests.
 - Components record normalization bounds and target/candidate clipping; explanations disclose
   clipping and preserve raw values.
 - A validated profile has at least two supported non-region targets after exemplar resolution.
-- Recommendations order by total weighted match descending, then canonical `place_id` ascending.
+- Recommendations order by total weighted match descending, present match-component count
+  descending, then canonical `place_id` ascending.
 - Generated reasons contain no fact absent from the structured result.
 - Discovery data cannot satisfy a gate, change an evidence-backed score, or invoke `execute_run`.
 - Synthetic catalog fixtures remain visibly synthetic and cannot ship as the real catalog.
@@ -239,4 +258,9 @@ remaining contract contradictions. This revision aligns new errors with the exis
 shape; defines recommendable places and match components; requires an exemplar or two qualities;
 stores a complete versioned result snapshot; defines malformed-state recovery; marks the prior
 product ADR superseded; and adds algorithm, normalization, and lookup-bound contracts. A third
-independent review is required before implementation starts.
+independent review of `795eabc` confirmed the earlier corrections and found five remaining blocking
+contracts: lookup did not expose exemplar eligibility; the profile entry rule contradicted its
+post-resolution minimum; sparse score ties fell through to place identity; catalog diagnostics did
+not account for below-threshold population; and the catalog-load budget had no failure semantics.
+This revision closes those contracts and makes clipped-edge equality explicit. One final independent
+verification review is required before implementation starts.
