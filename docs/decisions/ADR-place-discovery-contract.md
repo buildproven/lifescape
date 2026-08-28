@@ -263,4 +263,6 @@ contracts: lookup did not expose exemplar eligibility; the profile entry rule co
 post-resolution minimum; sparse score ties fell through to place identity; catalog diagnostics did
 not account for below-threshold population; and the catalog-load budget had no failure semantics.
 This revision closes those contracts and makes clipped-edge equality explicit. One final independent
-verification review is required before implementation starts.
+verification review is required before implementation starts. The first verification attempt on
+`a2749c7` did not run because the Claude provider returned account exhaustion; it is recorded as
+incomplete, not as approval.
