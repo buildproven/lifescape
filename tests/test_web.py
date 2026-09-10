@@ -12,6 +12,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from lifescape.discovery import CatalogPlace, DiscoveryCatalog, PlaceDiscoveryService
 from lifescape.models import Confidence, ObservationRecord, PlaceRecord, SourceRecord, SourceTier
 from lifescape.pipeline import execute_run
 from lifescape.research import DiscoveryLead, SearchBrief
@@ -51,6 +52,32 @@ class MultiDiscoveryProvider:
                 rationale="Second lead.",
             ),
         )
+
+
+def _place_discovery_service() -> PlaceDiscoveryService:
+    places = tuple(
+        CatalogPlace(
+            place_id=place_id,
+            name=name,
+            state=state,
+            values={
+                "population": population,
+                "housing_cost": housing_cost,
+                "population_density": density,
+                "car_light_commute_share": commute,
+                "college_educated_share": college,
+                "older_adult_share": older,
+            },
+        )
+        for place_id, name, state, population, housing_cost, density, commute, college, older in (
+            ("example", "Example", "MI", 10_000, 400_000, 100, 30, 40, 20),
+            ("alpha", "Alpha", "MI", 8_000, 410_000, 105, 31, 39, 21),
+            ("beta", "Beta", "WI", 7_000, 600_000, 220, 12, 20, 10),
+        )
+    )
+    return PlaceDiscoveryService(
+        DiscoveryCatalog.from_places(places, catalog_version="web-fixture")
+    )
 
 
 class FakeResearchEvidenceProvider:
@@ -126,6 +153,78 @@ def test_hosted_landing_page_explains_the_product_and_links_to_demo(tmp_path: Pa
     assert 'href="/demo"' in page.text
     assert "The public demo uses invented evidence." in page.text
     assert "Use the web demo to learn it. Run locally for your real work." in page.text
+
+
+def test_discovery_lookup_and_recommendation_api_are_stateless(tmp_path: Path) -> None:
+    service = _place_discovery_service()
+    with (
+        TestClient(
+            create_app(tmp_path / "output", discovery_service=service),
+            base_url="http://127.0.0.1",
+        ) as client,
+        patch("lifescape.web.execute_run") as execute,
+    ):
+        lookup = client.get("/api/places", params={"query": "Alpha", "limit": 5})
+        payload = {
+            "exemplar_place_ids": ["example"],
+            "targets": [],
+        }
+        first = client.post(
+            "/api/place-recommendations",
+            json=payload,
+            headers={"Origin": "http://127.0.0.1"},
+        )
+        second = client.post(
+            "/api/place-recommendations",
+            json=payload,
+            headers={"Origin": "http://127.0.0.1"},
+        )
+
+    assert lookup.status_code == 200
+    assert lookup.json()["places"][0]["place_id"] == "alpha"
+    assert first.status_code == 200
+    assert first.json() == second.json()
+    assert "Location" not in first.headers
+    execute.assert_not_called()
+
+
+def test_discovery_api_enforces_origin_hosted_and_request_boundaries(tmp_path: Path) -> None:
+    service = _place_discovery_service()
+    with TestClient(
+        create_app(tmp_path / "output", discovery_service=service),
+        base_url="http://127.0.0.1",
+    ) as client:
+        missing_origin = client.post(
+            "/api/place-recommendations",
+            json={"exemplar_place_ids": ["example"]},
+        )
+        too_large = client.post(
+            "/api/place-recommendations",
+            content=b"x" * 65_537,
+            headers={"Origin": "http://127.0.0.1", "Content-Type": "application/json"},
+        )
+        too_few_targets = client.post(
+            "/api/place-recommendations",
+            json={"targets": [{"dimension": "population", "value": 10_000}]},
+            headers={"Origin": "http://127.0.0.1"},
+        )
+        with TestClient(
+            create_app(tmp_path / "hosted", hosted_demo=True, discovery_service=service),
+            base_url="https://lifescape.buildproven.ai",
+        ) as hosted:
+            hosted_lookup = hosted.get("/api/places", params={"query": "Alpha"})
+            hosted_recommendation = hosted.post(
+                "/api/place-recommendations",
+                json={"targets": []},
+                headers={"Origin": "https://lifescape.buildproven.ai"},
+            )
+
+    assert missing_origin.status_code == 403
+    assert too_large.status_code == 413
+    assert too_large.json()["detail"] == "recommendation request exceeds the 64 KB limit"
+    assert too_few_targets.status_code == 422
+    assert hosted_lookup.status_code == 404
+    assert hosted_recommendation.status_code == 404
 
 
 def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:

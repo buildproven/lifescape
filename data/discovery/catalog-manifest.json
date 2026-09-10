@@ -1,0 +1,72 @@
+{
+  "algorithm_version": "place-discovery-v1",
+  "catalog_version": "census-acs5-2023-gazetteer-2024",
+  "coverage": {
+    "car_light_commute_share": 1.0,
+    "college_educated_share": 0.9999031007751938,
+    "housing_cost": 0.9914728682170543,
+    "older_adult_share": 1.0,
+    "population": 1.0,
+    "population_density": 1.0
+  },
+  "data_date": "2023-12-31",
+  "missing_value_policy": "blank or negative ACS estimates become null",
+  "normalization_bounds": {
+    "car_light_commute_share": {
+      "lower": 12.8428927680798,
+      "upper": 44.84133865094503
+    },
+    "college_educated_share": {
+      "lower": 10.264985850270131,
+      "upper": 69.59894438002318
+    },
+    "housing_cost": {
+      "lower": 97300.0,
+      "upper": 859600.0
+    },
+    "older_adult_share": {
+      "lower": 9.200556672336479,
+      "upper": 30.737820332300757
+    },
+    "population": {
+      "lower": 2702.0,
+      "upper": 76025.0
+    },
+    "population_density": {
+      "lower": 355.69775709391763,
+      "upper": 6852.276117176779
+    }
+  },
+  "normalization_version": "discovery-winsorized-minmax-v1",
+  "output_sha256": "2c24d76cb5f9aad314e5d73e36586d9b5440fd49d629cfdb6cfebddd8367b27d",
+  "row_count": 32316,
+  "selected_fields": {
+    "car_light_commute_share": "(B08301_E001 - B08301_E003) / B08301_E001 * 100",
+    "college_educated_share": "sum(B15003_E022..B15003_E025) / B15003_E001 * 100",
+    "housing_cost": "B25077_E001",
+    "older_adult_share": "sum(B01001_E020..E025,E043..E048) / B01001_E001 * 100",
+    "population": "B01003_E001",
+    "population_density": "population / ALAND_SQMI"
+  },
+  "source_hashes": {
+    "acs": {
+      "acsdt5y2023-b01001.dat": "dc68a9b588cea042c73dfb4e5cd5e896a6f6c404a3e75be70a99dc514ed7bc35",
+      "acsdt5y2023-b01003.dat": "24ae3f523b4c54332ce0a71ba534569685a8a729056f975915d860d1eb943565",
+      "acsdt5y2023-b08301.dat": "8263901a28b8dc2cd3bfa287c1365244f54f6405eb0cef926fac67ff095f2260",
+      "acsdt5y2023-b15003.dat": "2ba9e96ef098d313f24596943016e6c3ee837baa444278b5e3c37dadb4115f7e",
+      "acsdt5y2023-b25077.dat": "302d57367033bd13b824c8d658cd3ef98819adb366d9ddd4c3861a9707eb734c"
+    },
+    "gazetteer": {
+      "2024_Gaz_place_national.zip": "cf262fc92b2326f7a8c62a89d156a60eb17d64d6d35f7a62310c43bb08972c06"
+    }
+  },
+  "source_urls": [
+    "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_place_national.zip",
+    "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b01003.dat",
+    "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b01001.dat",
+    "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b15003.dat",
+    "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b08301.dat",
+    "https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/data/5YRData/acsdt5y2023-b25077.dat"
+  ],
+  "source_vintage": "ACS 2023 5-year table-based summary files; Census Gazetteer 2024"
+}

@@ -17,18 +17,18 @@
   - [x] 1.3 Link the PRD from README, implementation guidance, and the PR template.
   - [x] 1.4 Add product-contract tests through the versioned repository surface.
   - [x] 1.5 Run the evidence-backed affected tests; if green, commit.
-- [ ] 2.0 Find places from exemplar towns and explicit criteria
+- [x] 2.0 Find places from exemplar towns and explicit criteria
   - Delivers: a user can choose zero to two liked towns and criteria and receive deterministic,
     explainable recommendations from a real, versioned U.S. place catalog.
   - Blocked by: 1.0.
   - Verification: `uv run --extra dev pytest tests/test_discovery.py tests/test_web.py -k
     discovery`.
-  - [ ] 2.1 Add the reviewed discovery architecture decision and source manifest.
-  - [ ] 2.2 Build a reproducible catalog from official Census geography and ACS bulk files.
-  - [ ] 2.3 Add a deep discovery module for profiles, constraints, similarity, and explanations.
-  - [ ] 2.4 Expose validated place lookup and stateless place-recommendation HTTP resources.
-  - [ ] 2.5 Add red-capable module and API behavior tests with independent fixture oracles.
-  - [ ] 2.6 Run the evidence-backed affected tests; if green, commit.
+  - [x] 2.1 Add the reviewed discovery architecture decision and source manifest.
+  - [x] 2.2 Build a reproducible catalog from official Census geography and ACS bulk files.
+  - [x] 2.3 Add a deep discovery module for profiles, constraints, similarity, and explanations.
+  - [x] 2.4 Expose validated place lookup and stateless place-recommendation HTTP resources.
+  - [x] 2.5 Add red-capable module and API behavior tests with independent fixture oracles.
+  - [x] 2.6 Run the evidence-backed affected tests; if green, commit.
 - [ ] 3.0 Explore and understand recommendations in the local app
   - Delivers: a user can enter the search journey, see 10 recommendations, and inspect the match
     reasons, differences, unknowns, dates, and source boundary for each town.

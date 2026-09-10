@@ -18,7 +18,7 @@ from uuid import uuid4
 
 import uvicorn
 import yaml
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi import Path as ApiPath
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,6 +28,14 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from lifescape.config import load_metrics, load_sources
+from lifescape.discovery import (
+    CatalogUnavailableError,
+    DiscoveryCatalog,
+    DiscoveryError,
+    PlaceDiscoveryService,
+    SearchProfile,
+    load_default_discovery_catalog,
+)
 from lifescape.evidence import validate_unique_headers
 from lifescape.models import GateState, RunResult
 from lifescape.pipeline import execute_run
@@ -63,6 +71,7 @@ from lifescape.research_workspace import FetchSnapshot, ResearchWorkspace, Store
 from lifescape.resources import bundled_benchmark
 
 MAX_EVIDENCE_BYTES = 5_000_000
+MAX_RECOMMENDATION_BYTES = 65_536
 HOSTED_RUN_LIMIT = 6
 HOSTED_RUN_WINDOW_SECONDS = 60.0
 HOSTED_GLOBAL_RUN_LIMIT = 30
@@ -173,13 +182,20 @@ class BodyLimitMiddleware:
         self.max_bytes = max_bytes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if (
-            scope["type"] != "http"
-            or scope["method"] != "POST"
-            or scope["path"] != "/api/evidence/inspect"
-        ):
+        limits = {
+            "/api/evidence/inspect": (
+                self.max_bytes,
+                "request exceeds the 5 MB local-app import limit",
+            ),
+            "/api/place-recommendations": (
+                MAX_RECOMMENDATION_BYTES,
+                "recommendation request exceeds the 64 KB limit",
+            ),
+        }
+        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] not in limits:
             await self.app(scope, receive, send)
             return
+        maximum, detail = limits[scope["path"]]
         body = bytearray()
         more_body = True
         while more_body:
@@ -187,11 +203,8 @@ class BodyLimitMiddleware:
             if message["type"] == "http.disconnect":
                 return
             body.extend(message.get("body", b""))
-            if len(body) > self.max_bytes:
-                response = JSONResponse(
-                    {"detail": "request exceeds the 5 MB local-app import limit"},
-                    status_code=413,
-                )
+            if len(body) > maximum:
+                response = JSONResponse({"detail": detail}, status_code=413)
                 await response(scope, receive, send)
                 return
             more_body = message.get("more_body", False)
@@ -511,6 +524,8 @@ def create_app(
     hosted_max_concurrent: int = HOSTED_MAX_CONCURRENT_RUNS,
     hosted_max_tracked_clients: int = HOSTED_MAX_TRACKED_CLIENTS,
     research_evidence_provider: ResearchEvidenceProvider | None = None,
+    discovery_service: PlaceDiscoveryService | None = None,
+    discovery_catalog: DiscoveryCatalog | None = None,
 ) -> FastAPI:
     """Create the loopback-only browser application."""
     app = FastAPI(
@@ -591,6 +606,17 @@ def create_app(
             raise ResearchError(f"cannot save local research workspace: {exc}") from exc
 
     evidence_provider = research_evidence_provider or ConnectorEvidenceProvider.from_environment()
+    discovery_error: str | None = None
+    if discovery_service is not None:
+        place_discovery = discovery_service
+    else:
+        try:
+            place_discovery = PlaceDiscoveryService(
+                discovery_catalog or load_default_discovery_catalog()
+            )
+        except CatalogUnavailableError as exc:
+            place_discovery = None
+            discovery_error = str(exc)
     hosted_guard = HostedRunGuard(
         enabled=(not hosted_demo if hosted_runs_enabled is None else hosted_runs_enabled),
         run_limit=hosted_run_limit,
@@ -641,6 +667,32 @@ def create_app(
             },
             "field_count": len(fieldnames),
         }
+
+    @app.get("/api/places")
+    def lookup_places(
+        query: str = Query(min_length=2, max_length=120),
+        limit: int = Query(default=10, ge=1, le=20),
+    ) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        if place_discovery is None:
+            raise HTTPException(status_code=503, detail=discovery_error)
+        try:
+            return place_discovery.lookup(query, limit).model_dump(mode="json")
+        except DiscoveryError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/place-recommendations")
+    def place_recommendations(profile: SearchProfile, request: Request) -> dict[str, object]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        _validate_mutation_origin(request, require_origin=True)
+        if place_discovery is None:
+            raise HTTPException(status_code=503, detail=discovery_error)
+        try:
+            return place_discovery.search(profile).model_dump(mode="json")
+        except DiscoveryError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/evidence/inspect")
     async def inspect_evidence(request: Request) -> dict[str, object]:

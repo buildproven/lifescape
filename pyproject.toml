@@ -42,6 +42,8 @@ packages = ["src/lifescape"]
 [tool.hatch.build.targets.wheel.force-include]
 "config" = "lifescape/resources/config"
 "data/benchmarks/evidence.csv" = "lifescape/resources/benchmark-evidence.csv"
+"data/discovery/catalog.json" = "lifescape/resources/discovery/catalog.json"
+"data/discovery/catalog-manifest.json" = "lifescape/resources/discovery/catalog-manifest.json"
 
 [tool.pytest.ini_options]
 addopts = "--strict-markers --strict-config -q"
