@@ -10,5 +10,6 @@ package-lock.json
 *.sqlite
 coverage
 config
+data/discovery/catalog.json
 docs
 *.md
