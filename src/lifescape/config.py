@@ -20,6 +20,7 @@ from lifescape.models import (
     StrictModel,
     UserProfile,
     WeightsConfig,
+    ExtendedSourcesConfig,
 )
 
 
@@ -50,8 +51,8 @@ def load_gates(config_dir: Path) -> GatesConfig:
     return _load(config_dir / "gates.default.yaml", GatesConfig)
 
 
-def load_sources(config_dir: Path) -> SourcesConfig:
-    return _load(config_dir / "sources.yaml", SourcesConfig)
+def load_sources(config_dir: Path) -> ExtendedSourcesConfig:
+    return _load(config_dir / "sources.yaml", ExtendedSourcesConfig)
 
 
 class MetricsFile(StrictModel):

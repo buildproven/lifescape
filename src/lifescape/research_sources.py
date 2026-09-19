@@ -16,6 +16,7 @@ from pydantic import Field
 
 from lifescape.connectors import CensusAcsConnector, Connector, NoaaGsoyConnector
 from lifescape.connectors.orchestrate import PlaceRequest, fetch_live_observations
+from lifescape.database_provider import DatabaseEvidenceProvider, create_database_provider
 from lifescape.models import ObservationRecord, StrictModel
 from lifescape.research import ResearchPacket
 
