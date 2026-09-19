@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from enum import StrEnum
 from math import isfinite
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -197,28 +198,17 @@ class UserProfile(StrictModel):
     profile_version: str
     purchase_budget_min: float = Field(ge=0)
     purchase_budget_max: float = Field(ge=0)
-    max_annual_carrying_cost: float = Field(ge=0)
-    household: str
-    future_self_ages: tuple[int, ...]
-    priorities: tuple[str, ...]
-
-    @model_validator(mode="after")
-    def budget_range_is_ordered(self) -> UserProfile:
-        if self.purchase_budget_min > self.purchase_budget_max:
-            raise ValueError("purchase_budget_min cannot exceed purchase_budget_max")
-        return self
 
 
-class RegionDefinition(StrictModel):
-    id: str
-    states: str | tuple[str, ...]
-
-    @model_validator(mode="after")
-    def string_scope_is_wildcard(self) -> RegionDefinition:
-        if isinstance(self.states, str) and self.states != "*":
-            raise ValueError("region states must be '*' or a list of state codes")
-        return self
+# Add support for local database configurations
+class LocalDatabaseConfig(StrictModel):
+    """Configuration for local database sources."""
+    enabled: bool = False
+    path: str = "local_evidence.db"
+    cache_enabled: bool = True
+    cache_ttl_hours: int = 24
 
 
-class RegionsConfig(StrictModel):
-    regions: tuple[RegionDefinition, ...]
+class ExtendedSourcesConfig(SourcesConfig):
+    """Extended sources configuration with local database support."""
+    local_database: LocalDatabaseConfig = Field(default_factory=LocalDatabaseConfig)
