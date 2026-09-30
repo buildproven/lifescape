@@ -1,0 +1,10 @@
+{
+  "checks": {
+    "lint": "make lint",
+    "test": "make test",
+    "typecheck": "uv run mypy ."
+  },
+  "testCommand": "make test",
+  "linearProject": "lifescape",
+  "dailyBudgetUsd": 5
+}
