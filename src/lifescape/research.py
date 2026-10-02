@@ -86,6 +86,7 @@ class ResearchPacket(StrictModel):
     brief: SearchBrief
     leads: tuple[DiscoveryLead, ...]
     state: ResearchState = ResearchState.DISCOVERY
+    discovery_provider: str = "unspecified"
 
 
 class PromotionRequest(StrictModel):
@@ -235,7 +236,7 @@ class ClaudeDiscoveryProvider:
                 if len(payload_bytes) > MAX_DISCOVERY_RESPONSE_BYTES:
                     raise ResearchError("Claude discovery response exceeds the 1 MB safety limit")
                 payload = json.loads(payload_bytes)
-        except (HTTPError, URLError, json.JSONDecodeError) as exc:
+        except (HTTPError, URLError, OSError, json.JSONDecodeError) as exc:
             raise ResearchError(f"Claude discovery failed: {exc}") from exc
         try:
             text = payload["content"][0]["text"]
@@ -251,10 +252,22 @@ class ClaudeDiscoveryProvider:
         return leads
 
 
-def create_packet(brief: SearchBrief, leads: tuple[DiscoveryLead, ...]) -> ResearchPacket:
+def create_packet(
+    brief: SearchBrief,
+    leads: tuple[DiscoveryLead, ...],
+    *,
+    discovery_provider: str = "unspecified",
+) -> ResearchPacket:
     if not leads:
         raise ResearchError("a research packet requires at least one discovery lead")
-    return ResearchPacket(id=uuid4().hex[:12], brief=brief, leads=leads)
+    if len(leads) > MAX_DISCOVERY_LEADS:
+        raise ResearchError(f"a research packet allows at most {MAX_DISCOVERY_LEADS} leads")
+    place_ids = [lead.place.place_id for lead in leads]
+    if len(set(place_ids)) != len(place_ids):
+        raise ResearchError("discovery returned duplicate leads; each town may appear once")
+    return ResearchPacket(
+        id=uuid4().hex[:12], brief=brief, leads=leads, discovery_provider=discovery_provider
+    )
 
 
 def promote_evidence(
