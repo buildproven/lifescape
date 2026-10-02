@@ -705,6 +705,8 @@ def create_app(
         return {
             "packet_id": packet.id,
             "state": state_for(packet, metrics, promotions),
+            "discovery_provider": packet.discovery_provider,
+            "brief": packet.brief.model_dump(mode="json"),
             "leads": [
                 {
                     "place_id": lead.place.place_id,
@@ -741,7 +743,11 @@ def create_app(
         _validate_mutation_origin(request)
         try:
             provider = discovery_provider or ClaudeDiscoveryProvider.from_environment()
-            packet = create_packet(brief, provider.discover(brief))
+            packet = create_packet(
+                brief,
+                provider.discover(brief),
+                discovery_provider=type(provider).__name__,
+            )
             research_packets[packet.id] = packet
             promoted_evidence[packet.id] = []
             research_reviews[packet.id] = []
