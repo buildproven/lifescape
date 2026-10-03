@@ -1,4 +1,35 @@
-# Milestone 1 architecture
+# Architecture
+
+Lifescape has two layers with a one-way boundary: a **discovery layer** that finds and explains
+candidate towns, and an **evidence layer** that decides. Discovery output never flows into the
+evidence layer except as a user's choice of which towns to verify.
+
+```text
+                    advisory                          authoritative
+  ┌──────────────────────────────────────┐   ┌─────────────────────────────────────┐
+  │ Census catalog ─▶ DiscoveryService   │   │ reviewed CSV ─▶ execute_run         │
+  │ (hash-verified)    search(profile)   │   │ gates → scoring → sensitivity → DB  │
+  │        │                │            │   │            │                        │
+  │   /api/places   /api/place-          │   │       /api/run, reports             │
+  │                 recommendations      │   │            ▲                        │
+  └────────┬─────────────────┬───────────┘   └────────────┼────────────────────────┘
+           ▼                 ▼                            │
+      browser: Preferences → Boundaries → Matches → Shortlist ─▶ Verify (choose towns)
+               (scenario saved only in this browser's localStorage)
+```
+
+- `discovery.py` owns profile validation, catalog integrity, normalization, similarity, ranking,
+  explanations, and diagnostics (ADR-place-discovery-contract). It imports nothing from
+  `pipeline`, `evidence`, `gates`, `scoring`, `sensitivity`, `db`, or `reports`; a test enforces
+  this.
+- `scripts/build_place_catalog.py` builds the packaged catalog reproducibly from pinned official
+  Census files and writes the manifest (source hashes, field definitions, coverage, bounds).
+- `web.py` loads the catalog once at `create_app`, serves the two discovery routes, and keeps the
+  evidence routes unchanged. A catalog failure degrades discovery only (`503 CATALOG_UNAVAILABLE`).
+- `static/scenario.js` validates, migrates, and backs up the saved search; `static/app.js` renders
+  the journey and calls `/api/run` only with towns that have reviewed evidence.
+
+## Evidence engine
 
 The engine is a deterministic local pipeline:
 

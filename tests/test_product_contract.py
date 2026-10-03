@@ -40,3 +40,13 @@ def test_product_contract_prevents_infrastructure_only_scope() -> None:
     assert "user-visible vertical slice" in prd
     assert "Delivers:" in tasks
     assert "Verification:" in tasks
+
+
+def test_traceability_matrix_is_part_of_the_product_contract() -> None:
+    repository = Path(__file__).resolve().parents[1]
+    readme = (repository / "README.md").read_text(encoding="utf-8")
+    matrix = (repository / "docs/traceability.md").read_text(encoding="utf-8")
+
+    assert "docs/traceability.md" in readme
+    assert PRD_PATH in matrix
+    assert "| AC9 |" in matrix

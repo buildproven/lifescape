@@ -23,3 +23,24 @@ All implemented metrics use town geography and a default 730-day freshness rule.
 | `sailing_season_months` | Practical sailing season | Months | Higher | Sailing | None | Penalized |
 
 The full machine-readable definitions are in `config/metrics.yaml`.
+
+## Discovery catalog fields (advisory, never evidence)
+
+Catalog `us-places-acs2024-v1`, normalization `discovery-winsorized-minmax-v1`, algorithm
+`place-discovery-v1`. Values are `null` when missing; any negative ACS value (including the
+`-666666666` and `-999999999` annotations) is stored as `null`. These fields are not
+`ObservationRecord` values and never enter `execute_run`. Bounds are the 5th and 95th percentiles
+(nearest rank) over places with population 2,500 or more.
+
+| Field | Derivation | Unit | Source tables |
+|---|---|---|---|
+| `population` | `B01003_E001` | people | ACS B01003 |
+| `median_home_value` | `B25077_E001` | USD | ACS B25077 |
+| `population_density` | population ÷ Gazetteer `ALAND_SQMI` | people per sq mi | ACS B01003, Gazetteer |
+| `car_light_commute_share` | (`B08301_E010` + `E018` + `E019` + `E021`) ÷ `B08301_E001` | percent of workers | ACS B08301 |
+| `college_educated_share` | (`B15003_E022`–`E025`) ÷ `B15003_E001` | percent of adults 25+ | ACS B15003 |
+| `older_adult_share` | (`B01001_E020`–`E025` + `E044`–`E049`) ÷ `B01001_E001` | percent of residents | ACS B01001 |
+
+Identity: `place_id` (7-digit state+place FIPS), `name`, `state`, `region` (Census region), plus
+`land_area_sqmi`, `latitude`, `longitude`. The manifest `src/lifescape/data/place-catalog.manifest.json`
+records source URLs, SHA-256 hashes, per-field coverage, and bounds.

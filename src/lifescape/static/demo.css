@@ -946,3 +946,45 @@ a:focus-visible {
     transition: none;
   }
 }
+
+.path {
+  display: grid;
+  gap: 22px;
+  padding: 90px 0 20px;
+}
+
+.path h2 {
+  margin: 0;
+  font-family: var(--serif, Georgia, serif);
+  font-size: clamp(30px, 4vw, 52px);
+  letter-spacing: -0.03em;
+}
+
+.path-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.path-steps li {
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(23, 44, 34, 0.25);
+  line-height: 1.55;
+}
+
+.path-note {
+  margin: 0;
+  color: #4b5a51;
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .path-steps {
+    grid-template-columns: 1fr;
+  }
+}

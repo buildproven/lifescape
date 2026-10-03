@@ -13,8 +13,8 @@ import json
 import os
 from datetime import date
 from enum import StrEnum
+from http.client import HTTPException
 from typing import Protocol
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 from uuid import uuid4
@@ -236,7 +236,7 @@ class ClaudeDiscoveryProvider:
                 if len(payload_bytes) > MAX_DISCOVERY_RESPONSE_BYTES:
                     raise ResearchError("Claude discovery response exceeds the 1 MB safety limit")
                 payload = json.loads(payload_bytes)
-        except (HTTPError, URLError, OSError, json.JSONDecodeError) as exc:
+        except (OSError, HTTPException, json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise ResearchError(f"Claude discovery failed: {exc}") from exc
         try:
             text = payload["content"][0]["text"]
@@ -440,6 +440,7 @@ def select_packet_leads(
         id=uuid4().hex[:12],
         brief=packet.brief,
         leads=leads,
+        discovery_provider=packet.discovery_provider,
     )
 
 

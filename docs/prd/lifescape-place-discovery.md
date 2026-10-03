@@ -313,33 +313,33 @@ Lifescape does; architecture decisions control how approved requirements are imp
 
 ## Acceptance criteria (must be machine-verifiable)
 
-- [ ] AC1: `uv run --extra dev pytest tests/test_product_contract.py` confirms that the README,
+- [x] AC1: `uv run --extra dev pytest tests/test_product_contract.py` confirms that the README,
   implementation plan, PR template, and active product-boundary ADR reference this PRD and its
   traceability rule.
-- [ ] AC2: `uv run --extra dev pytest tests/test_discovery.py` confirms that a fixed catalog and
+- [x] AC2: `uv run --extra dev pytest tests/test_discovery.py` confirms that a fixed catalog and
   profile produce the specified ordered recommendations, at least two non-region reasons per
   candidate, component contributions, hard-constraint exclusions, null handling, exemplar
   exclusion, catalog-integrity failure, and byte-identical repeat output. The same test confirms
   at least 80% non-null coverage for every supported field among shipped catalog places with
   population of 2,500 or more.
-- [ ] AC3: `uv run --extra dev pytest tests/test_web.py -k discovery` confirms that
+- [x] AC3: `uv run --extra dev pytest tests/test_web.py -k discovery` confirms that
   `GET /api/places` validates lookup input and that `POST /api/place-recommendations` returns the
   documented success body or existing FastAPI `detail` error body without server persistence or
   an `execute_run` call. It also confirms explicit hosted 404, missing/foreign-origin 403, 64 KB
   body limit, and fewer-than-two-target 422 behavior.
-- [ ] AC4: `uv run --extra dev pytest tests/test_user_journey.py -k discovery` confirms at 390 px
+- [x] AC4: `uv run --extra dev pytest tests/test_user_journey.py -k discovery` confirms at 390 px
   and 1440 px
   that a user can choose an exemplar, set criteria, receive recommendations, inspect reasons and
   unknowns, keep three towns, reload the page, and recover the same shortlist.
-- [ ] AC5: `uv run --extra dev pytest tests/test_user_journey.py -k evidence_handoff` confirms that
+- [x] AC5: `uv run --extra dev pytest tests/test_user_journey.py -k evidence_handoff` confirms that
   two kept towns reach evidence review, every critical metric is visible as verified or missing,
   and a discovery record alone cannot enable the comparison action.
-- [ ] AC6: `uv run --extra dev pytest tests/test_source_policy.py tests/test_missing_data.py
+- [x] AC6: `uv run --extra dev pytest tests/test_source_policy.py tests/test_missing_data.py
   tests/test_discovery.py` confirms that Tier C, synthetic, and missing discovery fields cannot
   satisfy a gate or affect an evidence-backed score.
-- [ ] AC7: `uv run lifescape benchmark --output-dir outputs/benchmark` produces 5 eligible and 5
+- [x] AC7: `uv run lifescape benchmark --output-dir outputs/benchmark` produces 5 eligible and 5
   blocked synthetic towns and retains visible synthetic warnings.
-- [ ] AC8: `npm run quality:check` passes with zero Ruff, mypy, frontend lint, formatting, test,
+- [x] AC8: `npm run quality:check` passes with zero Ruff, mypy, frontend lint, formatting, test,
   coverage, browser, or package-build failures.
-- [ ] AC9: `npm run security:check` reports zero production dependency vulnerabilities and zero
+- [x] AC9: `npm run security:check` reports zero production dependency vulnerabilities and zero
   detected secrets in the required repository scans.

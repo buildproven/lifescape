@@ -1,0 +1,135 @@
+{
+  "bounds": {
+    "car_light_commute_share": {
+      "lower": 4.46,
+      "upper": 38.86
+    },
+    "college_educated_share": {
+      "lower": 10.82,
+      "upper": 70.37
+    },
+    "median_home_value": {
+      "lower": 103400.0,
+      "upper": 905400.0
+    },
+    "older_adult_share": {
+      "lower": 8.52,
+      "upper": 30.78
+    },
+    "population": {
+      "lower": 2716.0,
+      "upper": 76768.0
+    },
+    "population_density": {
+      "lower": 357.8,
+      "upper": 6805.2
+    }
+  },
+  "catalog_version": "us-places-acs2024-v1",
+  "coverage": {
+    "car_light_commute_share": {
+      "non_null": 10214,
+      "serving_places": 10215,
+      "share": 0.9999
+    },
+    "college_educated_share": {
+      "non_null": 10215,
+      "serving_places": 10215,
+      "share": 1.0
+    },
+    "median_home_value": {
+      "non_null": 10125,
+      "serving_places": 10215,
+      "share": 0.9912
+    },
+    "older_adult_share": {
+      "non_null": 10215,
+      "serving_places": 10215,
+      "share": 1.0
+    },
+    "population": {
+      "non_null": 10215,
+      "serving_places": 10215,
+      "share": 1.0
+    },
+    "population_density": {
+      "non_null": 10215,
+      "serving_places": 10215,
+      "share": 1.0
+    }
+  },
+  "data_date": "2024-12-31",
+  "excluded_geography": "Puerto Rico places are not in the first catalog.",
+  "fields": {
+    "car_light_commute_share": {
+      "definition": "Share of workers 16+ who take public transit, bicycle, walk, or work from home (B08301_E010 + E018 + E019 + E021) / B08301_E001. An ACS commute-mode proxy, not a walkability score.",
+      "label": "Car-light commute share",
+      "unit": "percent of workers"
+    },
+    "college_educated_share": {
+      "definition": "Adults 25+ with a bachelor's degree or higher (B15003_E022 + E023 + E024 + E025) / B15003_E001.",
+      "label": "College-educated share",
+      "unit": "percent of adults 25+"
+    },
+    "median_home_value": {
+      "definition": "Median value of owner-occupied housing units, ACS B25077 (B25077_E001).",
+      "label": "Median home value",
+      "unit": "USD"
+    },
+    "older_adult_share": {
+      "definition": "Residents aged 65+ (B01001_E020-E025 + E044-E049) / B01001_E001.",
+      "label": "Older-adult share",
+      "unit": "percent of residents"
+    },
+    "population": {
+      "definition": "Total population, ACS table B01003 (B01003_E001).",
+      "label": "Population",
+      "unit": "people"
+    },
+    "population_density": {
+      "definition": "B01003_E001 divided by Gazetteer land area (ALAND_SQMI).",
+      "label": "Population density",
+      "unit": "people per square mile"
+    }
+  },
+  "geography": "U.S. states and DC: incorporated places and Census-designated places",
+  "inputs": {
+    "b01001": {
+      "sha256": "1637b18a96881b81e050df1cd3d5ac38a33208b9b69b40e1dbeb3c4e13718f0e",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b01001.dat",
+      "vintage": "ACS 2020-2024 5-year estimates (released December 2025)"
+    },
+    "b01003": {
+      "sha256": "38d1a992bb058d184009b10b9b34987279aee575e4323165cfb5706c69b6ca90",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b01003.dat",
+      "vintage": "ACS 2020-2024 5-year estimates (released December 2025)"
+    },
+    "b08301": {
+      "sha256": "552b24c135b6e7c566910914a861cda6fc798ba0cd47801b1eb64295a128c2ee",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b08301.dat",
+      "vintage": "ACS 2020-2024 5-year estimates (released December 2025)"
+    },
+    "b15003": {
+      "sha256": "d0c8609e958022459215c8a31d7452ef7528ee8dd70fbb6f9a99de0f491f42d7",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b15003.dat",
+      "vintage": "ACS 2020-2024 5-year estimates (released December 2025)"
+    },
+    "b25077": {
+      "sha256": "89eb2153764a2330b23959d8bbc29b3a8f3016f087b990f2a8ea0d5096d9a816",
+      "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b25077.dat",
+      "vintage": "ACS 2020-2024 5-year estimates (released December 2025)"
+    },
+    "gazetteer": {
+      "sha256": "cf262fc92b2326f7a8c62a89d156a60eb17d64d6d35f7a62310c43bb08972c06",
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_place_national.zip",
+      "vintage": "2024 Census Gazetteer"
+    }
+  },
+  "normalization_version": "discovery-winsorized-minmax-v1",
+  "output_file": "place-catalog.csv.gz",
+  "output_sha256": "5161a46cf7d21ce96dca019db715af86aa673e1cb24bec26718b8e6863c6234c",
+  "row_count": 32041,
+  "sentinel_policy": "Every negative ACS estimate (including -666666666 and -999999999) becomes null.",
+  "serving_universe": "places with known population >= 2500",
+  "uncompressed_sha256": "19027e39a0f743f7da4b587e7dc823f2596345625acd79c8184d07149b4ed697"
+}

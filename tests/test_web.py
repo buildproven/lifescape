@@ -135,8 +135,9 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
 
     assert page.status_code == 200
     assert "Lifescape" in page.text
-    assert "Shape the decision" in page.text
-    assert "Import reviewed CSV" in page.text
+    assert "Tell us what feels right" in page.text
+    assert "Find places" in page.text
+    assert "Advanced evidence import" in page.text
     assert "Find research leads" not in page.text
     assert bootstrap.status_code == 200
     assert "Your evidence and outputs stay on this computer." in page.text
@@ -1309,3 +1310,232 @@ def test_local_app_shapes_response_before_publishing_run(tmp_path: Path) -> None
     assert response.status_code == 422
     assert response.json()["detail"] == "response mismatch"
     assert list((output / "runs").iterdir()) == []
+
+
+# -- place discovery API (PRD AC3; ADR-place-discovery-contract) ---------------------------
+
+LOCAL = {"origin": "http://127.0.0.1"}
+
+
+def discovery_client(tmp_path: Path, **options: object) -> TestClient:
+    return TestClient(create_app(tmp_path / "output", **options), base_url="http://127.0.0.1")
+
+
+def test_discovery_lookup_returns_normalized_places_with_eligibility(tmp_path: Path) -> None:
+    with discovery_client(tmp_path) as client:
+        response = client.get("/api/places", params={"query": "traverse city, mi", "limit": 3})
+
+    assert response.status_code == 200
+    place = response.json()["places"][0]
+    assert set(place) == {
+        "place_id",
+        "name",
+        "state",
+        "label",
+        "population",
+        "serving_eligible",
+        "values",
+    }
+    assert place["values"]["population"] == place["population"]
+    assert set(place["values"]) >= {"median_home_value", "older_adult_share"}
+    assert place["label"] == "Traverse City, MI"
+    assert place["serving_eligible"] is True
+
+
+def test_discovery_lookup_flags_towns_below_the_serving_population(tmp_path: Path) -> None:
+    with discovery_client(tmp_path) as client:
+        places = client.get("/api/places", params={"query": "Abanda", "limit": 5}).json()["places"]
+
+    assert places and places[0]["serving_eligible"] is False
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {},
+        {"query": "a"},
+        {"query": "x" * 121},
+        {"query": "ab", "limit": 0},
+        {"query": "ab", "limit": 21},
+    ],
+)
+def test_discovery_lookup_validates_input_with_the_fastapi_detail_body(
+    tmp_path: Path, params: dict[str, object]
+) -> None:
+    with discovery_client(tmp_path) as client:
+        response = client.get("/api/places", params=params)
+
+    assert response.status_code == 422
+    assert isinstance(response.json()["detail"], list)
+
+
+def test_discovery_recommendations_return_the_documented_body_without_running_evidence(
+    tmp_path: Path,
+) -> None:
+    with discovery_client(tmp_path) as client:
+        exemplar = client.get("/api/places", params={"query": "Traverse City, MI"}).json()[
+            "places"
+        ][0]["place_id"]
+        with patch("lifescape.web.execute_run") as run:
+            response = client.post(
+                "/api/place-recommendations", json={"exemplars": [exemplar]}, headers=LOCAL
+            )
+            repeat = client.post(
+                "/api/place-recommendations", json={"exemplars": [exemplar]}, headers=LOCAL
+            )
+        method_probe = client.get("/api/place-recommendations")
+
+    body = response.json()
+    assert response.status_code == 200
+    assert set(body) == {
+        "profile",
+        "catalog_version",
+        "algorithm_version",
+        "normalization_version",
+        "recommendations",
+        "diagnostics",
+    }
+    assert len(body["recommendations"]) == 10
+    assert all(
+        item["evidence_status"] == "not verified evidence" for item in body["recommendations"]
+    )
+    assert repeat.text == response.text
+    assert "location" not in {key.lower() for key in response.headers}
+    assert method_probe.status_code == 405
+    run.assert_not_called()
+    assert not list((tmp_path / "output").glob("**/*.sqlite"))
+
+
+@pytest.mark.parametrize("headers", [{}, {"origin": "http://evil.example"}])
+def test_discovery_recommendations_require_the_local_origin(
+    tmp_path: Path, headers: dict[str, str]
+) -> None:
+    with discovery_client(tmp_path) as client:
+        response = client.post("/api/place-recommendations", content="not json", headers=headers)
+
+    assert response.status_code == 403
+    assert "origin" in response.json()["detail"]
+
+
+def test_discovery_recommendations_reject_bodies_over_64_kb_before_parsing(
+    tmp_path: Path,
+) -> None:
+    with discovery_client(tmp_path) as client:
+        response = client.post("/api/place-recommendations", content=b"{" * 70_000, headers=LOCAL)
+
+    assert response.status_code == 413
+    assert response.json() == {"detail": "recommendation request exceeds the 64 KB limit"}
+
+
+def test_discovery_evidence_import_keeps_its_own_five_megabyte_message(tmp_path: Path) -> None:
+    with discovery_client(tmp_path) as client:
+        response = client.post("/api/evidence/inspect", content=b"x" * 5_000_001, headers=LOCAL)
+
+    assert response.status_code == 413
+    assert "5 MB" in response.json()["detail"]
+
+
+def test_discovery_hosted_site_has_no_discovery_routes(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(tmp_path / "output", hosted_demo=True),
+        base_url="http://lifescape.buildproven.ai",
+    ) as client:
+        lookup = client.get("/api/places", params={"query": "Traverse"})
+        recommend = client.post(
+            "/api/place-recommendations",
+            json={},
+            headers={"origin": "http://lifescape.buildproven.ai"},
+        )
+
+    assert lookup.status_code == recommend.status_code == 404
+
+
+def test_discovery_requires_two_supported_targets_or_returns_422(tmp_path: Path) -> None:
+    with discovery_client(tmp_path) as client:
+        response = client.post(
+            "/api/place-recommendations", json={"targets": {"population": 5000}}, headers=LOCAL
+        )
+
+    assert response.status_code == 422
+    assert "at least two supported qualities" in response.json()["detail"]
+
+
+def test_discovery_rejects_an_exemplar_below_the_serving_population(tmp_path: Path) -> None:
+    with discovery_client(tmp_path) as client:
+        small = client.get("/api/places", params={"query": "Abanda"}).json()["places"][0]
+        response = client.post(
+            "/api/place-recommendations", json={"exemplars": [small["place_id"]]}, headers=LOCAL
+        )
+
+    assert response.status_code == 422
+    assert "cannot be an example" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"priorities": {"population": 9}},
+        {"targets": {"nope": 1}},
+        {"exemplars": ["a", "b", "c"]},
+        {"unexpected": True},
+    ],
+)
+def test_discovery_invalid_profiles_return_the_fastapi_detail_list(
+    tmp_path: Path, payload: dict[str, object]
+) -> None:
+    with discovery_client(tmp_path) as client:
+        response = client.post("/api/place-recommendations", json=payload, headers=LOCAL)
+
+    assert response.status_code == 422
+    assert isinstance(response.json()["detail"], list)
+    assert response.json()["detail"][0]["loc"][0] == "body"
+
+
+def test_discovery_catalog_failure_degrades_only_discovery(tmp_path: Path) -> None:
+    from lifescape.discovery import CatalogUnavailableError
+
+    def broken() -> object:
+        raise CatalogUnavailableError("catalog hash does not match its manifest")
+
+    with discovery_client(tmp_path, catalog_loader=broken) as client:
+        lookup = client.get("/api/places", params={"query": "Traverse"})
+        recommend = client.post("/api/place-recommendations", json={}, headers=LOCAL)
+        page = client.get("/")
+        bootstrap = client.get("/api/bootstrap")
+
+    assert lookup.status_code == recommend.status_code == 503
+    assert lookup.json()["detail"].startswith("CATALOG_UNAVAILABLE:")
+    assert page.status_code == 200
+    assert bootstrap.json()["discovery"]["available"] is False
+    assert bootstrap.json()["places"]
+
+
+def test_discovery_bootstrap_describes_the_catalog_and_records_load_time(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "output")
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        summary = client.get("/api/bootstrap").json()["discovery"]
+
+    assert summary["available"] is True
+    assert summary["recommendation_limit"] == 10
+    assert summary["minimum_population"] == 2500
+    assert {item["field"] for item in summary["fields"]} >= {"population", "median_home_value"}
+    assert all(item["lower"] < item["upper"] for item in summary["fields"])
+    assert app.state.catalog_load_seconds >= 0
+
+
+def test_hosted_example_illustrates_discovery_shortlist_verification_with_no_inputs(
+    tmp_path: Path,
+) -> None:
+    with TestClient(
+        create_app(tmp_path / "hosted", hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
+    ) as client:
+        page = client.get("/demo")
+        lookup = client.get("/api/places", params={"query": "Traverse"})
+
+    assert "How this field was found." in page.text
+    for step in ("1 · Discover", "2 · Shortlist", "3 · Verify"):
+        assert step in page.text
+    assert "accepts no input and every value on it is synthetic" in page.text
+    assert "<input" not in page.text and "<form" not in page.text
+    assert lookup.status_code == 404
