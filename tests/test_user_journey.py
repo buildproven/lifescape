@@ -153,7 +153,7 @@ def test_discovery_journey_from_example_town_to_recovered_shortlist(
 
         page.reload()
         page.get_by_role("heading", name="Tell us what feels right").wait_for()
-        assert page.get_by_text("Traverse City, MI").first.is_visible()
+        page.locator("#exemplar-chips").get_by_text("Traverse City, MI").wait_for()
         page.locator(".step-link[data-step-target=shortlist]").click()
         page.locator("#shortlist-list .match-card").first.wait_for()
         recovered = page.locator("#shortlist-list .match-card h3").all_inner_texts()
