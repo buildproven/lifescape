@@ -82,11 +82,11 @@ VIEWPORTS = [{"width": 390, "height": 844}, {"width": 1440, "height": 1000}]
 
 def start_search(page: Page, example: str = "Traverse City", *, limits: bool = False) -> None:
     """Choose an example town; optionally continue to the boundaries step."""
-    page.get_by_label("Towns you like (up to two)").fill(example)
+    page.get_by_label("A town you already like").fill(example)
     page.get_by_role("button", name="Use as example").first.click()
-    page.get_by_text("Ready: searching on 6 qualities.").wait_for()
+    page.get_by_text("Comparing 6 qualities.").wait_for()
     if limits:
-        page.get_by_role("button", name="Set boundaries first").click()
+        page.get_by_role("button", name="Set limits first (price, regions)").click()
 
 
 def find_places(page: Page) -> None:
@@ -124,11 +124,11 @@ def test_discovery_journey_from_example_town_to_recovered_shortlist(
         errors = watch_errors(page)
         page.goto(url)
 
-        page.get_by_role("heading", name="Tell us what feels right").wait_for()
+        page.get_by_role("heading", name="Where might you want to live?").wait_for()
         # FR1: Find places is the primary action; CSV import is not on the first screen.
         assert page.get_by_role("button", name="Find places").is_disabled()
-        assert page.get_by_text("Choose an example town or set at least two qualities").is_visible()
-        assert page.get_by_text("verifies your finalists").is_visible()
+        assert page.get_by_text("Pick a town you like or a style above to begin.").is_visible()
+        assert page.get_by_text("checks your finalists against evidence").is_visible()
         assert page.get_by_role("button", name="Advanced evidence import").is_hidden()
         start_search(page, limits=True)
         page.get_by_label("Median home value no more than").fill("500000")
@@ -152,7 +152,7 @@ def test_discovery_journey_from_example_town_to_recovered_shortlist(
         assert len(kept_names) == 3
 
         page.reload()
-        page.get_by_role("heading", name="Tell us what feels right").wait_for()
+        page.get_by_role("heading", name="Where might you want to live?").wait_for()
         page.locator("#exemplar-chips").get_by_text("Traverse City, MI").wait_for()
         page.locator(".step-link[data-step-target=shortlist]").click()
         page.locator("#shortlist-list .match-card").first.wait_for()
@@ -195,7 +195,7 @@ def test_discovery_blocks_search_until_two_qualities_exist_and_flags_small_towns
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport=VIEWPORTS[1])
         page.goto(url)
-        page.get_by_label("Towns you like (up to two)").fill("Abanda")
+        page.get_by_label("A town you already like").fill("Abanda")
         page.get_by_text("Examples need a population of 2,500 or more.").first.wait_for()
         assert page.get_by_role("button", name="Use as example").first.is_disabled()
         assert page.get_by_role("button", name="Find places").is_disabled()
@@ -317,7 +317,7 @@ def test_discovery_rejected_town_chosen_as_example_does_not_break_search(
         page.locator("#match-list .decision-button[data-decision=reject]").first.click()
         page.get_by_role("button", name="Back").click()
         page.get_by_role("button", name="Back").click()
-        page.get_by_label("Towns you like (up to two)").fill(rejected)
+        page.get_by_label("A town you already like").fill(rejected)
         page.get_by_role("button", name="Use as example").first.click()
         page.get_by_role("button", name="Find places").click()
         page.locator("#match-list .match-card").first.wait_for()
@@ -366,7 +366,7 @@ def test_discovery_adds_a_small_town_manually_and_exports_json(tmp_path: Path) -
         assert download.value.suggested_filename == "lifescape-search.json"
         page.get_by_role("button", name="Start over").click()
         page.get_by_role("button", name="Confirm: clear my search and shortlist").click()
-        page.get_by_role("heading", name="Tell us what feels right").wait_for()
+        page.get_by_role("heading", name="Where might you want to live?").wait_for()
         assert page.evaluate("localStorage.getItem('lifescape.scenario')") is None
         browser.close()
 
@@ -423,7 +423,7 @@ def test_advanced_evidence_import_runs_without_discovery(tmp_path: Path) -> None
         page = browser.new_page(viewport=VIEWPORTS[0])
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.goto(url)
-        page.get_by_role("heading", name="Tell us what feels right").wait_for()
+        page.get_by_role("heading", name="Where might you want to live?").wait_for()
         assert page.locator(".step-link[data-step-target=verify]").is_disabled()
         page.get_by_role("button", name="I already have a shortlist and reviewed evidence").click()
         page.get_by_role("heading", name="Test your finalists with evidence").wait_for()
@@ -708,7 +708,7 @@ def test_discovery_text_meets_contrast_requirement(tmp_path: Path) -> None:
             assert contrast_ratio(foreground, background) >= 4.5, selector
 
         start_search(page)
-        page.get_by_label("Towns you like (up to two)").fill("Abanda")
+        page.get_by_label("A town you already like").fill("Abanda")
         page.get_by_text("Examples need a population").first.wait_for()
         assert_contrast(".lookup-note", paper)
         assert_contrast("#exemplar-help", paper)
@@ -730,11 +730,110 @@ def test_discovery_search_text_is_inert_untrusted_input(tmp_path: Path) -> None:
         page = browser.new_page(viewport=VIEWPORTS[1])
         errors = watch_errors(page)
         page.goto(url)
-        page.get_by_label("Towns you like (up to two)").fill(payload)
+        page.get_by_label("A town you already like").fill(payload)
         page.get_by_text("No U.S. town matches").wait_for()
 
         assert page.evaluate("window.__injected === undefined")
         assert page.locator("#exemplar-results img").count() == 0
         assert payload in page.locator("#exemplar-results").inner_text()
         assert errors == []
+        browser.close()
+
+
+# -- ease of use: a first-time visitor with no instructions -------------------------------
+
+
+def test_first_run_try_example_reaches_matches_in_one_click(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[0])
+        errors = watch_errors(page)
+        page.goto(url)
+        page.get_by_role("button", name="Try it with Traverse City, MI").click()
+        page.locator("#match-list .match-card").first.wait_for()
+
+        assert page.locator("#match-list .match-card").count() == 10
+        assert page.get_by_role("heading", name="Explore your matches").is_visible()
+        assert errors == []
+        browser.close()
+
+
+@pytest.mark.parametrize("viewport", VIEWPORTS)
+def test_first_run_style_alone_reaches_matches_in_two_clicks(
+    tmp_path: Path, viewport: dict[str, int]
+) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=viewport)
+        page.goto(url)
+        # The first screen shows its main choices without scrolling.
+        assert page.get_by_label("A town you already like").is_visible()
+        for name in ("Affordable and quiet", "Lively and walkable"):
+            box = page.get_by_role("button", name=name).bounding_box()
+            assert box is not None and box["y"] + box["height"] <= viewport["height"]
+
+        page.get_by_role("button", name="College town").click()
+        assert page.get_by_role("button", name="College town").get_attribute("aria-pressed") == (
+            "true"
+        )
+        page.get_by_text("Comparing 3 qualities.").wait_for()
+        page.get_by_role("button", name="Find places").click()
+        page.locator("#match-list .match-card").first.wait_for()
+
+        names = page.locator("#match-list .match-card h3").all_inner_texts()
+        assert len(names) == 10
+        browser.close()
+
+
+def test_style_can_be_switched_and_cleared(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+        page.get_by_role("button", name="College town").click()
+        page.get_by_role("button", name="Retiree-friendly").click()
+        assert page.get_by_role("button", name="College town").get_attribute("aria-pressed") == (
+            "false"
+        )
+        page.get_by_role("button", name="Retiree-friendly").click()
+        page.get_by_text("Pick a town you like or a style above to begin.").wait_for()
+        assert page.get_by_role("button", name="Find places").is_disabled()
+        browser.close()
+
+
+def test_style_fine_tune_is_collapsed_until_wanted(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[0])
+        page.goto(url)
+        page.get_by_role("button", name="Lively and walkable").click()
+
+        assert page.locator("#quality-list .quality-row").first.is_hidden()
+        page.get_by_text("Fine-tune what matters").click()
+        assert page.locator("#quality-list .quality-row").first.is_visible()
+        browser.close()
+
+
+def test_research_checklist_lists_finalists_and_critical_facts_to_confirm(
+    tmp_path: Path,
+) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+        start_search(page)
+        find_places(page)
+        keep(page, 2)
+        page.get_by_role("button", name="Review shortlist").click()
+        page.get_by_role("button", name="Verify finalists").click()
+        with page.expect_download() as download:
+            page.get_by_role("button", name="Download research checklist").click()
+        path = download.value.path()
+        text = Path(path).read_text(encoding="utf-8")
+
+        assert download.value.suggested_filename == "lifescape-research-checklist.md"
+        assert text.count("\n## ") == 2
+        assert "- [ ] Emergency department drive time" in text
+        assert "not verified evidence" in text
+        assert "Lifescape never guesses a missing value" in text
         browser.close()
