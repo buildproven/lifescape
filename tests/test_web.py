@@ -135,8 +135,9 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
 
     assert page.status_code == 200
     assert "Lifescape" in page.text
-    assert "Shape the decision" in page.text
-    assert "Import reviewed CSV" in page.text
+    assert "Tell us what feels right" in page.text
+    assert "Find places" in page.text
+    assert "Advanced evidence import" in page.text
     assert "Find research leads" not in page.text
     assert bootstrap.status_code == 200
     assert "Your evidence and outputs stay on this computer." in page.text
@@ -1326,7 +1327,17 @@ def test_discovery_lookup_returns_normalized_places_with_eligibility(tmp_path: P
 
     assert response.status_code == 200
     place = response.json()["places"][0]
-    assert set(place) == {"place_id", "name", "state", "label", "population", "serving_eligible"}
+    assert set(place) == {
+        "place_id",
+        "name",
+        "state",
+        "label",
+        "population",
+        "serving_eligible",
+        "values",
+    }
+    assert place["values"]["population"] == place["population"]
+    assert set(place["values"]) >= {"median_home_value", "older_adult_share"}
     assert place["label"] == "Traverse City, MI"
     assert place["serving_eligible"] is True
 

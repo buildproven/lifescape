@@ -273,6 +273,7 @@ class CatalogPlace(TypedDict):
     name: str
     state: str
     complete_metrics: int
+    present_metrics: list[str]
     total_metrics: int
 
 
@@ -353,7 +354,8 @@ def _catalog(rows: list[dict[str, str]], metric_ids: tuple[str, ...]) -> list[Ca
         place_id = row["place_id"].strip()
         if not place_id:
             raise ValueError("evidence CSV contains a blank place_id")
-        complete = sum(bool(row.get(metric_id, "").strip()) for metric_id in metric_ids)
+        present = [metric_id for metric_id in metric_ids if row.get(metric_id, "").strip()]
+        complete = len(present)
         current = places.get(place_id)
         if current is None:
             places[place_id] = {
@@ -361,12 +363,12 @@ def _catalog(rows: list[dict[str, str]], metric_ids: tuple[str, ...]) -> list[Ca
                 "name": row["place_name"].strip(),
                 "state": row["state"].strip().upper(),
                 "complete_metrics": complete,
+                "present_metrics": present,
                 "total_metrics": len(metric_ids),
             }
         else:
-            current["complete_metrics"] = min(
-                len(metric_ids), current["complete_metrics"] + complete
-            )
+            current["present_metrics"] = sorted(set(current["present_metrics"]) | set(present))
+            current["complete_metrics"] = len(current["present_metrics"])
     return sorted(places.values(), key=lambda place: (place["state"], place["name"]))
 
 
@@ -690,7 +692,8 @@ def create_app(
         if hosted_demo:
             raise HTTPException(status_code=404, detail="the hosted site has no application API")
         with bundled_benchmark() as (evidence_path, config_dir):
-            metric_ids = tuple(metric.id for metric in load_metrics(config_dir))
+            metric_definitions = load_metrics(config_dir)
+            metric_ids = tuple(metric.id for metric in metric_definitions)
             fieldnames, rows = _read_evidence(evidence_path.read_text(encoding="utf-8"), metric_ids)
             profile = yaml.safe_load(
                 (config_dir / "user_profile.example.yaml").read_text(encoding="utf-8")
@@ -702,6 +705,10 @@ def create_app(
             "places": _catalog(rows, metric_ids),
             "metric_count": len(metric_ids),
             "metrics": list(metric_ids),
+            "metric_details": [
+                {"id": metric.id, "name": metric.name, "critical": metric.critical}
+                for metric in metric_definitions
+            ],
             "defaults": {
                 "purchase_budget_max": profile["purchase_budget_max"],
                 "future_self_age": profile["future_self_ages"][1],
@@ -726,6 +733,7 @@ def create_app(
                     "label": place.label,
                     "population": place.population,
                     "serving_eligible": place.serving_eligible,
+                    "values": place.values,
                 }
                 for place in service.catalog.lookup(query, limit)
             ]

@@ -170,6 +170,7 @@ def test_exemplar_is_never_recommended_and_catalog_partition_holds(
     assert (
         diagnostics["serving_places"]
         - diagnostics["serving_exemplar_count"]
+        - diagnostics["user_excluded_count"]
         - diagnostics["excluded_any_constraint_count"]
         - diagnostics["insufficient_match_data_count"]
         == diagnostics["recommendable_count"]
@@ -591,3 +592,29 @@ def test_a_discovery_record_cannot_become_an_observation(service: DiscoveryServi
         ObservationRecord.model_validate(
             {"place": {"place_id": "A", "name": "Alpha", "state": "NC"}, **component}
         )
+
+
+def test_user_excluded_places_are_removed_and_counted(service: DiscoveryService) -> None:
+    result = service.search(SearchProfile(exemplars=("EX",), exclude_places=("A", "B")))
+    diagnostics = result["diagnostics"]
+
+    assert ids(result) == ["Y", "Z", "H", "C", "D"]
+    assert diagnostics["user_excluded_count"] == 2
+    assert (
+        diagnostics["serving_places"]
+        - diagnostics["serving_exemplar_count"]
+        - diagnostics["user_excluded_count"]
+        - diagnostics["excluded_any_constraint_count"]
+        - diagnostics["insufficient_match_data_count"]
+        == diagnostics["recommendable_count"]
+    )
+    assert result["profile"]["exclude_places"] == ["A", "B"]
+
+
+def test_unknown_or_example_excluded_places_are_rejected(service: DiscoveryService) -> None:
+    with pytest.raises(ProfileError, match="unknown excluded town"):
+        service.search(SearchProfile(exemplars=("EX",), exclude_places=("nope",)))
+    with pytest.raises(ValidationError):
+        SearchProfile(exemplars=("EX",), exclude_places=("EX",))
+    with pytest.raises(ValidationError):
+        SearchProfile(exclude_places=("A", "A"))

@@ -27,6 +27,9 @@ def test_installed_wheel_runs_benchmark_outside_checkout(tmp_path: Path) -> None
     assert "lifescape/static/landing.js" in packaged_files
     assert "lifescape/static/app.css" in packaged_files
     assert "lifescape/static/app.js" in packaged_files
+    assert "lifescape/static/scenario.js" in packaged_files
+    assert "lifescape/data/place-catalog.csv.gz" in packaged_files
+    assert "lifescape/data/place-catalog.manifest.json" in packaged_files
     outside_checkout = tmp_path / "elsewhere"
     outside_checkout.mkdir()
     output_dir = outside_checkout / "output"
@@ -53,6 +56,29 @@ def test_installed_wheel_runs_benchmark_outside_checkout(tmp_path: Path) -> None
     )
 
     assert completed.stdout.strip()
+
+    discovery = subprocess.run(
+        [
+            "uv",
+            "run",
+            "--isolated",
+            "--with",
+            str(wheel),
+            "--",
+            "python",
+            "-c",
+            "from lifescape.discovery import *;"
+            "c=load_catalog();p=c.lookup('Traverse City, MI')[0];"
+            "r=DiscoveryService(c).search(SearchProfile(exemplars=(p.place_id,)));"
+            "print(len(r['recommendations']))",
+        ],
+        cwd=outside_checkout,
+        env=process_environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert discovery.stdout.strip() == "10"
     assert (output_dir / "comparison.md").is_file()
     assert (output_dir / "benchmark.sqlite").is_file()
 

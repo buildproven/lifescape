@@ -77,96 +77,285 @@ def running_app(
         thread.join(timeout=5)
 
 
-@pytest.mark.parametrize(
-    "viewport", [{"width": 390, "height": 844}, {"width": 1440, "height": 1000}]
-)
-def test_user_completes_guided_comparison(tmp_path: Path, viewport: dict[str, int]) -> None:
-    reviewed_fixture = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
-    browser_errors: list[str] = []
+VIEWPORTS = [{"width": 390, "height": 844}, {"width": 1440, "height": 1000}]
+
+
+def start_search(page: Page, example: str = "Traverse City", *, limits: bool = False) -> None:
+    """Choose an example town; optionally continue to the boundaries step."""
+    page.get_by_label("Towns you like (up to two)").fill(example)
+    page.get_by_role("button", name="Use as example").first.click()
+    page.get_by_text("Ready: searching on 6 qualities.").wait_for()
+    if limits:
+        page.get_by_role("button", name="Set boundaries first").click()
+
+
+def find_places(page: Page) -> None:
+    page.get_by_role("button", name="Find places").click()
+    page.locator(".match-card").first.wait_for()
+
+
+def keep(page: Page, count: int) -> None:
+    for _ in range(count):
+        page.locator(
+            "#match-list .decision-button[data-decision=keep][aria-pressed=false]"
+        ).first.click()
+
+
+def fits_viewport(page: Page) -> bool:
+    return page.evaluate(
+        "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+    )
+
+
+def watch_errors(page: Page) -> list[str]:
+    errors: list[str] = []
+    page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    return errors
+
+
+@pytest.mark.parametrize("viewport", VIEWPORTS)
+def test_discovery_journey_from_example_town_to_recovered_shortlist(
+    tmp_path: Path, viewport: dict[str, int]
+) -> None:
     with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        page: Page = browser.new_page(viewport=viewport)
-        page.on(
-            "console",
-            lambda message: (
-                browser_errors.append(message.text) if message.type == "error" else None
-            ),
-        )
+        page = browser.new_page(viewport=viewport)
+        errors = watch_errors(page)
         page.goto(url)
 
-        page.get_by_role("heading", name="Shape the decision").wait_for()
-        assert page.get_by_role("button", name="Find research leads ↗").count() == 0
-        page.locator("#evidence-file").set_input_files(
-            {
-                "name": "reviewed-synthetic.csv",
-                "mimeType": "text/csv",
-                "buffer": reviewed_fixture.encode(),
-            }
-        )
-        page.wait_for_function(
-            "() => document.querySelector('#dataset-meta')"
-            ".textContent.includes('synthetic evidence')"
-        )
-        page.get_by_role("button", name="Choose towns →").click()
-        page.get_by_role("heading", name="Choose a meaningful field").wait_for()
-        page.get_by_role("button", name="Review evidence →").click()
-        page.get_by_text("99%").wait_for()
-        page.get_by_role("button", name="Run comparison →").click()
+        page.get_by_role("heading", name="Tell us what feels right").wait_for()
+        # FR1: Find places is the primary action; CSV import is not on the first screen.
+        assert page.get_by_role("button", name="Find places").is_disabled()
+        assert page.get_by_text("Choose an example town or set at least two qualities").is_visible()
+        assert page.get_by_text("verifies your finalists").is_visible()
+        assert page.get_by_role("button", name="Advanced evidence import").is_hidden()
+        start_search(page, limits=True)
+        page.get_by_label("Median home value no more than").fill("500000")
+        find_places(page)
 
-        page.get_by_role("heading", name="Williamsburg leads this field.").wait_for()
-        assert page.get_by_role("heading", name="Blocked, not hidden").is_visible()
-        assert page.get_by_role("link", name="Markdown report").is_visible()
-        assert page.get_by_role("link", name="SQLite provenance").is_visible()
-        assert page.get_by_role("button", name="Adjust comparison ↺").is_visible()
-        assert browser_errors == []
+        assert page.locator(".match-card").count() == 10
+        first = page.locator(".match-card").first
+        assert first.locator(".reason-list li").count() >= 2
+        assert first.locator(".trade-off").inner_text().strip()
+        assert page.get_by_text("Discovery, not proof").is_visible()
+        first.get_by_role("button", name="Why this place?").click()
+        assert first.get_by_text("not verified evidence").first.is_visible()
+        assert first.get_by_text("Discovery data").first.is_visible()
+        assert fits_viewport(page)
+
+        keep(page, 3)
+        assert page.locator("#kept-count").inner_text() == "3"
+        kept_names = page.locator(
+            "#match-list .match-card:has(.decision-button[aria-pressed=true]) h3"
+        ).all_inner_texts()
+        assert len(kept_names) == 3
+
+        page.reload()
+        page.get_by_role("heading", name="Tell us what feels right").wait_for()
+        assert page.get_by_text("Traverse City, MI").first.is_visible()
+        page.locator(".step-link[data-step-target=shortlist]").click()
+        page.locator("#shortlist-list .match-card").first.wait_for()
+        recovered = page.locator("#shortlist-list .match-card h3").all_inner_texts()
+        assert recovered == kept_names
+        assert page.locator("#shortlist-count").inner_text() == "3"
+        assert page.get_by_text("Your shortlist is ready for verification.").is_visible()
+        assert fits_viewport(page)
+        assert errors == []
         browser.close()
 
 
-def test_user_keeps_mixed_evidence_warning_after_scoring(tmp_path: Path) -> None:
-    evidence = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
-    mixed_evidence = evidence.replace(",true,", ",false,", 1)
-    browser_errors: list[str] = []
+def test_discovery_rerun_explains_movement_and_replaces_rejected_towns(tmp_path: Path) -> None:
     with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 390, "height": 844})
-        page.on(
-            "console",
-            lambda message: (
-                browser_errors.append(message.text) if message.type == "error" else None
-            ),
-        )
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        errors = watch_errors(page)
         page.goto(url)
-        page.get_by_role("heading", name="Shape the decision").wait_for()
+        start_search(page)
+        find_places(page)
+        first_name = page.locator(".match-card h3").first.inner_text()
+        page.locator(".match-card").first.get_by_role("button", name="Not for me").click()
+
+        page.get_by_role("button", name="Back").click()
+        page.get_by_role("button", name="Find places").click()
+        page.locator(".match-card .movement:not(:empty)").first.wait_for()
+
+        names = page.locator(".match-card h3").all_inner_texts()
+        assert first_name not in names
+        assert len(names) == 10
+        assert "towns marked Not for me" in page.locator("#match-list").inner_text()
+        assert errors == []
+        browser.close()
+
+
+def test_discovery_blocks_search_until_two_qualities_exist_and_flags_small_towns(
+    tmp_path: Path,
+) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+        page.get_by_label("Towns you like (up to two)").fill("Abanda")
+        page.get_by_text("Examples need a population of 2,500 or more.").first.wait_for()
+        assert page.get_by_role("button", name="Use as example").first.is_disabled()
+        assert page.get_by_role("button", name="Find places").is_disabled()
+        browser.close()
+
+
+def test_discovery_recovers_from_a_malformed_saved_search(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        errors = watch_errors(page)
+        page.goto(url)
+        page.evaluate(
+            "localStorage.setItem('lifescape.scenario', "
+            '\'{"schema_version": 1, "profile": {}, "shortlist": "oops"}\')'
+        )
+        page.reload()
+        banner = page.locator("#scenario-banner:not([hidden])")
+        banner.wait_for()
+        assert "could not be opened" in banner.inner_text().lower()
+        assert page.evaluate("localStorage.getItem('lifescape.scenario.backup')") is not None
+        assert page.locator("#quality-list .quality-row").count() == 6
+        banner.get_by_role("button", name="Start fresh").click()
+        assert page.evaluate("localStorage.getItem('lifescape.scenario')") is None
+        page.evaluate("localStorage.setItem('lifescape.scenario', '{not json')")
+        page.reload()
+        page.locator("#scenario-banner:not([hidden])").wait_for()
+        assert "could not be opened" in page.locator("#scenario-banner").inner_text().lower()
+        page.evaluate(
+            "localStorage.setItem('lifescape.scenario', JSON.stringify({schema_version: 2}))"
+        )
+        page.reload()
+        assert "unsupported schema version" in page.locator("#scenario-banner").inner_text().lower()
+        assert errors == []
+        browser.close()
+
+
+def test_discovery_keeps_an_older_catalog_snapshot_readable(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+        start_search(page)
+        find_places(page)
+        keep(page, 1)
+        page.evaluate(
+            """() => {
+                const saved = JSON.parse(localStorage.getItem('lifescape.scenario'));
+                saved.result.catalog_version = 'older-catalog-v0';
+                localStorage.setItem('lifescape.scenario', JSON.stringify(saved));
+            }"""
+        )
+        page.reload()
+        page.locator(".step-link[data-step-target=matches]").click()
+        assert page.locator("#stale-banner").is_visible()
+        assert "older-catalog-v0" in page.locator("#stale-copy").inner_text()
+        assert page.locator("#match-list .match-card").count() == 10
+        browser.close()
+
+
+def test_discovery_adds_a_small_town_manually_and_exports_json(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+        start_search(page)
+        find_places(page)
+        page.get_by_role("button", name="Review shortlist").click()
+        page.get_by_label("Add a town yourself").fill("Abanda")
+        page.get_by_role("button", name="Add manually").first.click()
+        page.get_by_text("Added by hand.").wait_for()
+        assert "under 2,500" in page.locator("#shortlist-list").inner_text()
+        with page.expect_download() as download:
+            page.get_by_role("button", name="Export search as JSON").click()
+        assert download.value.suggested_filename == "lifescape-search.json"
+        page.get_by_role("button", name="Start over").click()
+        page.get_by_role("button", name="Confirm: clear my search and shortlist").click()
+        page.get_by_role("heading", name="Tell us what feels right").wait_for()
+        assert page.evaluate("localStorage.getItem('lifescape.scenario')") is None
+        browser.close()
+
+
+def test_evidence_handoff_runs_only_with_reviewed_evidence(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        errors = watch_errors(page)
+        page.goto(url)
+        start_search(page)
+        find_places(page)
+        # Williamsburg, VA is the first match and also a synthetic benchmark town.
+        keep(page, 1)
+        page.get_by_role("button", name="Review shortlist").click()
+        assert page.get_by_role("button", name="Verify finalists").is_disabled()
+        page.get_by_label("Add a town yourself").fill("Abanda")
+        page.get_by_role("button", name="Add manually").first.click()
+        page.get_by_role("button", name="Verify finalists").click()
+
+        page.get_by_role("heading", name="Test your finalists with evidence").wait_for()
+        rows = page.locator(".handoff-row")
+        assert rows.count() == 2
+        assert "metrics provided" in rows.nth(0).inner_text()
+        assert "No reviewed evidence for this town yet" in rows.nth(1).inner_text()
+        rows.nth(1).locator("summary").click()
+        assert rows.nth(1).locator(".metric-list li.is-absent").count() == 17
+        assert rows.nth(1).locator(".metric-list .tag", has_text="Critical").count() >= 1
+        # A discovery record alone cannot enable the comparison: only one town has evidence.
+        assert page.get_by_role("button", name="Run comparison").is_disabled()
+        assert "at least two" in page.locator("#action-hint").inner_text()
+        page.locator(".step-link[data-step-target=shortlist]").click()
+        page.get_by_label("Add a town yourself").fill("Lake Geneva")
+        page.get_by_role("button", name="Add manually").first.click()
+        page.get_by_role("button", name="Verify finalists").click()
+        page.locator(".handoff-row").nth(2).wait_for()
+        assert page.get_by_text("2 of 3 ready to compare").is_visible()
+        page.get_by_role("button", name="Run comparison").click()
+
+        page.locator("#result-lead h2").wait_for()
+        assert page.locator("#synthetic-notice").is_visible()
+        assert "synthetic" in page.locator("#synthetic-notice").inner_text()
+        assert page.get_by_role("link", name="SQLite provenance").is_visible()
+        assert errors == []
+        browser.close()
+
+
+def test_advanced_evidence_import_runs_without_discovery(tmp_path: Path) -> None:
+    evidence = Path("data/benchmarks/evidence.csv").read_text(encoding="utf-8")
+    mixed_evidence = evidence.replace(",true,", ",false,", 1)
+    errors: list[str] = []
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[0])
+        page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+        page.goto(url)
+        page.get_by_role("heading", name="Tell us what feels right").wait_for()
+        assert page.locator(".step-link[data-step-target=verify]").is_disabled()
+        page.get_by_role("button", name="I already have a shortlist and reviewed evidence").click()
+        page.get_by_role("heading", name="Test your finalists with evidence").wait_for()
         page.locator("#evidence-file").set_input_files(
-            {
-                "name": "oversized.csv",
-                "mimeType": "text/csv",
-                "buffer": b"x" * 5_000_001,
-            }
+            {"name": "oversized.csv", "mimeType": "text/csv", "buffer": b"x" * 5_000_001}
         )
         page.get_by_text("Evidence CSV exceeds the 5 MB local-app limit.").wait_for()
         page.locator("#evidence-file").set_input_files(
-            {
-                "name": "mixed.csv",
-                "mimeType": "text/csv",
-                "buffer": mixed_evidence.encode(),
-            }
+            {"name": "mixed.csv", "mimeType": "text/csv", "buffer": mixed_evidence.encode()}
         )
         page.wait_for_function(
             "() => document.querySelector('#dataset-meta').textContent.includes('mixed evidence')"
         )
-        page.get_by_role("button", name="Choose towns →").click()
-        page.get_by_role("button", name="Review evidence →").click()
-        page.get_by_role("button", name="Run comparison →").click()
-        page.get_by_role("heading", name="Williamsburg leads this field.").wait_for()
+        page.locator(".step-link[data-step-target=verify]").click()
+        page.get_by_text("From your imported evidence").wait_for()
+        for name in ("Williamsburg", "Lake Geneva"):
+            page.locator(".town-row", has_text=name).locator("input").check(force=True)
+        page.get_by_role("button", name="Run comparison").click()
+        page.locator("#result-lead h2").wait_for()
         warning = (
             "This run contains synthetic values. Treat its results as test output, "
             "not purchase research."
         )
-        notice = page.locator("#synthetic-notice")
-        assert notice.is_visible()
-        assert warning in notice.inner_text()
-        assert browser_errors == []
+        assert warning in page.locator("#synthetic-notice").inner_text()
+        assert errors == []
         browser.close()
 
 
@@ -359,4 +548,48 @@ def test_finished_demo_small_text_meets_contrast_requirement(tmp_path: Path) -> 
             assert len(color) >= 3
             foreground = tuple(int(channel) for channel in color[:3])
             assert contrast_ratio(foreground, (241, 238, 229)) >= 4.5
+        browser.close()
+
+
+@pytest.mark.parametrize("viewport", VIEWPORTS)
+def test_discovery_journey_is_keyboard_labelled_and_announced(
+    tmp_path: Path, viewport: dict[str, int]
+) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=viewport)
+        page.goto(url)
+        start_search(page, limits=True)
+
+        unlabeled = page.evaluate(
+            """() => [...document.querySelectorAll(
+                '.stage.is-active input, .stage.is-active select, .stage.is-active button'
+            )].filter(el => el.type !== 'hidden' && !el.hidden && el.offsetParent !== null)
+              .filter(el => !(el.labels?.length || el.getAttribute('aria-label')
+                  || el.textContent.trim()))
+              .map(el => el.outerHTML.slice(0, 80))"""
+        )
+        assert unlabeled == []
+        page.get_by_label("Median home value at least").focus()
+        page.keyboard.type("100000")
+        page.get_by_role("button", name="Find places").focus()
+        page.keyboard.press("Enter")
+        page.locator(".match-card").first.wait_for()
+        assert page.evaluate("document.activeElement.id") == "step-title"
+        assert page.locator("#match-summary").get_attribute("role") == "status"
+        decision = page.locator(".decision-button[data-decision=keep]").first
+        decision.focus()
+        page.keyboard.press("Enter")
+        assert (
+            page.locator(".decision-button[data-decision=keep]").first.get_attribute("aria-pressed")
+            == "true"
+        )
+        assert page.evaluate("document.activeElement.dataset.decision") == "keep"
+        toggle = page.locator(".why-toggle").first
+        toggle.focus()
+        page.keyboard.press("Enter")
+        assert toggle.get_attribute("aria-expanded") == "true"
+        assert page.locator(".why-slot").first.is_visible()
+        outline = toggle.evaluate("el => getComputedStyle(el).outlineStyle")
+        assert outline != "none"
         browser.close()

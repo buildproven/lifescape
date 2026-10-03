@@ -110,6 +110,7 @@ class SearchProfile(DiscoveryModel):
     """What the household likes (exemplars, targets), requires (constraints), and weights."""
 
     exemplars: tuple[str, ...] = Field(default=(), max_length=2)
+    exclude_places: tuple[str, ...] = Field(default=(), max_length=200)
     targets: dict[ScoredField, float] = Field(default_factory=dict)
     priorities: dict[ScoredField, int] = Field(default_factory=dict)
     hard_constraints: tuple[HardConstraint, ...] = Field(default=(), max_length=12)
@@ -136,11 +137,11 @@ class SearchProfile(DiscoveryModel):
                 raise ValueError(f"priority for {field} must be an integer from 1 to 5")
         return value
 
-    @field_validator("exemplars")
+    @field_validator("exemplars", "exclude_places")
     @classmethod
-    def exemplars_are_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+    def places_are_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         if len(set(value)) != len(value):
-            raise ValueError("exemplar towns must be distinct")
+            raise ValueError("towns must be distinct")
         return value
 
     @field_validator("include_states", "exclude_states")
@@ -164,6 +165,8 @@ class SearchProfile(DiscoveryModel):
         ids = [constraint.constraint_id for constraint in self.hard_constraints]
         if len(set(ids)) != len(ids):
             raise ValueError("each hard constraint may be set once per field and operator")
+        if set(self.exemplars) & set(self.exclude_places):
+            raise ValueError("an example town cannot also be excluded")
         if set(self.include_states) & set(self.exclude_states):
             raise ValueError("a state cannot be both included and excluded")
         if set(self.include_regions) & set(self.exclude_regions):
@@ -526,6 +529,11 @@ class DiscoveryService:
         total_weight = sum(target["weight"] for target in resolved.values())
         constraint_ids = self._constraint_ids(profile)
         exemplar_ids = {place.place_id for place in exemplars}
+        unknown_excluded = sorted(set(profile.exclude_places) - set(self.catalog.places))
+        if unknown_excluded:
+            raise ProfileError(f"unknown excluded town: {', '.join(unknown_excluded)}")
+        user_excluded_ids = set(profile.exclude_places)
+        user_excluded = 0
 
         serving = self.catalog.serving_places
         missing_population = sum(1 for p in self.catalog.places.values() if p.population is None)
@@ -544,6 +552,9 @@ class DiscoveryService:
 
         for place in serving:
             if place.place_id in exemplar_ids:
+                continue
+            if place.place_id in user_excluded_ids:
+                user_excluded += 1
                 continue
             failed, unknown = self._check_constraints(place, profile)
             for constraint_id in failed:
@@ -608,6 +619,7 @@ class DiscoveryService:
                 "catalog_places": len(self.catalog.places),
                 "serving_places": len(serving),
                 "serving_exemplar_count": serving_exemplars,
+                "user_excluded_count": user_excluded,
                 "missing_population_count": missing_population,
                 "below_minimum_population_count": below_minimum,
                 "known_constraint_exclusions": [
@@ -634,6 +646,7 @@ class DiscoveryService:
                 {"place_id": p.place_id, "name": p.name, "state": p.state, "label": p.label}
                 for p in exemplars
             ],
+            "exclude_places": sorted(profile.exclude_places),
             "targets": [
                 {
                     "field": field,
