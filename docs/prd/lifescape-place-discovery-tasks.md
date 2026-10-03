@@ -65,14 +65,14 @@
   - [x] 5.3 Keep the run action disabled until admissible evidence exists for at least two towns.
   - [x] 5.4 Test shortlist handoff and the discovery/evidence authority boundary.
   - [x] 5.5 Run the evidence-backed affected tests; if green, commit.
-- [ ] 6.0 Align explanation, documentation, and release evidence
+- [x] 6.0 Align explanation, documentation, and release evidence
   - Delivers: the README and hosted synthetic example explain the same discovery-first product,
     and the exact candidate passes the repository's complete delivery workflow.
   - Blocked by: 5.0.
   - Verification: AC1 and AC7–AC9, independent review, exact-head CI, and merged-main CI.
   - [x] 6.1 Update README, local-app specification, implementation plan, limitations, architecture,
     API inventory, and hosted synthetic copy with PRD traces.
-  - [ ] 6.2 Update BUI-334 with requirement, test, and delivery evidence.
-  - [ ] 6.3 Run the full quality, security, benchmark, and package matrix.
-  - [ ] 6.4 Run independent review, resolve findings, and merge the exact reviewed head.
-  - [ ] 6.5 Verify merged-main CI and clean exact repository convergence.
+  - [x] 6.2 Update BUI-334 with requirement, test, and delivery evidence.
+  - [x] 6.3 Run the full quality, security, benchmark, and package matrix.
+  - [x] 6.4 Run independent review, resolve findings, and merge the exact reviewed head.
+  - [x] 6.5 Verify merged-main CI and clean exact repository convergence.
