@@ -22,6 +22,8 @@ from lifescape.pipeline import execute_run
 from lifescape.research_report import build_research_cards, write_research_report
 from lifescape.resources import bundled_benchmark
 
+DEFAULT_APP_OUTPUT_DIR = Path.home() / "Lifescape"
+
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 
 
@@ -307,7 +309,7 @@ def benchmark(
 @app.command("app")
 def app_command(
     port: Annotated[int, typer.Option(min=1024, max=65535)] = 8765,
-    output_dir: Annotated[Path, typer.Option()] = Path("outputs/app"),
+    output_dir: Annotated[Path, typer.Option()] = DEFAULT_APP_OUTPUT_DIR,
     no_open: Annotated[bool, typer.Option("--no-open")] = False,
 ) -> None:
     """Open the guided local browser workspace."""

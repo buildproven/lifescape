@@ -23,7 +23,7 @@ const state = {
 
 const stepOrder = ["feel", "limits", "matches", "shortlist", "verify", "results"];
 const stepCopy = {
-  feel: ["Step 1 of 5", "Tell us what feels right"],
+  feel: ["Step 1 of 5", "Where might you want to live?"],
   limits: ["Step 2 of 5", "Set your boundaries"],
   matches: ["Step 3 of 5", "Explore your matches"],
   shortlist: ["Step 4 of 5", "Shape your shortlist"],
@@ -32,6 +32,34 @@ const stepCopy = {
 };
 const railStep = { results: "verify" };
 const DECISION_LABELS = { keep: "Keep", reject: "Not for me", unsure: "Unsure" };
+// One-tap styles for people without a favorite town. Each value is a position (0 = low end,
+// 1 = high end) within the catalog's typical range for that quality.
+const STYLES = [
+  {
+    id: "affordable",
+    label: "Affordable and quiet",
+    targets: { median_home_value: 0.15, population_density: 0.1, population: 0.3 },
+  },
+  {
+    id: "lively",
+    label: "Lively and walkable",
+    targets: {
+      population_density: 0.85,
+      car_light_commute_share: 0.85,
+      college_educated_share: 0.7,
+    },
+  },
+  {
+    id: "college",
+    label: "College town",
+    targets: { college_educated_share: 0.9, population: 0.5, car_light_commute_share: 0.6 },
+  },
+  {
+    id: "retiree",
+    label: "Retiree-friendly",
+    targets: { older_adult_share: 0.85, median_home_value: 0.4, population_density: 0.35 },
+  },
+];
 const PRIORITY_LABELS = [
   "",
   "1 · Nice to have",
@@ -239,13 +267,17 @@ function buildRequest() {
 function updateTargetSummary() {
   const count = resolvedTargets().length;
   const ready = count >= 2;
+  const names = profile().exemplars.map((item) => item.label);
+  const style = STYLES.find((item) => item.id === profile().style);
+  const basis = [...names, ...(style ? [style.label] : [])].join(" and ");
   $("#target-summary").textContent = ready
-    ? `Ready: searching on ${count} qualities.`
-    : `Choose an example town or set at least two qualities to search. Currently ${count}.`;
+    ? `Ready${basis ? `: looking for towns like ${basis}` : ""}. Comparing ${count} qualities.`
+    : "Pick a town you like or a style above to begin.";
   $("#target-summary").classList.toggle("is-ready", ready);
+  $("#fine-tune-count").textContent = count ? `(${count} qualities in use)` : "";
   if (state.step === "feel" || state.step === "limits") {
     $("#next-button").disabled = !ready;
-    setHint(ready ? "" : "Search needs at least two qualities to compare.");
+    setHint(ready ? "" : "Pick a town or a style first.");
   }
   return ready;
 }
@@ -334,13 +366,58 @@ function addExemplar(placeId) {
   state.exemplarMatches = [];
   persist();
   renderFeel();
-  toast(`${place.label} added as an example.`);
 }
 
 function removeExemplar(placeId) {
   profile().exemplars = profile().exemplars.filter((item) => item.place_id !== placeId);
   persist();
   renderFeel();
+}
+
+/* ---------- styles and quick start ---------- */
+
+function applyStyle(styleId) {
+  const modes = { ...profile().modes };
+  const previous = STYLES.find((item) => item.id === profile().style);
+  for (const field of Object.keys(previous?.targets ?? {})) {
+    delete modes[field];
+    delete profile().targets[field];
+  }
+  const chosen = profile().style === styleId ? null : STYLES.find((item) => item.id === styleId);
+  profile().style = chosen ? chosen.id : null;
+  for (const [field, position] of Object.entries(chosen?.targets ?? {})) {
+    const meta = fieldMeta(field);
+    modes[field] = "custom";
+    profile().targets[field] = Number(
+      (meta.lower + position * (meta.upper - meta.lower)).toFixed(2)
+    );
+  }
+  profile().modes = modes;
+  persist();
+  renderFeel();
+}
+
+function renderStyles() {
+  $("#style-choices").innerHTML = STYLES.map(
+    (item) =>
+      `<button type="button" class="style-button" data-style="${item.id}" aria-pressed="${profile().style === item.id}">${escapeHtml(item.label)}</button>`
+  ).join("");
+  $$("#style-choices button").forEach((button) =>
+    button.addEventListener("click", () => applyStyle(button.dataset.style))
+  );
+}
+
+async function tryExample() {
+  try {
+    const [place] = await lookup("Traverse City, MI", 1);
+    state.exemplarMatches = [place];
+    if (!profile().exemplars.some((item) => item.place_id === place.place_id)) {
+      addExemplar(place.place_id);
+    }
+    await runSearch();
+  } catch (error) {
+    toast(error.message);
+  }
 }
 
 /* ---------- step 1 and 2 rendering ---------- */
@@ -355,6 +432,7 @@ function renderFeel() {
   $$("#exemplar-chips button").forEach((button) =>
     button.addEventListener("click", () => removeExemplar(button.dataset.remove))
   );
+  renderStyles();
   renderQualities();
   updateTargetSummary();
 }
@@ -368,9 +446,9 @@ function qualityRow(item) {
   const target = profile().targets[field] ?? (lower + upper) / 2;
   const step = Math.max((upper - lower) / 200, 0.01);
   const options = [];
-  if (exemplarValues.length) options.push(["example", "Like my example"]);
-  options.push(["custom", "A value I choose"]);
-  if (!exemplarValues.length) options.unshift(["off", "Not part of my search"]);
+  if (exemplarValues.length) options.push(["example", "my example town"]);
+  options.push(["custom", "a level I choose"]);
+  if (!exemplarValues.length) options.unshift(["off", "not used"]);
   const exampleText = exemplarValues
     .map((exemplar) => `${exemplar.label}: ${formatValue(item.unit, exemplar.values[field])}`)
     .join(" · ");
@@ -378,7 +456,7 @@ function qualityRow(item) {
   return `<div class="quality-row" data-field="${escapeHtml(field)}">
     <div class="quality-head"><strong>${escapeHtml(item.label)}</strong>
       <small>${escapeHtml(exampleText || item.unit)}</small></div>
-    <label class="mini-field"><span>Aim for</span>
+    <label class="mini-field"><span>Match</span>
       <select data-role="mode">${options
         .map(
           ([value, label]) =>
@@ -969,6 +1047,32 @@ function updateVerifyAction(none = false) {
   );
 }
 
+/* ---------- research checklist ---------- */
+
+function researchChecklist() {
+  const critical = state.evidence.metricDetails.filter((metric) => metric.critical);
+  const lines = ["# Lifescape research checklist", ""];
+  lines.push(
+    "Matches come from public Census data and show where to look. Confirm each critical fact below",
+    "from a source you trust before relying on a town. Lifescape never guesses a missing value.",
+    ""
+  );
+  for (const entry of scenario().shortlist) {
+    lines.push(`## ${entry.label}`);
+    const rec = entry.recommendation;
+    if (rec) {
+      lines.push(`Discovery match: ${rec.match_percent}% (not verified evidence)`);
+      for (const field of rec.fields) {
+        lines.push(`- ${field.label}: ${formatValue(field.unit, field.candidate_value)}`);
+      }
+    }
+    lines.push("", "Confirm:");
+    for (const metric of critical) lines.push(`- [ ] ${metric.name}`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 /* ---------- navigation ---------- */
 
 function canVisit(step) {
@@ -1078,12 +1182,20 @@ function onBack() {
 
 /* ---------- evidence run and results (existing engine flow) ---------- */
 
+function updateSettingsSummary() {
+  const age = document.querySelector("input[name=age]:checked")?.value;
+  const household = document.querySelector("input[name=household]:checked")?.value;
+  $("#settings-summary").textContent =
+    `(${money.format(Number($("#budget").value))} budget · age ${age} · ${household})`;
+}
+
 function updateBudget() {
   const input = $("#budget");
   const percentage =
     ((Number(input.value) - Number(input.min)) / (Number(input.max) - Number(input.min))) * 100;
   input.style.setProperty("--range-progress", `${percentage}%`);
   $("#budget-output").textContent = money.format(Number(input.value));
+  updateSettingsSummary();
 }
 
 function renderInspector(place) {
@@ -1285,6 +1397,9 @@ async function initialize() {
   }
 }
 
+$$("input[name=age], input[name=household]").forEach((input) =>
+  input.addEventListener("change", updateSettingsSummary)
+);
 $("#budget").addEventListener("input", () => {
   state.budgetTouched = true;
   updateBudget();
@@ -1320,6 +1435,17 @@ $("#reset-button").addEventListener("click", (event) => {
   }, 6000);
 });
 $("#limits-link").addEventListener("click", () => setStep("limits"));
+$("#try-example").addEventListener("click", tryExample);
+$("#checklist-button").addEventListener("click", () => {
+  const url = URL.createObjectURL(new Blob([researchChecklist()], { type: "text/markdown" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "lifescape-research-checklist.md";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+});
 $("#advanced-link").addEventListener("click", () => {
   state.advancedOpen = true;
   setStep("verify");

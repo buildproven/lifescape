@@ -17,22 +17,27 @@ current vertical implementation sequence.
 
 ## Quick start
 
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (one command to install:
+`curl -LsSf https://astral.sh/uv/install.sh | sh`). Then run Lifescape straight from GitHub, with
+no clone or build:
 
 ```bash
-uv build                                              # or use a released wheel
-uv tool install dist/lifescape-0.1.0-py3-none-any.whl
-lifescape app
+uvx --from git+https://github.com/buildproven/lifescape lifescape app
 ```
 
-The command opens a private workspace at `http://127.0.0.1:8765`. Nothing leaves your computer:
-the place catalog is packaged with the app, searches run locally, and your shortlist is saved only
-in your browser. See the [user guide](docs/user-guide.md) for a five-minute walkthrough.
+Your browser opens a private workspace at `http://127.0.0.1:8765`. Reports you generate are saved
+in a `Lifescape` folder in your home directory (`--output-dir` changes it). Nothing leaves your
+computer: the place catalog is packaged with the app, searches run locally, and your shortlist is
+saved only in your browser. See the [user guide](docs/user-guide.md) for a five-minute walkthrough.
+
+To keep it installed instead: `uv tool install git+https://github.com/buildproven/lifescape`, then
+run `lifescape app`.
 
 The journey is:
 
-1. **Preferences.** Pick one or two towns you like and say how much each quality matters.
-2. **Boundaries** (optional). Set limits such as a price ceiling or regions to avoid.
+1. **Start.** Type a town you like, tap **Try it with Traverse City, MI**, or pick a style such as
+   "Lively and walkable". Fine-tune is optional.
+2. **Limits** (optional). Set a price ceiling, regions to avoid, or other limits.
 3. **Matches.** Read ten explainable town matches with their reasons, biggest trade-off, and
    unknowns. Mark each Keep, Not for me, or Unsure.
 4. **Shortlist.** Keep at least three towns, add any town by hand, and export your search.

@@ -56,7 +56,7 @@
         <header class="workspace-header">
           <div>
             <span class="eyebrow" id="step-eyebrow">Step 1 of 5</span>
-            <h1 id="step-title" tabindex="-1">Tell us what feels right</h1>
+            <h1 id="step-title" tabindex="-1">Where might you want to live?</h1>
           </div>
           <div class="dataset-control" id="catalog-meta" aria-live="polite"></div>
         </header>
@@ -68,51 +68,57 @@
           <p>These values are invented to test the method. They are not purchase research.</p>
         </div>
 
-        <section class="stage is-active" data-stage="feel" aria-labelledby="feel-heading">
-          <div class="stage-intro">
-            <h2 id="feel-heading">Start with towns you already like</h2>
-            <p>
-              Lifescape finds candidate towns that resemble your examples and your wishes, then
-              verifies your finalists with reviewed evidence. Choose one or two example towns, set
-              what you want, or both.
+        <section class="stage is-active" data-stage="feel" aria-labelledby="step-title">
+          <p class="lead">
+            Lifescape finds towns like the ones you love, then checks your finalists against
+            evidence before you decide. Start with a town you like, or pick a style.
+          </p>
+
+          <div class="field field-wide start-card">
+            <label for="exemplar-search">A town you already like</label>
+            <div id="exemplar-chips" class="chip-row" aria-live="polite"></div>
+            <input
+              id="exemplar-search"
+              type="search"
+              autocomplete="off"
+              placeholder="Type a town, for example Traverse City"
+              aria-describedby="exemplar-help"
+            />
+            <p class="field-help" id="exemplar-help">
+              Add up to two. Towns need 2,500 or more people to be an example; smaller towns can
+              still go on your shortlist later.
             </p>
+            <div id="exemplar-results" class="lookup-results" aria-live="polite"></div>
+            <button class="text-button" id="try-example" type="button">
+              Not sure? Try it with Traverse City, MI →
+            </button>
           </div>
 
-          <div class="form-grid">
-            <div class="field field-wide">
-              <label for="exemplar-search">Towns you like (up to two)</label>
-              <div id="exemplar-chips" class="chip-row" aria-live="polite"></div>
-              <input
-                id="exemplar-search"
-                type="search"
-                autocomplete="off"
-                placeholder="Search a U.S. town, for example Traverse City, MI"
-                aria-describedby="exemplar-help"
-              />
-              <p class="field-help" id="exemplar-help">
-                Examples must have a population of 2,500 or more. Smaller towns can still be added
-                to your shortlist by hand.
-              </p>
-              <div id="exemplar-results" class="lookup-results" aria-live="polite"></div>
-            </div>
-
-            <div class="field field-wide">
-              <div class="field-heading">
-                <span class="field-title">What you want</span>
-              </div>
-              <p class="field-help">
-                An example town fills in what it can. Choose your own value for any quality, and say
-                how much it matters.
-              </p>
-              <div id="quality-list" class="quality-list"></div>
-              <p class="target-summary" id="target-summary" role="status"></p>
-            </div>
+          <div class="field field-wide start-card">
+            <span class="field-title" id="style-label">…or start from a style</span>
+            <div
+              class="style-row"
+              id="style-choices"
+              role="group"
+              aria-labelledby="style-label"
+            ></div>
           </div>
+
+          <p class="target-summary" id="target-summary" role="status"></p>
+
+          <details class="fine-tune" id="fine-tune">
+            <summary>Fine-tune what matters <span id="fine-tune-count"></span></summary>
+            <p class="field-help">
+              An example town fills in every quality it has. Choose a level yourself for any
+              quality, and say how much it matters. Most people can skip this.
+            </p>
+            <div id="quality-list" class="quality-list"></div>
+          </details>
+
           <div class="data-tools">
             <button class="text-button" id="limits-link" type="button">
-              Set boundaries first →
+              Set limits first (price, regions) →
             </button>
-            <span class="field-help">Optional: limits such as a price ceiling or regions.</span>
             <button class="text-button" id="advanced-link" type="button">
               I already have a shortlist and reviewed evidence
             </button>
@@ -150,6 +156,10 @@
             <div>
               <h2 id="matches-heading">Towns worth a closer look</h2>
               <p id="match-summary" role="status" aria-live="polite"></p>
+              <p class="field-help">
+                Tap <strong>Keep</strong> on towns you would look into. Aim for three. Tap
+                <strong>Not for me</strong> to drop one and get a replacement next search.
+              </p>
             </div>
             <div class="selection-count"><strong id="kept-count">0</strong><span>kept</span></div>
           </div>
@@ -201,67 +211,22 @@
           <div class="stage-intro">
             <h2 id="verify-heading">Test your finalists with evidence</h2>
             <p>
-              Discovery data cannot clear a requirement. A town is compared only when reviewed
-              evidence exists for it, and every missing critical value blocks it visibly.
+              This last step is a fact check. Matches show where to look; they cannot prove a town
+              meets your needs. Lifescape compares finalists only when reviewed evidence exists for
+              them, and never guesses a missing value. No evidence yet? Download the research
+              checklist and gather it first.
             </p>
           </div>
 
-          <div class="form-grid">
-            <div class="field field-wide">
-              <div class="field-heading">
-                <label for="budget">Maximum purchase budget</label>
-                <output id="budget-output" for="budget">$700,000</output>
-              </div>
-              <input
-                id="budget"
-                type="range"
-                min="150000"
-                max="1500000"
-                step="25000"
-                value="700000"
-              />
-              <div class="range-labels"><span>$150k</span><span>$1.5m</span></div>
-              <p class="field-help" id="budget-help">
-                Towns above this amount fail the purchase-feasibility gate.
-              </p>
-            </div>
-
-            <fieldset class="field">
-              <legend>Planning age</legend>
-              <div class="choice-row" id="age-choices">
-                <label><input type="radio" name="age" value="65" /><span>65</span></label>
-                <label><input type="radio" name="age" value="75" checked /><span>75</span></label>
-                <label><input type="radio" name="age" value="85" /><span>85</span></label>
-              </div>
-            </fieldset>
-
-            <fieldset class="field">
-              <legend>Household</legend>
-              <div class="choice-row choice-row-text" id="household-choices">
-                <label><input type="radio" name="household" value="solo" /><span>Solo</span></label>
-                <label
-                  ><input type="radio" name="household" value="couple" checked /><span
-                    >Couple</span
-                  ></label
-                >
-                <label
-                  ><input type="radio" name="household" value="family" /><span>Family</span></label
-                >
-              </div>
-            </fieldset>
-          </div>
-
-          <div class="evidence-summary">
-            <div><span>Source policy</span><strong>Tier A / high confidence</strong></div>
-            <div><span>Geography</span><strong>Town-level only</strong></div>
-            <div><span>Missing values</span><strong>Never imputed</strong></div>
-          </div>
           <div class="section-heading">
             <h3>Evidence for your finalists</h3>
             <span id="handoff-count" role="status"></span>
           </div>
           <div class="evidence-list" id="handoff-list"></div>
           <div class="data-tools">
+            <button class="secondary-button" id="checklist-button" type="button">
+              Download research checklist
+            </button>
             <button class="text-button" id="import-button" type="button">
               Advanced evidence import
             </button>
@@ -269,6 +234,66 @@
             <small id="dataset-meta">Loading evidence…</small>
             <input id="evidence-file" type="file" accept=".csv,text/csv" hidden />
           </div>
+          <details class="fine-tune" id="comparison-settings">
+            <summary>
+              Comparison settings
+              <span id="settings-summary">(budget, planning age, household)</span>
+            </summary>
+            <div class="form-grid">
+              <div class="field field-wide">
+                <div class="field-heading">
+                  <label for="budget">Maximum purchase budget</label>
+                  <output id="budget-output" for="budget">$700,000</output>
+                </div>
+                <input
+                  id="budget"
+                  type="range"
+                  min="150000"
+                  max="1500000"
+                  step="25000"
+                  value="700000"
+                />
+                <div class="range-labels"><span>$150k</span><span>$1.5m</span></div>
+                <p class="field-help" id="budget-help">
+                  Towns above this amount fail the purchase-feasibility gate.
+                </p>
+              </div>
+
+              <fieldset class="field">
+                <legend>Planning age</legend>
+                <div class="choice-row" id="age-choices">
+                  <label><input type="radio" name="age" value="65" /><span>65</span></label>
+                  <label><input type="radio" name="age" value="75" checked /><span>75</span></label>
+                  <label><input type="radio" name="age" value="85" /><span>85</span></label>
+                </div>
+              </fieldset>
+
+              <fieldset class="field">
+                <legend>Household</legend>
+                <div class="choice-row choice-row-text" id="household-choices">
+                  <label
+                    ><input type="radio" name="household" value="solo" /><span>Solo</span></label
+                  >
+                  <label
+                    ><input type="radio" name="household" value="couple" checked /><span
+                      >Couple</span
+                    ></label
+                  >
+                  <label
+                    ><input type="radio" name="household" value="family" /><span
+                      >Family</span
+                    ></label
+                  >
+                </div>
+              </fieldset>
+            </div>
+
+            <div class="evidence-summary">
+              <div><span>Source policy</span><strong>Tier A / high confidence</strong></div>
+              <div><span>Geography</span><strong>Town-level only</strong></div>
+              <div><span>Missing values</span><strong>Never imputed</strong></div>
+            </div>
+          </details>
         </section>
 
         <section class="stage" data-stage="results" aria-label="Comparison results">

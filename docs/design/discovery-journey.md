@@ -6,13 +6,17 @@ PRD: `docs/prd/lifescape-place-discovery.md` (FR1–FR16). Contract: `docs/decis
 
 | Stage | User question | Element | PRD |
 |---|---|---|---|
-| Preferences | What feels right? | Example-town lookup (max two), six quality rows (aim for, importance), live count of resolved qualities | FR1, FR2, FR2b, FR4, FR5 |
-| Boundaries | What must be true? | Min/max limits per quality, region filter, skipped states | FR3 |
+| Start | Where might I want to live? | Example-town lookup (max two), **Try it with Traverse City** shortcut, four one-tap styles, collapsed *Fine-tune* with six quality rows, live readiness line | FR1, FR2, FR2b, FR4, FR5 |
+| Limits | What must be true? | Min/max limits per quality, region filter, skipped states | FR3 |
 | Matches | Which towns deserve a look? | Ten cards: reasons, biggest trade-off, unknowns, Keep / Not for me / Unsure, **Why this place?** | FR7, FR8, FR10, FR11 |
 | Shortlist | What do I keep? | Kept and unsure towns, manual add, export, start over | FR12 |
-| Verify | Do the finalists meet my requirements? | Per-town evidence state, budget/age/household, run | FR13, FR14, FR15 |
+| Verify | Do the finalists meet my requirements? | Per-town evidence state first, research checklist download, collapsed comparison settings, run | FR13, FR14, FR15 |
 
-**Find places** is the primary action on the first screen (FR1). Boundaries are optional.
+**Find places** is the primary action on the first screen (FR1). Limits and fine-tuning are optional.
+
+## Ease of use
+
+A first-time visitor reaches ten matches in one click (**Try it**) or two (a style, then **Find places**). The first screen shows its main choices without scrolling at 390 px. Technical controls (six quality rows, budget, age, household) are collapsed until wanted. The disabled-button reason is shown beside the inputs. Reports save to `~/Lifescape`. Install is one `uvx` command.
 
 ## State model
 

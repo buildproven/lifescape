@@ -307,9 +307,9 @@ a:focus-visible {
 .stage-intro h2 {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(31px, 4vw, 57px);
+  font-size: clamp(24px, 3vw, 34px);
   font-weight: 400;
-  line-height: 1.02;
+  line-height: 1.1;
   letter-spacing: -0.045em;
 }
 .stage-intro p {
@@ -1062,7 +1062,7 @@ input[type="range"]::-webkit-slider-thumb {
     align-items: flex-start;
   }
   .stage-intro h2 {
-    font-size: 36px;
+    font-size: 26px;
   }
   .selection-count {
     display: none;
@@ -1479,4 +1479,70 @@ select {
 .match-card,
 .why-panel {
   min-width: 0;
+}
+
+/* ---------- first-run ease of use ---------- */
+
+.lead {
+  max-width: 62ch;
+  margin: 0 0 8px;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.55;
+}
+.start-card {
+  display: grid;
+  gap: 8px;
+}
+.style-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.style-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--ink);
+  border-radius: 22px;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 650;
+}
+.style-button[aria-pressed="true"] {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+  color: var(--white);
+}
+.fine-tune {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.fine-tune > summary {
+  min-height: 48px;
+  padding: 12px 0;
+  cursor: pointer;
+  font-weight: 650;
+}
+.fine-tune > summary span {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+@media (max-width: 920px) {
+  .rail {
+    position: static;
+  }
+  .rail-note {
+    display: none;
+  }
+  .step-nav {
+    grid-template-columns: repeat(5, 1fr);
+    margin-top: 10px;
+  }
+  .step-link strong {
+    font-size: 11px;
+  }
+}
+
+.start-card .text-button {
+  justify-self: start;
 }

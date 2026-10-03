@@ -135,7 +135,7 @@ def test_local_app_loads_guided_workspace(tmp_path: Path) -> None:
 
     assert page.status_code == 200
     assert "Lifescape" in page.text
-    assert "Tell us what feels right" in page.text
+    assert "Where might you want to live?" in page.text
     assert "Find places" in page.text
     assert "Advanced evidence import" in page.text
     assert "Find research leads" not in page.text
