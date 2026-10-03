@@ -46,6 +46,28 @@
     if (!Array.isArray(regions) || !Array.isArray(states)) throw new Error("invalid filters");
   }
 
+  const ARRAY_FIELDS = [
+    "components",
+    "reasons",
+    "differences",
+    "fields",
+    "missing_fields",
+    "unknown_constraints",
+  ];
+
+  function validateRecommendation(item) {
+    const numbers = ["match_percent", "rank", "component_count", "profile_target_count"];
+    const texts = ["place_id", "label", "name", "state", "catalog_version", "data_date"];
+    if (
+      !isObject(item) ||
+      !texts.every((key) => isText(item[key])) ||
+      !ARRAY_FIELDS.every((key) => Array.isArray(item[key])) ||
+      !numbers.every((key) => Number.isFinite(item[key]))
+    ) {
+      throw new Error("invalid recommendation snapshot");
+    }
+  }
+
   function validateResult(result) {
     if (result === null) return;
     const texts = ["catalog_version", "algorithm_version", "normalization_version"];
@@ -53,10 +75,12 @@
       !isObject(result) ||
       !Array.isArray(result.recommendations) ||
       !texts.every((key) => isText(result[key])) ||
-      !isObject(result.diagnostics)
+      !isObject(result.diagnostics) ||
+      !isObject(result.profile)
     ) {
       throw new Error("invalid result snapshot");
     }
+    result.recommendations.forEach(validateRecommendation);
   }
 
   function validateDecisions(decisions) {
@@ -74,6 +98,12 @@
       isText(entry.label) &&
       SOURCES.includes(entry.source);
     if (!shortlist.every(valid)) throw new Error("invalid shortlist entry");
+    for (const entry of shortlist) {
+      if (entry.source === "recommendation") validateRecommendation(entry.recommendation);
+      else if (!isText(entry.name) || !isText(entry.state)) {
+        throw new Error("invalid manual shortlist entry");
+      }
+    }
   }
 
   function validate(value) {

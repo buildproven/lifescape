@@ -642,3 +642,11 @@ def test_release_budget_catalog_load_and_p95_search_latency() -> None:
 
     assert load_seconds <= 3.0
     assert timings[int(len(timings) * 0.95) - 1] <= 2.0
+
+
+def test_incomplete_manifest_reports_unavailable_instead_of_crashing() -> None:
+    compressed, manifest = _packaged()
+
+    for broken in ({k: v for k, v in manifest.items() if k != "bounds"}, {**manifest, "fields": 5}):
+        with pytest.raises(CatalogUnavailableError, match="manifest"):
+            parse_catalog(compressed, broken)

@@ -203,6 +203,13 @@ def test_discovery_blocks_search_until_two_qualities_exist_and_flags_small_towns
 
 
 def test_discovery_recovers_from_a_malformed_saved_search(tmp_path: Path) -> None:
+    def banner_says(page: Page, text: str) -> None:
+        page.wait_for_function(
+            "text => document.querySelector('#scenario-banner').textContent"
+            ".toLowerCase().includes(text)",
+            arg=text,
+        )
+
     with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport=VIEWPORTS[1])
@@ -213,23 +220,109 @@ def test_discovery_recovers_from_a_malformed_saved_search(tmp_path: Path) -> Non
             '\'{"schema_version": 1, "profile": {}, "shortlist": "oops"}\')'
         )
         page.reload()
-        banner = page.locator("#scenario-banner:not([hidden])")
-        banner.wait_for()
-        assert "could not be opened" in banner.inner_text().lower()
+        banner_says(page, "could not be opened")
         assert page.evaluate("localStorage.getItem('lifescape.scenario.backup')") is not None
         assert page.locator("#quality-list .quality-row").count() == 6
-        banner.get_by_role("button", name="Start fresh").click()
+        page.locator("#scenario-banner").get_by_role("button", name="Start fresh").click()
         assert page.evaluate("localStorage.getItem('lifescape.scenario')") is None
         page.evaluate("localStorage.setItem('lifescape.scenario', '{not json')")
         page.reload()
-        page.locator("#scenario-banner:not([hidden])").wait_for()
-        assert "could not be opened" in page.locator("#scenario-banner").inner_text().lower()
+        banner_says(page, "could not be opened")
         page.evaluate(
             "localStorage.setItem('lifescape.scenario', JSON.stringify({schema_version: 2}))"
         )
         page.reload()
-        assert "unsupported schema version" in page.locator("#scenario-banner").inner_text().lower()
+        banner_says(page, "unsupported schema version")
         assert errors == []
+        browser.close()
+
+
+def test_discovery_rejects_a_saved_snapshot_missing_recommendation_fields(
+    tmp_path: Path,
+) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        errors = watch_errors(page)
+        page.goto(url)
+        start_search(page)
+        find_places(page)
+        page.evaluate(
+            """() => {
+                const saved = JSON.parse(localStorage.getItem('lifescape.scenario'));
+                delete saved.result.recommendations[0].reasons;
+                localStorage.setItem('lifescape.scenario', JSON.stringify(saved));
+            }"""
+        )
+        page.reload()
+        page.wait_for_function(
+            "() => document.querySelector('#scenario-banner').textContent"
+            ".includes('invalid recommendation snapshot')"
+        )
+        assert page.locator("#quality-list .quality-row").count() == 6
+        assert errors == []
+        browser.close()
+
+
+def test_discovery_search_can_be_retried_after_a_failure(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+        start_search(page)
+        page.route("**/api/place-recommendations", lambda route: route.abort())
+        page.get_by_role("button", name="Find places").click()
+        page.get_by_text("Search could not run").wait_for()
+        assert page.get_by_role("button", name="Find places").is_enabled()
+        page.unroute("**/api/place-recommendations")
+        page.get_by_role("button", name="Find places").click()
+        page.locator(".match-card").first.wait_for()
+        assert page.locator("#match-list .match-card").count() == 10
+        browser.close()
+
+
+def test_discovery_never_lists_one_town_twice_on_the_shortlist(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+        start_search(page)
+        find_places(page)
+        first = page.locator("#match-list .match-card h3").first.inner_text()
+        page.get_by_role("button", name="Review shortlist").click()
+        page.get_by_label("Add a town yourself").fill(first)
+        page.get_by_role("button", name="Add manually").first.click()
+        page.get_by_text("Added by hand.").wait_for()
+        page.locator(".step-link[data-step-target=matches]").click()
+        page.locator("#match-list .decision-button[data-decision=keep]").first.click()
+
+        assert page.locator("#shortlist-count").inner_text() == "1"
+        assert (
+            page.evaluate("JSON.parse(localStorage.getItem('lifescape.scenario')).shortlist.length")
+            == 1
+        )
+        browser.close()
+
+
+def test_discovery_rejected_town_chosen_as_example_does_not_break_search(
+    tmp_path: Path,
+) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+        start_search(page)
+        find_places(page)
+        rejected = page.locator("#match-list .match-card h3").first.inner_text()
+        page.locator("#match-list .decision-button[data-decision=reject]").first.click()
+        page.get_by_role("button", name="Back").click()
+        page.get_by_role("button", name="Back").click()
+        page.get_by_label("Towns you like (up to two)").fill(rejected)
+        page.get_by_role("button", name="Use as example").first.click()
+        page.get_by_role("button", name="Find places").click()
+        page.locator("#match-list .match-card").first.wait_for()
+
+        assert rejected not in page.locator("#match-list .match-card h3").all_inner_texts()
         browser.close()
 
 

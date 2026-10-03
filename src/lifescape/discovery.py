@@ -16,6 +16,7 @@ import json
 import math
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import resources
 from typing import Any, Final, Literal
@@ -212,6 +213,12 @@ class PlaceCatalog:
         self.data_date: str = manifest["data_date"]
         self.fields: dict[str, dict[str, str]] = manifest["fields"]
         self.bounds: dict[str, dict[str, float]] = manifest["bounds"]
+        self.missing_population_count = sum(1 for p in places if p.population is None)
+        self.below_minimum_population_count = sum(
+            1
+            for p in places
+            if p.population is not None and p.population < MINIMUM_SERVING_POPULATION
+        )
         self._serving = sorted(
             (place for place in places if place.serving_eligible), key=lambda p: p.place_id
         )
@@ -253,7 +260,7 @@ def load_catalog() -> PlaceCatalog:
     try:
         manifest = json.loads(package.joinpath("place-catalog.manifest.json").read_text("utf-8"))
         compressed = package.joinpath(manifest["output_file"]).read_bytes()
-    except (OSError, ValueError, KeyError) as exc:
+    except (OSError, ValueError, KeyError, TypeError) as exc:
         raise CatalogUnavailableError(f"catalog files are unreadable: {exc}") from exc
     return parse_catalog(compressed, manifest)
 
@@ -273,7 +280,25 @@ def parse_catalog(compressed: bytes, manifest: dict[str, Any]) -> PlaceCatalog:
         raise CatalogUnavailableError("catalog row count does not match its manifest")
     if len({place.place_id for place in places}) != len(places):
         raise CatalogUnavailableError("catalog contains duplicate place identifiers")
+    _validate_manifest(manifest)
     return PlaceCatalog(places, manifest)
+
+
+def _validate_manifest(manifest: dict[str, Any]) -> None:
+    """Fail closed on a manifest that cannot describe every supported field."""
+    try:
+        for key in ("catalog_version", "data_date"):
+            if not isinstance(manifest[key], str):
+                raise ValueError(f"{key} must be text")
+        for field in SCORED_FIELDS:
+            meta = manifest["fields"][field]
+            if not all(isinstance(meta[key], str) for key in ("label", "unit", "definition")):
+                raise ValueError(f"{field} needs a label, unit, and definition")
+            lower, upper = manifest["bounds"][field]["lower"], manifest["bounds"][field]["upper"]
+            if not (isinstance(lower, int | float) and isinstance(upper, int | float)):
+                raise ValueError(f"{field} bounds must be numbers")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CatalogUnavailableError(f"catalog manifest is incomplete: {exc!r}") from exc
 
 
 def _parse_place(row: dict[str, str]) -> Place:
@@ -519,6 +544,63 @@ class DiscoveryService:
             )
         return details
 
+    def _fast_similarity(self, field: str, target: dict[str, Any]) -> Callable[[float], float]:
+        """Return a closure computing the best similarity for ``field`` without building records."""
+        bounds = self.catalog.bounds[field]
+        lower, upper = bounds["lower"], bounds["upper"]
+        span = upper - lower
+        if target["source"] == "user":
+            raw_targets = [float(target["explicit"])]
+        else:
+            raw_targets = [float(value) for _, value in target["exemplar_values"]]
+        target_norms = [self._normalize(field, raw)[0] for raw in raw_targets]
+
+        def similarity(value: float) -> float:
+            clipped = min(max(value, lower), upper)
+            candidate = 0.0 if span <= 0 else (clipped - lower) / span
+            return max(1 - abs(candidate - norm) for norm in target_norms)
+
+        return similarity
+
+    def _recommendation(
+        self,
+        place: Place,
+        resolved: dict[str, Any],
+        total_weight: int,
+        total: float,
+        unknown: list[str],
+    ) -> dict[str, Any]:
+        components = [
+            self._component(place, field, target, value)
+            for field, target in resolved.items()
+            if (value := place.values[field]) is not None
+        ]
+        for component in components:
+            component["score_contribution"] = round(
+                component["weight"] * component["similarity"] / total_weight, 6
+            )
+        reasons, differences = self._explain(components)
+        return {
+            "place_id": place.place_id,
+            "name": place.name,
+            "state": place.state,
+            "label": place.label,
+            "population": place.population,
+            "total_match": total,
+            "match_percent": round(total * 100),
+            "component_count": len(components),
+            "profile_target_count": len(resolved),
+            "components": components,
+            "reasons": reasons,
+            "differences": differences,
+            "missing_fields": [f for f in SCORED_FIELDS if place.values[f] is None],
+            "unknown_constraints": unknown,
+            "fields": self._field_details(place, resolved),
+            "catalog_version": self.catalog.catalog_version,
+            "data_date": self.catalog.data_date,
+            "evidence_status": "not verified evidence",
+        }
+
     # -- search --------------------------------------------------------------------------
 
     def search(
@@ -536,19 +618,18 @@ class DiscoveryService:
         user_excluded = 0
 
         serving = self.catalog.serving_places
-        missing_population = sum(1 for p in self.catalog.places.values() if p.population is None)
-        below_minimum = sum(
-            1
-            for p in self.catalog.places.values()
-            if p.population is not None and p.population < MINIMUM_SERVING_POPULATION
-        )
+        missing_population = self.catalog.missing_population_count
+        below_minimum = self.catalog.below_minimum_population_count
         serving_exemplars = sum(1 for p in serving if p.place_id in exemplar_ids)
         excluded_counts = dict.fromkeys(constraint_ids, 0)
         unknown_counts = dict.fromkeys(constraint_ids, 0)
         excluded_any = 0
         insufficient = 0
         with_unknown = 0
-        scored: list[tuple[float, int, str, dict[str, Any]]] = []
+        scored: list[tuple[float, int, str, Place, list[str]]] = []
+        prepared = [
+            (field, self._fast_similarity(field, target)) for field, target in resolved.items()
+        ]
 
         for place in serving:
             if place.place_id in exemplar_ids:
@@ -562,51 +643,30 @@ class DiscoveryService:
             if failed:
                 excluded_any += 1
                 continue
-            components = [
-                self._component(place, field, target, value)
-                for field, target in resolved.items()
+            present = [
+                (resolved[field]["weight"], round(fast(value), 6))
+                for field, fast in prepared
                 if (value := place.values[field]) is not None
             ]
-            if len(components) < MINIMUM_MATCH_COMPONENTS:
+            weights = [weight for weight, _ in present]
+            similarities = [similarity for _, similarity in present]
+            if len(similarities) < MINIMUM_MATCH_COMPONENTS:
                 insufficient += 1
                 continue
             for constraint_id in unknown:
                 unknown_counts[constraint_id] += 1
             if unknown:
                 with_unknown += 1
-            numerator = sum(c["weight"] * c["similarity"] for c in components)
+            numerator = sum(w * sim for w, sim in zip(weights, similarities, strict=True))
             total = round(numerator / total_weight, 6)
-            for component in components:
-                component["score_contribution"] = round(
-                    component["weight"] * component["similarity"] / total_weight, 6
-                )
-            reasons, differences = self._explain(components)
-            missing = [f for f in SCORED_FIELDS if place.values[f] is None]
-            recommendation = {
-                "place_id": place.place_id,
-                "name": place.name,
-                "state": place.state,
-                "label": place.label,
-                "population": place.population,
-                "total_match": total,
-                "match_percent": round(total * 100),
-                "component_count": len(components),
-                "profile_target_count": len(resolved),
-                "components": components,
-                "reasons": reasons,
-                "differences": differences,
-                "missing_fields": missing,
-                "unknown_constraints": sorted(unknown),
-                "fields": self._field_details(place, resolved),
-                "catalog_version": self.catalog.catalog_version,
-                "data_date": self.catalog.data_date,
-                "evidence_status": "not verified evidence",
-            }
-            scored.append((-total, -len(components), place.place_id, recommendation))
+            scored.append((-total, -len(similarities), place.place_id, place, sorted(unknown)))
 
         scored.sort(key=lambda item: item[:3])
         recommendable = len(scored)
-        recommendations = [item[3] for item in scored[:limit]]
+        recommendations = [
+            self._recommendation(place, resolved, total_weight, -negative_total, unknown)
+            for negative_total, _, _, place, unknown in scored[:limit]
+        ]
         for rank, recommendation in enumerate(recommendations, start=1):
             recommendation["rank"] = rank
         return {

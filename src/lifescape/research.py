@@ -236,7 +236,7 @@ class ClaudeDiscoveryProvider:
                 if len(payload_bytes) > MAX_DISCOVERY_RESPONSE_BYTES:
                     raise ResearchError("Claude discovery response exceeds the 1 MB safety limit")
                 payload = json.loads(payload_bytes)
-        except (OSError, HTTPException, ValueError) as exc:
+        except (OSError, HTTPException, json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise ResearchError(f"Claude discovery failed: {exc}") from exc
         try:
             text = payload["content"][0]["text"]

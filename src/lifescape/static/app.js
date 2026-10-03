@@ -151,6 +151,31 @@ function restoreScenario() {
     result.catalog_version !== state.discovery.catalog_version;
 }
 
+function recoverFromUnrenderableScenario(error) {
+  // A saved scenario passed validation but still could not render: keep the original text, start clean.
+  let raw = null;
+  try {
+    raw = window.localStorage.getItem(Scenario.KEY);
+    if (raw !== null) window.localStorage.setItem(Scenario.BACKUP_KEY, raw);
+  } catch {
+    raw = null;
+  }
+  state.scenario = Scenario.emptyScenario();
+  Scenario.reset(window.localStorage);
+  showBanner(
+    "Saved search could not be opened",
+    `${error.message}. Nothing was partly loaded and a backup copy was kept in this browser.`,
+    [
+      {
+        label: "Download backup JSON",
+        run: () => downloadJson(raw ?? "", "lifescape-backup.json"),
+      },
+      { label: "Start fresh", run: resetEverything },
+    ]
+  );
+  renderAll();
+}
+
 function resetEverything() {
   Scenario.reset(window.localStorage);
   state.scenario = Scenario.emptyScenario();
@@ -203,8 +228,9 @@ function buildRequest() {
   }
   if (profile().regions.length) body.include_regions = [...profile().regions];
   if (profile().states.length) body.exclude_states = [...profile().states];
+  const exampleIds = new Set(body.exemplars);
   const rejected = Object.entries(scenario().decisions)
-    .filter(([, decision]) => decision === "reject")
+    .filter(([placeId, decision]) => decision === "reject" && !exampleIds.has(placeId))
     .map(([placeId]) => placeId);
   if (rejected.length) body.exclude_places = rejected;
   return body;
@@ -225,6 +251,8 @@ function updateTargetSummary() {
 }
 
 /* ---------- lookup ---------- */
+
+const lookupSequence = { exemplar: 0, manual: 0 };
 
 async function lookup(query, limit = 8) {
   const response = await fetch(`/api/places?query=${encodeURIComponent(query)}&limit=${limit}`);
@@ -262,12 +290,18 @@ async function searchExemplars() {
     box.innerHTML = "";
     return;
   }
+  const ticket = ++lookupSequence.exemplar;
+  let matches;
   try {
-    state.exemplarMatches = await lookup(query);
+    matches = await lookup(query);
   } catch (error) {
-    box.innerHTML = `<p class="lookup-empty">${escapeHtml(error.message)}</p>`;
+    if (ticket === lookupSequence.exemplar) {
+      box.innerHTML = `<p class="lookup-empty">${escapeHtml(error.message)}</p>`;
+    }
     return;
   }
+  if (ticket !== lookupSequence.exemplar) return; // a newer query superseded this response
+  state.exemplarMatches = matches;
   box.innerHTML = state.exemplarMatches.length
     ? state.exemplarMatches
         .map((place) =>
@@ -293,6 +327,8 @@ function addExemplar(placeId) {
   if (!place || profile().exemplars.length >= 2) return;
   if (profile().exemplars.some((item) => item.place_id === placeId)) return;
   profile().exemplars.push({ place_id: place.place_id, label: place.label, values: place.values });
+  if (scenario().decisions[place.place_id] === "reject")
+    delete scenario().decisions[place.place_id];
   $("#exemplar-search").value = "";
   $("#exemplar-results").innerHTML = "";
   state.exemplarMatches = [];
@@ -521,7 +557,7 @@ async function runSearch() {
     showBanner("Search could not run", error.message);
   } finally {
     state.searching = false;
-    if (state.step === "limits") $("#next-button").disabled = !updateTargetSummary();
+    if (state.step === "feel" || state.step === "limits") updateTargetSummary();
   }
 }
 
@@ -660,6 +696,8 @@ function setDecision(item, decision, container = "#match-list") {
     (entry) => !(entry.place_id === item.place_id && entry.source === "recommendation")
   );
   if (next === "keep") {
+    // A town added by hand earlier becomes the recommendation entry; never keep both.
+    scenario().shortlist = scenario().shortlist.filter((entry) => entry.place_id !== item.place_id);
     scenario().shortlist.push({
       place_id: item.place_id,
       label: item.label,
@@ -775,12 +813,18 @@ async function searchManual() {
     box.innerHTML = "";
     return;
   }
+  const ticket = ++lookupSequence.manual;
+  let matches;
   try {
-    state.manualMatches = await lookup(query);
+    matches = await lookup(query);
   } catch (error) {
-    box.innerHTML = `<p class="lookup-empty">${escapeHtml(error.message)}</p>`;
+    if (ticket === lookupSequence.manual) {
+      box.innerHTML = `<p class="lookup-empty">${escapeHtml(error.message)}</p>`;
+    }
     return;
   }
+  if (ticket !== lookupSequence.manual) return;
+  state.manualMatches = matches;
   const have = new Set(scenario().shortlist.map((entry) => entry.place_id));
   box.innerHTML = state.manualMatches.length
     ? state.manualMatches
@@ -861,8 +905,9 @@ function renderHandoff() {
       const missingCritical = state.evidence.metricDetails.filter(
         (metric) => metric.critical && !(evidence?.present_metrics ?? []).includes(metric.id)
       ).length;
+      const synthetic = state.evidence.kind !== "real";
       const status = evidence
-        ? `${provided} of ${state.evidence.metricCount} metrics provided`
+        ? `${provided} of ${state.evidence.metricCount} metrics provided${synthetic ? " · synthetic demo values, not research on this town" : ""}`
         : "No reviewed evidence for this town yet";
       return `<details class="handoff-row ${evidence ? "" : "is-empty"}">
         <summary><strong>${escapeHtml(entry.label)}</strong>
@@ -994,7 +1039,7 @@ function setStep(step) {
     if (budget !== null && !state.budgetTouched) {
       const input = $("#budget");
       input.value = String(
-        Math.min(Number(input.max), Math.max(Number(input.min), Math.round(budget / 25000) * 25000))
+        Math.min(Number(input.max), Math.max(Number(input.min), Math.floor(budget / 25000) * 25000))
       );
       updateBudget();
     }
@@ -1229,7 +1274,11 @@ async function initialize() {
     } else {
       restoreScenario();
     }
-    renderAll();
+    try {
+      renderAll();
+    } catch (renderError) {
+      recoverFromUnrenderableScenario(renderError);
+    }
     window.setTimeout(() => $("#loading-screen").classList.add("is-hidden"), 250);
   } catch (error) {
     $("#loading-screen p").textContent = error.message;
