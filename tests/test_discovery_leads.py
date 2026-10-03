@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -66,6 +67,42 @@ def test_claude_discovery_provider_failure_is_a_research_error() -> None:
     provider = ClaudeDiscoveryProvider(api_key="test-key", model="test-model")
     with (
         patch("lifescape.research.urlopen", side_effect=OSError("network down")),
+        pytest.raises(ResearchError),
+    ):
+        provider.discover(brief())
+
+
+def test_selecting_leads_preserves_the_discovery_provider() -> None:
+    from lifescape.research import ResearchSelectionRequest, select_packet_leads
+
+    packet = create_packet(
+        brief(),
+        (_lead("a_nc"), _lead("b_nc"), _lead("c_nc")),
+        discovery_provider="FixtureProvider",
+    )
+    narrowed = select_packet_leads(
+        ResearchSelectionRequest(packet_id=packet.id, place_ids=("a_nc", "b_nc")), packet=packet
+    )
+
+    assert narrowed.discovery_provider == "FixtureProvider"
+    assert [lead.place.place_id for lead in narrowed.leads] == ["a_nc", "b_nc"]
+
+
+def test_claude_discovery_non_utf8_body_is_a_research_error() -> None:
+    from io import BytesIO
+
+    class Response(BytesIO):
+        headers: ClassVar[dict[str, str]] = {"Content-Length": "2"}
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+    provider = ClaudeDiscoveryProvider(api_key="test-key", model="test-model")
+    with (
+        patch("lifescape.research.urlopen", return_value=Response(b"\xff\xfe")),
         pytest.raises(ResearchError),
     ):
         provider.discover(brief())
