@@ -593,3 +593,55 @@ def test_discovery_journey_is_keyboard_labelled_and_announced(
         outline = toggle.evaluate("el => getComputedStyle(el).outlineStyle")
         assert outline != "none"
         browser.close()
+
+
+def test_discovery_text_meets_contrast_requirement(tmp_path: Path) -> None:
+    paper, white = (243, 240, 232), (252, 251, 247)
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+
+        def assert_contrast(selector: str, background: tuple[int, int, int]) -> None:
+            locator = page.locator(selector).first
+            locator.wait_for(state="attached")
+            color = locator.evaluate(
+                """element => {
+                    const match = getComputedStyle(element).color.match(/[\\d.]+/g);
+                    return match ? match.map(Number) : [];
+                }"""
+            )
+            foreground = tuple(int(channel) for channel in color[:3])
+            assert contrast_ratio(foreground, background) >= 4.5, selector
+
+        start_search(page)
+        page.get_by_label("Towns you like (up to two)").fill("Abanda")
+        page.get_by_text("Examples need a population").first.wait_for()
+        assert_contrast(".lookup-note", paper)
+        assert_contrast("#exemplar-help", paper)
+        page.get_by_role("button", name="Find places").click()
+        page.locator(".match-card").first.wait_for()
+        page.evaluate("document.querySelector('#match-list .movement').textContent = 'Moved'")
+        for selector in (".card-label", ".trade-off", ".movement"):
+            assert_contrast(f"#match-list {selector}", white)
+        assert_contrast("#match-list .match-score", (23, 62, 47))
+        browser.close()
+
+
+def test_discovery_search_text_is_inert_untrusted_input(tmp_path: Path) -> None:
+    payload = (
+        '<img src=x onerror="window.__injected = true"><script>window.__injected = true</script>'
+    )
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        errors = watch_errors(page)
+        page.goto(url)
+        page.get_by_label("Towns you like (up to two)").fill(payload)
+        page.get_by_text("No U.S. town matches").wait_for()
+
+        assert page.evaluate("window.__injected === undefined")
+        assert page.locator("#exemplar-results img").count() == 0
+        assert payload in page.locator("#exemplar-results").inner_text()
+        assert errors == []
+        browser.close()

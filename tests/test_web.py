@@ -1521,3 +1521,21 @@ def test_discovery_bootstrap_describes_the_catalog_and_records_load_time(tmp_pat
     assert {item["field"] for item in summary["fields"]} >= {"population", "median_home_value"}
     assert all(item["lower"] < item["upper"] for item in summary["fields"])
     assert app.state.catalog_load_seconds >= 0
+
+
+def test_hosted_example_illustrates_discovery_shortlist_verification_with_no_inputs(
+    tmp_path: Path,
+) -> None:
+    with TestClient(
+        create_app(tmp_path / "hosted", hosted_demo=True),
+        base_url="https://lifescape.buildproven.ai",
+    ) as client:
+        page = client.get("/demo")
+        lookup = client.get("/api/places", params={"query": "Traverse"})
+
+    assert "How this field was found." in page.text
+    for step in ("1 · Discover", "2 · Shortlist", "3 · Verify"):
+        assert step in page.text
+    assert "accepts no input and every value on it is synthetic" in page.text
+    assert "<input" not in page.text and "<form" not in page.text
+    assert lookup.status_code == 404

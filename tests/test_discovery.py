@@ -618,3 +618,24 @@ def test_unknown_or_example_excluded_places_are_rejected(service: DiscoveryServi
         SearchProfile(exemplars=("EX",), exclude_places=("EX",))
     with pytest.raises(ValidationError):
         SearchProfile(exclude_places=("A", "A"))
+
+
+def test_release_budget_catalog_load_and_p95_search_latency() -> None:
+    """PRD Performance: load is a 3 s release target; p95 search is at most 2 s."""
+    started = time.perf_counter()
+    catalog = load_catalog()
+    load_seconds = time.perf_counter() - started
+    service = DiscoveryService(catalog)
+    exemplars = [
+        place.place_id for place in catalog.serving_places[:: len(catalog.serving_places) // 20]
+    ]
+
+    timings = []
+    for place_id in exemplars:
+        begin = time.perf_counter()
+        service.search(SearchProfile(exemplars=(place_id,)))
+        timings.append(time.perf_counter() - begin)
+    timings.sort()
+
+    assert load_seconds <= 3.0
+    assert timings[int(len(timings) * 0.95) - 1] <= 2.0

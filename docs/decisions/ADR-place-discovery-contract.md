@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted for BUI-334 implementation, subject to independent architecture review.
+Accepted and implemented for BUI-334. The "As built" section at the end records refinements made
+during implementation; each is additive and consistent with the PRD.
 
 ## PRD trace
 
@@ -87,7 +88,9 @@ Expose two resources:
 
 - `GET /api/places?query=<text>&limit=<n>` for normalized exemplar/manual-town lookup. `query`
   contains 2–120 characters. `limit` defaults to 10 and accepts 1–20. Each item contains canonical
-  place identity, display name, state, population when known, and `serving_eligible`.
+  place identity, display name, state, population when known, `serving_eligible`, and the
+  catalog `values` for every supported field (null when missing) so the browser can show the
+  resolved target count before submit (PRD FR2b).
 - `POST /api/place-recommendations` as a stateless calculation. It returns HTTP 200 with
   `{ "profile": ..., "catalog_version": ..., "algorithm_version": ...,
   "normalization_version": ..., "recommendations": ..., "diagnostics": ... }`, creates no server
@@ -118,6 +121,7 @@ The response `diagnostics` object has this stable shape:
   "catalog_places": 32000,
   "serving_places": 21000,
   "serving_exemplar_count": 1,
+  "user_excluded_count": 0,
   "missing_population_count": 6000,
   "below_minimum_population_count": 5000,
   "known_constraint_exclusions": [
@@ -135,15 +139,16 @@ The response `diagnostics` object has this stable shape:
 zero counts, ordered by `constraint_id`. `excluded_count` counts known failures. `unknown_count`
 counts candidates whose null value neither passes nor fails that constraint. The other counts are
 nonnegative integers. Per-constraint exclusion sets may overlap and their counts are not additive.
-`serving_exemplar_count` counts only exemplars inside the serving universe. Serving exemplars are
+`serving_exemplar_count` counts only exemplars inside the serving universe. Serving exemplars and
+towns the user marked **Not for me** (`exclude_places`, counted in `user_excluded_count`) are
 removed before constraint evaluation and cannot appear in a later exclusion count.
 `excluded_any_constraint_count` is the union count after exemplar removal.
 `insufficient_match_data_count` is evaluated only after constraint exclusion. These sets are
 disjoint and this identity must hold:
 
 ```text
-serving_places - serving_exemplar_count - excluded_any_constraint_count
-- insufficient_match_data_count = recommendable_count
+serving_places - serving_exemplar_count - user_excluded_count
+- excluded_any_constraint_count - insufficient_match_data_count = recommendable_count
 ```
 
 `returned_count` is `min(10, recommendable_count)`.
@@ -266,3 +271,21 @@ This revision closes those contracts and makes clipped-edge equality explicit. O
 verification review is required before implementation starts. The first verification attempt on
 `a2749c7` did not run because the Claude provider returned account exhaustion; it is recorded as
 incomplete, not as approval.
+
+## As built
+
+- **Profile exclusions.** `SearchProfile.exclude_places` (PRD FR2 "exclusions", FR10) lists towns the
+  user marked **Not for me**. They are removed before constraint evaluation and counted in
+  `user_excluded_count`. An unknown identifier is a 422; an example town cannot also be excluded.
+- **Unknown-constraint counts** are computed over recommendable candidates only, so
+  `recommendable_with_unknown_constraints_count` never exceeds `recommendable_count`.
+- **State and region filters** appear in `known_constraint_exclusions` with ids `state_include`,
+  `state_exclude`, `region_include`, and `region_exclude`. They are never match components.
+- **Catalog.** `src/lifescape/data/place-catalog.csv.gz` and its manifest are built by
+  `scripts/build_place_catalog.py` from the 2024 Census Gazetteer and ACS 2020–2024 5-year
+  table-based summary files (B01003, B25077, B08301, B15003, B01001). Puerto Rico is outside the
+  first catalog. Field definitions, hashes, per-field coverage (all at least 99% of the serving
+  universe), and winsorization bounds are in the manifest.
+- **Presentation.** Reasons and trade-offs are generated from component data by fixed templates
+  in `DiscoveryService._explain`; tests assert every number in the prose appears in a component.
+

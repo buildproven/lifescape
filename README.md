@@ -17,29 +17,56 @@ current vertical implementation sequence.
 
 ## Quick start
 
-Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and Node.js 24.18.x.
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv build                                              # or use a released wheel
+uv tool install dist/lifescape-0.1.0-py3-none-any.whl
+lifescape app
+```
+
+The command opens a private workspace at `http://127.0.0.1:8765`. Nothing leaves your computer:
+the place catalog is packaged with the app, searches run locally, and your shortlist is saved only
+in your browser. See the [user guide](docs/user-guide.md) for a five-minute walkthrough.
+
+The journey is:
+
+1. **Preferences.** Pick one or two towns you like and say how much each quality matters.
+2. **Boundaries** (optional). Set limits such as a price ceiling or regions to avoid.
+3. **Matches.** Read ten explainable town matches with their reasons, biggest trade-off, and
+   unknowns. Mark each Keep, Not for me, or Unsure.
+4. **Shortlist.** Keep at least three towns, add any town by hand, and export your search.
+5. **Verify.** Move finalists into evidence review. The comparison runs only when reviewed
+   evidence exists for at least two towns, and every missing critical value stays visible.
+6. Download the Markdown report, ranking CSV, sensitivity CSV, and SQLite provenance database.
+
+The bundled evidence is synthetic and exists only to demonstrate and test the method. It must not
+be used as retirement research. Hosted mode likewise accepts no inputs and shows only a finished
+synthetic example.
+
+### Develop from a checkout
 
 ```bash
 uv sync --locked --extra dev --python 3.12
 uv run playwright install chromium
-npm ci
+npm ci          # Node.js 24.18.x
 uv run lifescape app
 ```
 
-The command opens a private workspace at `http://127.0.0.1:8765`. The primary product
-journey is:
+## What discovery uses
 
-1. Choose one or two exemplar towns or set at least two supported qualities.
-2. Set hard constraints, exclusions, and priorities.
-3. Explore explainable town recommendations and visible unknowns.
-4. Keep, reject, refine, and save a local shortlist.
-5. Move at least two finalists into evidence review.
-6. Run the strict comparison only when admissible evidence exists.
-7. Download the Markdown report, ranking CSV, sensitivity CSV, and SQLite provenance database.
+Discovery runs offline against a catalog of 32,041 U.S. places built from the 2024 Census Gazetteer
+and ACS 2020–2024 five-year files. It compares six qualities: population, median home value,
+population density, car-light commute share, college-educated share, and older-adult share. It
+recommends from the 10,215 places with 2,500 or more people. `scripts/build_place_catalog.py`
+rebuilds the catalog from pinned official files and a manifest of hashes. Climate, healthcare,
+nature, and walkability are not claimed. See [known limitations](docs/limitations.md).
 
-The bundled dataset is synthetic and exists only to demonstrate and test the method. It must not
-be used as retirement research. Hosted mode likewise accepts no inputs and shows only a finished
-synthetic example.
+## Traceability
+
+Every requirement in the PRD traces to design, code, and tests in
+[`docs/traceability.md`](docs/traceability.md); `tests/test_traceability.py` fails when any link
+breaks. Product changes cite the PRD in their PR trace.
 
 ## Evidence contract
 
@@ -69,6 +96,7 @@ score. Failed and unknown critical gates stay visible and unranked.
 uv run lifescape benchmark --output-dir outputs/benchmark
 npm run quality:check
 npm run security:check
+uv run python scripts/build_place_catalog.py --verify   # rebuild the catalog from Census files
 ```
 
 The benchmark covers ten synthetic towns and must produce repeatable artifacts. Quality includes
