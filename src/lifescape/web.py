@@ -9,25 +9,40 @@ import threading
 import time
 import webbrowser
 from collections import OrderedDict, deque
+from collections.abc import Callable
 from math import ceil
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 import uvicorn
 import yaml
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi import Path as ApiPath
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from lifescape.config import load_metrics, load_sources
+from lifescape.discovery import (
+    DEFAULT_RECOMMENDATION_LIMIT,
+    MINIMUM_SERVING_POPULATION,
+    REGIONS,
+    SCORED_FIELDS,
+    STATE_REGIONS,
+    CatalogUnavailableError,
+    DiscoveryError,
+    DiscoveryService,
+    PlaceCatalog,
+    SearchProfile,
+    load_catalog,
+)
 from lifescape.evidence import validate_unique_headers
 from lifescape.models import GateState, RunResult
 from lifescape.pipeline import execute_run
@@ -63,6 +78,17 @@ from lifescape.research_workspace import FetchSnapshot, ResearchWorkspace, Store
 from lifescape.resources import bundled_benchmark
 
 MAX_EVIDENCE_BYTES = 5_000_000
+MAX_RECOMMENDATION_BYTES = 65_536
+BODY_LIMITS: dict[str, tuple[int, str]] = {
+    "/api/evidence/inspect": (
+        MAX_EVIDENCE_BYTES,
+        "request exceeds the 5 MB local-app import limit",
+    ),
+    "/api/place-recommendations": (
+        MAX_RECOMMENDATION_BYTES,
+        "recommendation request exceeds the 64 KB limit",
+    ),
+}
 HOSTED_RUN_LIMIT = 6
 HOSTED_RUN_WINDOW_SECONDS = 60.0
 HOSTED_GLOBAL_RUN_LIMIT = 30
@@ -166,20 +192,18 @@ class HostedRunGuard:
 
 
 class BodyLimitMiddleware:
-    """Reject oversized evidence requests before JSON parsing or endpoint dispatch."""
+    """Reject oversized per-route requests before JSON parsing or endpoint dispatch."""
 
-    def __init__(self, app: ASGIApp, max_bytes: int = MAX_EVIDENCE_BYTES) -> None:
+    def __init__(self, app: ASGIApp, limits: dict[str, tuple[int, str]] | None = None) -> None:
         self.app = app
-        self.max_bytes = max_bytes
+        self.limits = BODY_LIMITS if limits is None else limits
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if (
-            scope["type"] != "http"
-            or scope["method"] != "POST"
-            or scope["path"] != "/api/evidence/inspect"
-        ):
+        limit = self.limits.get(scope["path"]) if scope["type"] == "http" else None
+        if limit is None or scope["method"] != "POST":
             await self.app(scope, receive, send)
             return
+        max_bytes, message_text = limit
         body = bytearray()
         more_body = True
         while more_body:
@@ -187,11 +211,8 @@ class BodyLimitMiddleware:
             if message["type"] == "http.disconnect":
                 return
             body.extend(message.get("body", b""))
-            if len(body) > self.max_bytes:
-                response = JSONResponse(
-                    {"detail": "request exceeds the 5 MB local-app import limit"},
-                    status_code=413,
-                )
+            if len(body) > max_bytes:
+                response = JSONResponse({"detail": message_text}, status_code=413)
                 await response(scope, receive, send)
                 return
             more_body = message.get("more_body", False)
@@ -490,6 +511,33 @@ def _validate_mutation_origin(
         raise HTTPException(status_code=403, detail="request origin is not this local app")
 
 
+def _discovery_summary(
+    service: DiscoveryService | None, catalog_error: str | None
+) -> dict[str, object]:
+    if service is None:
+        return {"available": False, "error": catalog_error}
+    catalog = service.catalog
+    return {
+        "available": True,
+        "catalog_version": catalog.catalog_version,
+        "data_date": catalog.data_date,
+        "serving_places": len(catalog.serving_places),
+        "minimum_population": MINIMUM_SERVING_POPULATION,
+        "recommendation_limit": DEFAULT_RECOMMENDATION_LIMIT,
+        "regions": list(REGIONS),
+        "states": sorted(STATE_REGIONS),
+        "fields": [
+            {
+                "field": field,
+                **catalog.fields[field],
+                "lower": catalog.bounds[field]["lower"],
+                "upper": catalog.bounds[field]["upper"],
+            }
+            for field in SCORED_FIELDS
+        ],
+    }
+
+
 def _hosted_client_key(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
     if forwarded_for:
@@ -511,6 +559,7 @@ def create_app(
     hosted_max_concurrent: int = HOSTED_MAX_CONCURRENT_RUNS,
     hosted_max_tracked_clients: int = HOSTED_MAX_TRACKED_CLIENTS,
     research_evidence_provider: ResearchEvidenceProvider | None = None,
+    catalog_loader: Callable[[], PlaceCatalog] = load_catalog,
 ) -> FastAPI:
     """Create the loopback-only browser application."""
     app = FastAPI(
@@ -590,6 +639,25 @@ def create_app(
             restore_research_packet(before, packet.id)
             raise ResearchError(f"cannot save local research workspace: {exc}") from exc
 
+    discovery: DiscoveryService | None = None
+    catalog_error: str | None = None
+    catalog_load_seconds = 0.0
+    if not hosted_demo:
+        started = time.perf_counter()
+        try:
+            discovery = DiscoveryService(catalog_loader())
+        except CatalogUnavailableError as exc:
+            catalog_error = f"CATALOG_UNAVAILABLE: {exc}"
+        catalog_load_seconds = round(time.perf_counter() - started, 3)
+    app.state.catalog_load_seconds = catalog_load_seconds
+
+    def require_discovery() -> DiscoveryService:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        if discovery is None:
+            raise HTTPException(status_code=503, detail=catalog_error)
+        return discovery
+
     evidence_provider = research_evidence_provider or ConnectorEvidenceProvider.from_environment()
     hosted_guard = HostedRunGuard(
         enabled=(not hosted_demo if hosted_runs_enabled is None else hosted_runs_enabled),
@@ -640,7 +708,48 @@ def create_app(
                 "household": "couple",
             },
             "field_count": len(fieldnames),
+            "discovery": _discovery_summary(discovery, catalog_error),
         }
+
+    @app.get("/api/places")
+    def lookup_places(
+        query: Annotated[str, Query(min_length=2, max_length=120)],
+        limit: Annotated[int, Query(ge=1, le=20)] = 10,
+    ) -> dict[str, object]:
+        service = require_discovery()
+        return {
+            "places": [
+                {
+                    "place_id": place.place_id,
+                    "name": place.name,
+                    "state": place.state,
+                    "label": place.label,
+                    "population": place.population,
+                    "serving_eligible": place.serving_eligible,
+                }
+                for place in service.catalog.lookup(query, limit)
+            ]
+        }
+
+    @app.post("/api/place-recommendations")
+    async def recommend_places(request: Request) -> dict[str, Any]:
+        if hosted_demo:
+            raise HTTPException(status_code=404, detail="the hosted site has no application API")
+        _validate_mutation_origin(request, require_origin=True)
+        service = require_discovery()
+        try:
+            profile = SearchProfile.model_validate_json(await request.body())
+        except ValidationError as exc:
+            raise RequestValidationError(
+                [
+                    {**error, "loc": ("body", *error["loc"])}
+                    for error in exc.errors(include_url=False, include_context=False)
+                ]
+            ) from exc
+        try:
+            return service.search(profile, limit=DEFAULT_RECOMMENDATION_LIMIT)
+        except DiscoveryError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/evidence/inspect")
     async def inspect_evidence(request: Request) -> dict[str, object]:
