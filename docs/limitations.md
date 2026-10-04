@@ -20,6 +20,21 @@
 - The five-household pilot in PRD section 8 has not been run (`docs/pilot/PILOT-PROTOCOL.md`). The
   success metrics are therefore `[unverified]`.
 
+## Out of scope for 1.0 (decided)
+
+These were evaluated and deliberately left out of the first release; none changes a 1.0 guarantee,
+because missing evidence always blocks a finalist and never gets guessed.
+
+- Routing, ER drive-time, and FCC broadband connectors: the PRD (section 3) excludes new
+  connectors and routing services unless a user-visible slice needs them. Enter these values
+  through the reviewed CSV.
+- Evidence contradiction tracking and a separate confidence tier for locally derived composites:
+  gates use a single high-confidence observation, as documented in `docs/source-policy.md`.
+- Scenario-to-scenario "durability" comparison: 1.0 saves one local search and shortlist and
+  exposes the engine's sensitivity analysis for finalists.
+- Wiring live connectors into the benchmark command: `lifescape live-run` stays a separate,
+  experimental command.
+
 ## Evidence
 
 - All benchmark values are synthetic; no real town conclusion is supported.

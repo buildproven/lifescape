@@ -863,7 +863,7 @@ def create_app(
             packet = create_packet(
                 brief,
                 provider.discover(brief),
-                discovery_provider=type(provider).__name__,
+                discovery_provider=getattr(provider, "provenance_label", type(provider).__name__),
             )
             research_packets[packet.id] = packet
             promoted_evidence[packet.id] = []

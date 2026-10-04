@@ -402,27 +402,8 @@ def test_claude_discovery_rejects_a_non_discovery_lifecycle_state() -> None:
         provider.discover(brief())
 
 
-def test_claude_discovery_returns_tier_c_leads_only() -> None:
-    payload = {
-        "content": [
-            {
-                "text": json.dumps(
-                    {
-                        "leads": [
-                            {
-                                "place": {
-                                    "place_id": "asheville_nc",
-                                    "name": "Asheville",
-                                    "state": "NC",
-                                },
-                                "rationale": "A possible fit.",
-                            }
-                        ]
-                    }
-                )
-            }
-        ]
-    }
+def claude_response(leads: list[dict[str, object]]) -> object:
+    payload = {"content": [{"text": json.dumps({"leads": leads})}]}
 
     class Response:
         def __enter__(self) -> Response:
@@ -434,13 +415,65 @@ def test_claude_discovery_returns_tier_c_leads_only() -> None:
         def read(self, *_: object) -> bytes:
             return json.dumps(payload).encode()
 
+    return Response()
+
+
+def lead_json(name: str, state: str = "NC", place_id: str | None = None) -> dict[str, object]:
+    return {
+        "place": {
+            "place_id": place_id or f"{name.lower().replace(' ', '_')}_{state.lower()}",
+            "name": name,
+            "state": state,
+        },
+        "rationale": "A possible fit.",
+    }
+
+
+EIGHT = [lead_json(name) for name in "ABCDEFGH"]
+
+
+def test_claude_discovery_returns_tier_c_leads_only() -> None:
     provider = ClaudeDiscoveryProvider(api_key="test-key", model="test-model")
-    with patch("lifescape.research.urlopen", return_value=Response()) as request:
+    with patch("lifescape.research.urlopen", return_value=claude_response(EIGHT)) as request:
         leads = provider.discover(brief())
 
     assert leads[0].state.value == "DISCOVERY"
-    assert leads[0].place.place_id == "asheville_nc"
+    assert leads[0].place.place_id == "a_nc"
     assert request.call_args.kwargs["timeout"] == 45
+    assert json.loads(request.call_args.args[0].data)["max_tokens"] >= 8_000
+
+
+def test_claude_discovery_drops_duplicates_exemplars_and_exclusions() -> None:
+    leads = [
+        *EIGHT,
+        lead_json("A", place_id="A_NC"),  # same town, different id spelling
+        lead_json("Alpha"),
+        lead_json("Traverse City", "MI"),  # the exemplar
+        lead_json("Asheville", "NC"),  # excluded
+    ]
+    provider = ClaudeDiscoveryProvider(api_key="test-key", model="test-model")
+    excluding = brief().model_copy(update={"exclusions": ("Asheville, NC",)})
+    with patch("lifescape.research.urlopen", return_value=claude_response(leads)):
+        result = provider.discover(excluding)
+
+    names = [lead.place.name for lead in result]
+    assert names == [*"ABCDEFGH", "Alpha"]
+    assert "Traverse City" not in names and "Asheville" not in names
+
+
+def test_claude_discovery_requires_a_minimum_of_usable_leads() -> None:
+    provider = ClaudeDiscoveryProvider(api_key="test-key", model="test-model")
+    with (
+        patch("lifescape.research.urlopen", return_value=claude_response(EIGHT[:7])),
+        pytest.raises(ResearchError, match="only 7 usable candidates"),
+    ):
+        provider.discover(brief())
+
+
+def test_provider_records_the_model_that_produced_the_leads() -> None:
+    provider = ClaudeDiscoveryProvider(api_key="test-key", model="test-model")
+
+    assert provider.provenance_label == "ClaudeDiscoveryProvider:test-model"
 
 
 def test_claude_discovery_requires_explicit_opt_in_configuration() -> None:
