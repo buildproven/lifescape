@@ -106,3 +106,12 @@ def test_claude_discovery_non_utf8_body_is_a_research_error() -> None:
         pytest.raises(ResearchError),
     ):
         provider.discover(brief())
+
+
+def test_packet_model_itself_rejects_duplicates_and_oversize_leads() -> None:
+    from lifescape.research import ResearchPacket
+
+    with pytest.raises(ValueError, match="duplicate"):
+        ResearchPacket(id="x", brief=brief(), leads=(_lead("a_nc"), _lead("A_NC")))
+    with pytest.raises(ValueError, match="at most 15"):
+        ResearchPacket(id="x", brief=brief(), leads=tuple(_lead(f"town_{n}") for n in range(16)))

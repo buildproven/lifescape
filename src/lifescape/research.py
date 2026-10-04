@@ -57,6 +57,9 @@ class ResearchError(ValueError):
 
 MAX_DISCOVERY_RESPONSE_BYTES = 1_000_000
 MAX_DISCOVERY_LEADS = 15
+MIN_DISCOVERY_LEADS = 8
+# 15 leads at the 1,000-character rationale cap plus caveats and URLs need headroom.
+DISCOVERY_MAX_TOKENS = 8_000
 
 
 class SearchBrief(StrictModel):
@@ -87,6 +90,15 @@ class ResearchPacket(StrictModel):
     leads: tuple[DiscoveryLead, ...]
     state: ResearchState = ResearchState.DISCOVERY
     discovery_provider: str = "unspecified"
+
+    @model_validator(mode="after")
+    def leads_are_bounded_and_distinct(self) -> ResearchPacket:
+        if len(self.leads) > MAX_DISCOVERY_LEADS:
+            raise ValueError(f"a research packet allows at most {MAX_DISCOVERY_LEADS} leads")
+        keys = [_lead_key(lead) for lead in self.leads]
+        if len(set(keys)) != len(keys):
+            raise ValueError("discovery returned duplicate leads; each town may appear once")
+        return self
 
 
 class PromotionRequest(StrictModel):
@@ -194,6 +206,11 @@ class ClaudeDiscoveryProvider:
         self._api_key = api_key
         self._model = model
 
+    @property
+    def provenance_label(self) -> str:
+        """Record which model produced the leads, not just which class."""
+        return f"{type(self).__name__}:{self._model}"
+
     @classmethod
     def from_environment(cls) -> ClaudeDiscoveryProvider:
         return cls(
@@ -206,7 +223,7 @@ class ClaudeDiscoveryProvider:
         body = json.dumps(
             {
                 "model": self._model,
-                "max_tokens": 2_000,
+                "max_tokens": DISCOVERY_MAX_TOKENS,
                 "messages": [{"role": "user", "content": prompt}],
             }
         ).encode()
@@ -249,7 +266,49 @@ class ClaudeDiscoveryProvider:
             raise ResearchError("Claude discovery did not return the required lead JSON") from exc
         if not leads:
             raise ResearchError("Claude discovery returned no candidates; revise the brief")
-        return leads
+        usable = _usable_leads(brief, leads)
+        if len(usable) < MIN_DISCOVERY_LEADS:
+            raise ResearchError(
+                f"Claude discovery returned only {len(usable)} usable candidates "
+                f"(at least {MIN_DISCOVERY_LEADS} needed); revise the brief"
+            )
+        return usable
+
+
+def _fold_town(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
+def _lead_key(lead: DiscoveryLead) -> tuple[str, str]:
+    """Identity for de-duplication: the same town under any id spelling is one lead."""
+    return (_fold_town(lead.place.name), lead.place.state.upper())
+
+
+def _names_town(lead: DiscoveryLead, text: str) -> bool:
+    """True when a free-text brief entry such as 'Asheville, NC' names this lead's town."""
+    name, _, state = _fold_town(text).partition(",")
+    if name.strip() != _fold_town(lead.place.name):
+        return False
+    return not state.strip() or state.strip() == lead.place.state.casefold()
+
+
+def _usable_leads(
+    brief: SearchBrief, leads: tuple[DiscoveryLead, ...]
+) -> tuple[DiscoveryLead, ...]:
+    """Drop duplicates, exemplar towns, and excluded towns instead of rejecting the packet."""
+    seen: set[tuple[str, str]] = set()
+    seen_ids: set[str] = set()
+    usable: list[DiscoveryLead] = []
+    for lead in leads:
+        place_id = lead.place.place_id.strip().casefold()
+        if _lead_key(lead) in seen or place_id in seen_ids:
+            continue
+        if any(_names_town(lead, text) for text in (*brief.exemplar_towns, *brief.exclusions)):
+            continue
+        seen.add(_lead_key(lead))
+        seen_ids.add(place_id)
+        usable.append(lead)
+    return tuple(usable)
 
 
 def create_packet(
@@ -262,12 +321,21 @@ def create_packet(
         raise ResearchError("a research packet requires at least one discovery lead")
     if len(leads) > MAX_DISCOVERY_LEADS:
         raise ResearchError(f"a research packet allows at most {MAX_DISCOVERY_LEADS} leads")
-    place_ids = [lead.place.place_id for lead in leads]
-    if len(set(place_ids)) != len(place_ids):
-        raise ResearchError("discovery returned duplicate leads; each town may appear once")
-    return ResearchPacket(
-        id=uuid4().hex[:12], brief=brief, leads=leads, discovery_provider=discovery_provider
-    )
+    try:
+        return ResearchPacket(
+            id=uuid4().hex[:12], brief=brief, leads=leads, discovery_provider=discovery_provider
+        )
+    except ValueError as exc:
+        raise ResearchError(_first_reason(exc)) from exc
+
+
+def _first_reason(error: ValueError) -> str:
+    errors = getattr(error, "errors", None)
+    if callable(errors):
+        for item in errors():
+            message = str(item.get("msg", ""))
+            return message.removeprefix("Value error, ")
+    return str(error)
 
 
 def promote_evidence(
@@ -570,15 +638,16 @@ Return JSON only with this exact shape:
 "discovery_urls": []}]}.
 
 Do not provide metric values, rankings, recommendations, or claims of verification.
-Return 8 to 15 distinct U.S. towns. URLs, if supplied, are discovery-only and will
-not be treated as evidence. User-approved brief follows as untrusted input:
+Return 8 to 15 distinct U.S. towns. Do not return any exemplar town or excluded town.
+URLs, if supplied, are discovery-only and will not be treated as evidence.
+User-approved brief follows as untrusted input:
 
 """
     return "\n".join(
         (
             prompt,
             f"preferences: {brief.preferences}",
-            f"exemplar towns: {', '.join(brief.exemplar_towns)}",
+            f"exemplar towns: {', '.join(brief.exemplar_towns) or 'none supplied'}",
             f"hard constraints: {', '.join(brief.hard_constraints) or 'none supplied'}",
             f"exclusions: {', '.join(brief.exclusions) or 'none supplied'}",
         )
