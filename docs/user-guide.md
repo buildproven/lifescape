@@ -29,8 +29,9 @@ your home directory).
    and are marked **Needs verification**.
 4. **Decide.** Tap **Keep**, **Not for me**, or **Unsure**. Search again and the towns you rejected
    are replaced; cards say whether a town moved and why.
-5. **Review your shortlist.** Keep at least three. Add any town by hand. **Export search as JSON**
-   saves a copy; **Start over** clears this browser.
+5. **Review your shortlist.** Keep at least three. A **Side by side** table compares kept
+   towns on every quality. Add any town by hand. **Print or save as PDF** makes a paper copy;
+   **Export search as JSON** saves a backup; **Start over** clears this browser.
 
 ## What the match percentage means
 
@@ -42,7 +43,7 @@ not have data for, and missing data lowers a town's score instead of helping it.
 
 Open **Verify** with at least two kept towns. For each town you see which evidence metrics have been
 provided and which critical ones are missing. Discovery data never fills them in. If you have no
-evidence yet, **Download research checklist** gives you a Markdown list of your finalists and the
+evidence yet, **Download research checklist** gives you a Markdown list of your finalists, links to official sources for each, and the
 critical facts to confirm for each.
 
 - The app ships with a **synthetic** demo evidence set so you can see how verification works.

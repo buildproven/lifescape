@@ -1546,3 +1546,44 @@ select {
 .start-card .text-button {
   justify-self: start;
 }
+
+.compare-table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.compare-table th,
+.compare-table td {
+  padding: 9px 12px 9px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.compare-table thead th {
+  font-weight: 700;
+}
+.compare-table th[scope="row"] {
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+.compare-table .is-unknown {
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+@media print {
+  .rail,
+  .action-bar,
+  .data-tools,
+  .decision-row,
+  .field-wide {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  .match-card {
+    break-inside: avoid;
+  }
+}
