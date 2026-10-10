@@ -19,7 +19,7 @@ your home directory).
 
 1. **Start.** The fastest way: tap **Try it with Traverse City, MI**. Otherwise type a town you
    like, or tap a style (**Affordable and quiet**, **Lively and walkable**, **College town**,
-   **Retiree-friendly**). You can use a town and a style together. Towns under 2,500 people cannot
+   **Mild winters**, **Four seasons**, **Retiree-friendly**). You can use a town and a style together. Towns under 2,500 people cannot
    be examples, but you can add them to your shortlist later.
 2. **Find places.** You get ten towns. Each card shows why it appeared, its biggest trade-off, and
    any missing data. Open **Why this place?** for the full comparison.
@@ -67,5 +67,7 @@ not verified evidence, and the FCC and FEMA maps need an address.
 
 ## Limits you should know
 
-Matches use six Census-derived numbers, not climate, healthcare, or walkability. See
+Matches use six Census-derived numbers and four NOAA climate normals (freezing nights, 90°F+ days,
+precipitation, snowfall), not healthcare or walkability. Climate comes from the nearest weather
+station within 30 miles, which can sit at a different elevation than the town. See
 [known limitations](limitations.md).

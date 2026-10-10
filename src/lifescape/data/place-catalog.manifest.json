@@ -1,5 +1,13 @@
 {
   "bounds": {
+    "annual_precip_in": {
+      "lower": 12.0,
+      "upper": 60.2
+    },
+    "annual_snowfall_in": {
+      "lower": 0.0,
+      "upper": 66.0
+    },
     "car_light_commute_share": {
       "lower": 4.46,
       "upper": 38.86
@@ -7,6 +15,14 @@
     "college_educated_share": {
       "lower": 10.82,
       "upper": 70.37
+    },
+    "freezing_nights_per_year": {
+      "lower": 0.8,
+      "upper": 165.8
+    },
+    "hot_days_per_year": {
+      "lower": 3.0,
+      "upper": 114.7
     },
     "median_home_value": {
       "lower": 103400.0,
@@ -25,8 +41,19 @@
       "upper": 6805.2
     }
   },
-  "catalog_version": "us-places-acs2024-v1",
+  "catalog_version": "us-places-acs2024-noaa1991-2020-v2",
+  "climate_join": "Each place uses the nearest NOAA station within 30 miles that reports the needed normals, measured from the Census place centroid. Station elevation is not compared; values are left missing when no station qualifies.",
   "coverage": {
+    "annual_precip_in": {
+      "non_null": 10215,
+      "serving_places": 10215,
+      "share": 1.0
+    },
+    "annual_snowfall_in": {
+      "non_null": 10175,
+      "serving_places": 10215,
+      "share": 0.9961
+    },
     "car_light_commute_share": {
       "non_null": 10214,
       "serving_places": 10215,
@@ -36,6 +63,16 @@
       "non_null": 10215,
       "serving_places": 10215,
       "share": 1.0
+    },
+    "freezing_nights_per_year": {
+      "non_null": 10214,
+      "serving_places": 10215,
+      "share": 0.9999
+    },
+    "hot_days_per_year": {
+      "non_null": 10214,
+      "serving_places": 10215,
+      "share": 0.9999
     },
     "median_home_value": {
       "non_null": 10125,
@@ -61,6 +98,16 @@
   "data_date": "2024-12-31",
   "excluded_geography": "Puerto Rico places are not in the first catalog.",
   "fields": {
+    "annual_precip_in": {
+      "definition": "Annual precipitation normal in inches, NOAA 1991-2020 ANN-PRCP-NORMAL, from the nearest station within 30 miles. Rain and melted snow; not a measure of sunshine.",
+      "label": "Annual precipitation",
+      "unit": "inches per year"
+    },
+    "annual_snowfall_in": {
+      "definition": "Annual snowfall normal in inches, NOAA 1991-2020 ANN-SNOW-NORMAL, from the nearest station within 30 miles that reports snowfall. Missing where none does; never assumed to be zero.",
+      "label": "Annual snowfall",
+      "unit": "inches per year"
+    },
     "car_light_commute_share": {
       "definition": "Share of workers 16+ who take public transit, bicycle, walk, or work from home (B08301_E010 + E018 + E019 + E021) / B08301_E001. An ACS commute-mode proxy, not a walkability score.",
       "label": "Car-light commute share",
@@ -70,6 +117,16 @@
       "definition": "Adults 25+ with a bachelor's degree or higher (B15003_E022 + E023 + E024 + E025) / B15003_E001.",
       "label": "College-educated share",
       "unit": "percent of adults 25+"
+    },
+    "freezing_nights_per_year": {
+      "definition": "Average days per year with a daily low at or below 32\u00b0F, NOAA 1991-2020 normal ANN-TMIN-AVGNDS-LSTH032, from the nearest station within 30 miles.",
+      "label": "Freezing nights",
+      "unit": "days per year"
+    },
+    "hot_days_per_year": {
+      "definition": "Average days per year with a daily high at or above 90\u00b0F, NOAA 1991-2020 normal ANN-TMAX-AVGNDS-GRTH090, from the nearest station within 30 miles.",
+      "label": "Hot days (90\u00b0F+)",
+      "unit": "days per year"
     },
     "median_home_value": {
       "definition": "Median value of owner-occupied housing units, ACS B25077 (B25077_E001).",
@@ -123,13 +180,18 @@
       "sha256": "cf262fc92b2326f7a8c62a89d156a60eb17d64d6d35f7a62310c43bb08972c06",
       "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_place_national.zip",
       "vintage": "2024 Census Gazetteer"
+    },
+    "noaa_normals": {
+      "sha256": "0fdb814203150780d4ee0c5d53c7844a237a21881101fb7d922b0aa3a1fd190f",
+      "url": "https://www.ncei.noaa.gov/data/normals-annualseasonal/1991-2020/archive/us-climate-normals_1991-2020_v1.0.1_annualseasonal_multivariate_by-station_c20230404.tar.gz",
+      "vintage": "NOAA U.S. Climate Normals 1991-2020 v1.0.1 (annual/seasonal, by station)"
     }
   },
   "normalization_version": "discovery-winsorized-minmax-v1",
   "output_file": "place-catalog.csv.gz",
-  "output_sha256": "5161a46cf7d21ce96dca019db715af86aa673e1cb24bec26718b8e6863c6234c",
+  "output_sha256": "068538db1206f0c5e2b744e03850a63d3499ef735b82d2180433aab3dfd91c9e",
   "row_count": 32041,
   "sentinel_policy": "Every negative ACS estimate (including -666666666 and -999999999) becomes null.",
   "serving_universe": "places with known population >= 2500",
-  "uncompressed_sha256": "19027e39a0f743f7da4b587e7dc823f2596345625acd79c8184d07149b4ed697"
+  "uncompressed_sha256": "f4636b3a8f2c8a8437d1f74b6f8968b3dc0caa0494aae2ddd9745d9fa4deb170"
 }

@@ -2,12 +2,18 @@
 
 ## Discovery
 
-- Discovery compares six Census-derived qualities only: population, median home value, population
-  density, car-light commute share, college-educated share, and older-adult share. It makes no
-  claim about climate, healthcare, nature, airports, culture, or walkability. Car-light commute
-  share is an ACS commute-mode proxy, not a walkability score.
+- Discovery compares six Census-derived qualities (population, median home value, population
+  density, car-light commute share, college-educated share, older-adult share) and four NOAA
+  1991–2020 climate normals (freezing nights, 90°F+ days, annual precipitation, annual snowfall).
+  It makes no claim about healthcare, nature, airports, culture, or walkability.
+- Climate values come from the nearest NOAA station within 30 miles, measured from the Census
+  place centroid. Station elevation is not compared, so a mountain town can inherit a valley
+  station's numbers. A value is missing, not zero, when no station qualifies; snowfall is the
+  most often missing. Normals are 30-year averages, not forecasts, and say nothing about
+  sunshine, humidity, wildfire smoke, or extreme events.
+- Car-light commute share is an ACS commute-mode proxy, not a walkability score.
 - Recommendations and examples cover places with a known population of 2,500 or more (10,215
-  places in catalog `us-places-acs2024-v1`). Smaller towns can be looked up and added to a
+  places in catalog `us-places-acs2024-noaa1991-2020-v2`). Smaller towns can be looked up and added to a
   shortlist by hand but receive no match score. Puerto Rico and other territories are outside this
   catalog.
 - The catalog uses ACS 2020–2024 five-year estimates. It does not use margins of error, so close

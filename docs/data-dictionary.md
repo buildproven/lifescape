@@ -26,7 +26,7 @@ The full machine-readable definitions are in `config/metrics.yaml`.
 
 ## Discovery catalog fields (advisory, never evidence)
 
-Catalog `us-places-acs2024-v1`, normalization `discovery-winsorized-minmax-v1`, algorithm
+Catalog `us-places-acs2024-noaa1991-2020-v2`, normalization `discovery-winsorized-minmax-v1`, algorithm
 `place-discovery-v1`. Values are `null` when missing; any negative ACS value (including the
 `-666666666` and `-999999999` annotations) is stored as `null`. These fields are not
 `ObservationRecord` values and never enter `execute_run`. Bounds are the 5th and 95th percentiles
@@ -40,6 +40,13 @@ Catalog `us-places-acs2024-v1`, normalization `discovery-winsorized-minmax-v1`, 
 | `car_light_commute_share` | (`B08301_E010` + `E018` + `E019` + `E021`) ÷ `B08301_E001` | percent of workers | ACS B08301 |
 | `college_educated_share` | (`B15003_E022`–`E025`) ÷ `B15003_E001` | percent of adults 25+ | ACS B15003 |
 | `older_adult_share` | (`B01001_E020`–`E025` + `E044`–`E049`) ÷ `B01001_E001` | percent of residents | ACS B01001 |
+| `freezing_nights_per_year` | `ANN-TMIN-AVGNDS-LSTH032` at the nearest station within 30 mi | days per year | NOAA 1991–2020 normals |
+| `hot_days_per_year` | `ANN-TMAX-AVGNDS-GRTH090` at the nearest station within 30 mi | days per year | NOAA 1991–2020 normals |
+| `annual_precip_in` | `ANN-PRCP-NORMAL` at the nearest station within 30 mi | inches per year | NOAA 1991–2020 normals |
+| `annual_snowfall_in` | `ANN-SNOW-NORMAL` at the nearest station reporting it within 30 mi; `null` otherwise, never `0` | inches per year | NOAA 1991–2020 normals |
+
+Each place also carries a `climate_sources` provenance cell (station id, name, and miles for the
+temperature, precipitation, and snowfall joins).
 
 Identity: `place_id` (7-digit state+place FIPS), `name`, `state`, `region` (Census region), plus
 `land_area_sqmi`, `latitude`, `longitude`. The manifest `src/lifescape/data/place-catalog.manifest.json`

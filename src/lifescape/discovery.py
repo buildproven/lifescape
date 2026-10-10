@@ -18,6 +18,7 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from importlib import resources
 from typing import Any, Final, Literal
 
@@ -38,6 +39,10 @@ ScoredField = Literal[
     "car_light_commute_share",
     "college_educated_share",
     "older_adult_share",
+    "freezing_nights_per_year",
+    "hot_days_per_year",
+    "annual_precip_in",
+    "annual_snowfall_in",
 ]
 
 SCORED_FIELDS: Final[tuple[ScoredField, ...]] = (
@@ -47,6 +52,10 @@ SCORED_FIELDS: Final[tuple[ScoredField, ...]] = (
     "car_light_commute_share",
     "college_educated_share",
     "older_adult_share",
+    "freezing_nights_per_year",
+    "hot_days_per_year",
+    "annual_precip_in",
+    "annual_snowfall_in",
 )
 CATALOG_COLUMNS: Final[tuple[str, ...]] = (
     "place_id",
@@ -57,6 +66,7 @@ CATALOG_COLUMNS: Final[tuple[str, ...]] = (
     "land_area_sqmi",
     "latitude",
     "longitude",
+    "climate_sources",
 )
 REGIONS: Final = ("Northeast", "Midwest", "South", "West")
 
@@ -182,6 +192,7 @@ class Place:
     state: str
     region: str
     values: dict[str, float | None]
+    climate_sources: dict[str, tuple[str, str, float]] = dataclass_field(default_factory=dict)
 
     @property
     def population(self) -> float | None:
@@ -311,7 +322,30 @@ def _parse_place(row: dict[str, str]) -> Place:
         values[field] = value
     if row["state"] not in STATE_REGIONS or STATE_REGIONS[row["state"]] != row["region"]:
         raise ValueError(f"invalid state or region for {row['place_id']}")
-    return Place(row["place_id"], row["name"], row["state"], row["region"], values)
+    return Place(
+        row["place_id"],
+        row["name"],
+        row["state"],
+        row["region"],
+        values,
+        _parse_climate_sources(row["climate_sources"], row["place_id"]),
+    )
+
+
+def _parse_climate_sources(raw: str, place_id: str) -> dict[str, tuple[str, str, float]]:
+    """Station provenance as ``{group: (station id, station name, miles)}``; blank means none."""
+    if not raw:
+        return {}
+    parsed = json.loads(raw)
+    sources: dict[str, tuple[str, str, float]] = {}
+    for group, entry in parsed.items():
+        station, name, miles = entry
+        if not (
+            isinstance(station, str) and isinstance(name, str) and isinstance(miles, int | float)
+        ):
+            raise ValueError(f"invalid climate source for {place_id}")
+        sources[str(group)] = (station, name, float(miles))
+    return sources
 
 
 def format_value(field_unit: str, value: float) -> str:
@@ -321,6 +355,10 @@ def format_value(field_unit: str, value: float) -> str:
         return f"{value:.1f}%"
     if field_unit == "people per square mile":
         return f"{value:,.0f} people per sq mi"
+    if field_unit == "days per year":
+        return f"{value:,.0f} days per year"
+    if field_unit == "inches per year":
+        return f"{value:,.0f} in per year"
     return f"{value:,.0f}"
 
 
@@ -596,6 +634,10 @@ class DiscoveryService:
             "missing_fields": [f for f in SCORED_FIELDS if place.values[f] is None],
             "unknown_constraints": unknown,
             "fields": self._field_details(place, resolved),
+            "climate_sources": [
+                {"group": group, "station": station, "name": name, "miles": miles}
+                for group, (station, name, miles) in sorted(place.climate_sources.items())
+            ],
             "catalog_version": self.catalog.catalog_version,
             "data_date": self.catalog.data_date,
             "evidence_status": "not verified evidence",

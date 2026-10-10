@@ -74,7 +74,8 @@ def build_catalog(
         writer.writerow(
             [place_id, name, state, STATE_REGIONS[state]]
             + ["" if value is None else value for value in values]
-            + ["1.0", "0", "0"]
+            + [""] * (len(SCORED_FIELDS) - len(values))
+            + ["1.0", "0", "0", ""]
         )
     compressed = gzip.compress(buffer.getvalue().encode(), mtime=0)
     manifest = {
@@ -134,7 +135,14 @@ def test_missing_values_never_raise_a_score_and_keep_their_weight(
 
     assert charlie["component_count"] == 4
     assert charlie["profile_target_count"] == 6
-    assert charlie["missing_fields"] == ["median_home_value", "population_density"]
+    assert charlie["missing_fields"] == [
+        "median_home_value",
+        "population_density",
+        "freezing_nights_per_year",
+        "hot_days_per_year",
+        "annual_precip_in",
+        "annual_snowfall_in",
+    ]
     # Sum of weight * similarity (4 * 3) over the full weight (6 * 3): 0.666667, not 1.0.
     assert charlie["total_match"] == 0.666667
     assert sum(c["score_contribution"] for c in charlie["components"]) == pytest.approx(
@@ -527,6 +535,7 @@ def test_shipped_manifest_records_provenance_and_unsupported_qualities(
         "b08301",
         "b15003",
         "b01001",
+        "noaa_normals",
     }
     assert all(len(item["sha256"]) == 64 for item in manifest["inputs"].values())
     assert "-666666666" in manifest["sentinel_policy"]
@@ -650,3 +659,32 @@ def test_incomplete_manifest_reports_unavailable_instead_of_crashing() -> None:
     for broken in ({k: v for k, v in manifest.items() if k != "bounds"}, {**manifest, "fields": 5}):
         with pytest.raises(CatalogUnavailableError, match="manifest"):
             parse_catalog(compressed, broken)
+
+
+def test_shipped_climate_values_keep_provenance_and_never_assume_zero(real: PlaceCatalog) -> None:
+    traverse = real.lookup("Traverse City, MI")[0]
+
+    assert 100 < traverse.values["freezing_nights_per_year"] < 200  # type: ignore[operator]
+    assert traverse.values["annual_snowfall_in"] > 50  # type: ignore[operator]
+    assert set(traverse.climate_sources) == {"temperature", "precipitation", "snowfall"}
+    assert all(miles <= 30 for _, _, miles in traverse.climate_sources.values())
+    for place in real.places.values():
+        if "snowfall" not in place.climate_sources:
+            assert place.values["annual_snowfall_in"] is None
+        if "temperature" not in place.climate_sources:
+            assert place.values["hot_days_per_year"] is None
+    for field in ("freezing_nights_per_year", "hot_days_per_year", "annual_precip_in"):
+        assert real.manifest["coverage"][field]["share"] >= 0.8
+
+
+def test_mild_winter_targets_recommend_places_with_few_freezing_nights(real: PlaceCatalog) -> None:
+    service = DiscoveryService(real)
+    result = service.search(
+        SearchProfile(targets={"freezing_nights_per_year": 2, "annual_snowfall_in": 0})
+    )
+
+    assert len(result["recommendations"]) == 10
+    for item in result["recommendations"]:
+        place = real.places[item["place_id"]]
+        assert place.values["freezing_nights_per_year"] is not None
+        assert place.values["freezing_nights_per_year"] < 20  # type: ignore[operator]

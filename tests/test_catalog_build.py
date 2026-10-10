@@ -100,7 +100,7 @@ def test_rows_derive_fields_disambiguate_names_and_skip_territories() -> None:
         "B01001_E001": 5000.0,
         **dict.fromkeys(build.OLDER_ADULT_VARIABLES, 100.0),
     }
-    rows = build.build_rows(gazetteer, {"all": {"3700001": values}})
+    rows = build.build_rows(gazetteer, {"all": {"3700001": values}}, [])
 
     assert [row["place_id"] for row in rows] == ["3700001", "3700002"]
     town, cdp = rows
@@ -118,3 +118,52 @@ def test_encoding_is_deterministic() -> None:
     rows = [dict.fromkeys(build.CATALOG_COLUMNS, "1")]
 
     assert build.encode_catalog(rows) == build.encode_catalog(rows)
+
+
+def _station(station_id: str, lat: float, lon: float, **variables: float) -> build.Station:
+    return (station_id, station_id.title(), lat, lon, variables)
+
+
+def test_climate_join_uses_nearest_qualifying_station_within_radius() -> None:
+    temperature = ("ANN-TMIN-AVGNDS-LSTH032", "ANN-TMAX-AVGNDS-GRTH090")
+    full = {"ANN-TMIN-AVGNDS-LSTH032": 100.0, "ANN-TMAX-AVGNDS-GRTH090": 10.0}
+    stations = [
+        _station("USNEAR", 35.0, -80.0, **{"ANN-TMIN-AVGNDS-LSTH032": 90.0}),  # lacks hot days
+        _station("USFULL", 35.1, -80.0, **full),
+        _station("USFAR", 36.5, -80.0, **full),
+    ]
+    index = build.StationIndex(stations, temperature)
+
+    found = index.nearest(35.0, -80.0)
+    assert found is not None and found[0][0] == "USFULL"
+    assert 6.0 < found[1] < 8.0  # 0.1 degrees of latitude is about 6.9 miles
+    assert index.nearest(37.5, -80.0) is None
+
+
+def test_climate_cells_stay_empty_when_no_station_qualifies() -> None:
+    place = {"INTPTLAT": "35.0", "INTPTLONG": "-80.0"}
+    indexes = {
+        group: build.StationIndex([], tuple(variable for _, variable in fields))
+        for group, fields in build.CLIMATE_GROUPS.items()
+    }
+
+    cells, sources = build.climate_for(place, indexes)
+
+    assert set(cells.values()) == {""}
+    assert sources == ""
+
+
+def test_climate_snowfall_is_missing_not_zero_without_a_snow_station() -> None:
+    place = {"INTPTLAT": "35.0", "INTPTLONG": "-80.0"}
+    stations = [_station("USRAIN", 35.0, -80.0, **{"ANN-PRCP-NORMAL": 44.4})]
+    indexes = {
+        group: build.StationIndex(stations, tuple(variable for _, variable in fields))
+        for group, fields in build.CLIMATE_GROUPS.items()
+    }
+
+    cells, sources = build.climate_for(place, indexes)
+
+    assert cells["annual_precip_in"] == "44.4"
+    assert cells["annual_snowfall_in"] == "" and cells["hot_days_per_year"] == ""
+    assert '"precipitation":["USRAIN","Usrain",0.0]' in sources
+    assert "snowfall" not in sources
