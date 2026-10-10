@@ -865,5 +865,12 @@ def test_shortlist_compares_kept_towns_side_by_side_with_source_links(
             page.get_by_role("button", name="Download research checklist").click()
         text = Path(download.value.path()).read_text(encoding="utf-8")
         assert text.count("https://data.census.gov/profile?g=1600000US") == 2
-        assert "https://broadbandmap.fcc.gov/" in text
+        for link in (
+            "https://broadbandmap.fcc.gov/",
+            "https://www.medicare.gov/care-compare/",
+            "https://msc.fema.gov/portal/home",
+            "https://www.ncei.noaa.gov/access/us-climate-normals/",
+        ):
+            assert link in text
+        assert "not verified evidence; FCC and FEMA need an address" in text
         browser.close()

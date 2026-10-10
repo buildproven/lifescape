@@ -871,7 +871,7 @@ function renderShortlist() {
   const recommendations = entries
     .filter((entry) => entry.source === "recommendation")
     .map((entry) => entry.recommendation);
-  renderCompare();
+  renderCompare(recommendations);
   bindCard("#shortlist-list", [...recommendations, ...unsure]);
   $$("#shortlist-list [data-remove-manual]").forEach((button) =>
     button.addEventListener("click", () => {
@@ -885,21 +885,20 @@ function renderShortlist() {
   );
 }
 
-function renderCompare() {
-  const kept = scenario()
-    .shortlist.filter((entry) => entry.source === "recommendation")
-    .map((entry) => entry.recommendation);
+function renderCompare(kept) {
   const section = $("#compare-section");
   section.hidden = kept.length < 2;
   if (kept.length < 2) return;
-  const manual = scenario().shortlist.length - kept.length;
+  const manual = scenario().shortlist.filter((entry) => entry.source === "manual").length;
   $("#compare-note").textContent =
     "Census values for the towns you kept. Lower or higher is not better; compare against your own limits." +
-    (manual
-      ? ` ${manual} hand-added town${manual === 1 ? " has" : "s have"} no discovery data and ${manual === 1 ? "is" : "are"} left out.`
-      : "");
+    (manual ? ` Hand-added towns (${manual}) have no discovery data and are left out.` : "");
   const head = kept.map((item) => `<th scope="col">${escapeHtml(item.label)}</th>`).join("");
-  const rows = kept[0].fields
+  const fields = new Map();
+  for (const item of kept) {
+    for (const field of item.fields) if (!fields.has(field.field)) fields.set(field.field, field);
+  }
+  const rows = [...fields.values()]
     .map((field) => {
       const cells = kept
         .map((item) => {
@@ -1103,9 +1102,12 @@ function researchChecklist() {
         lines.push(`- ${field.label}: ${formatValue(field.unit, field.candidate_value)}`);
       }
     }
-    lines.push("", "Check these official sources:");
     lines.push(
-      `- [Census profile](https://data.census.gov/profile?g=1600000US${entry.place_id})`,
+      "",
+      "Check these official sources (not verified evidence; FCC and FEMA need an address):"
+    );
+    lines.push(
+      `- [Census profile](https://data.census.gov/profile?g=1600000US${encodeURIComponent(entry.place_id)})`,
       "- [Medicare Care Compare (hospitals, doctors)](https://www.medicare.gov/care-compare/)",
       "- [FCC broadband map (enter an address)](https://broadbandmap.fcc.gov/)",
       "- [FEMA flood map (enter an address)](https://msc.fema.gov/portal/home)",

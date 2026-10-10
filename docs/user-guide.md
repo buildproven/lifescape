@@ -43,8 +43,9 @@ not have data for, and missing data lowers a town's score instead of helping it.
 
 Open **Verify** with at least two kept towns. For each town you see which evidence metrics have been
 provided and which critical ones are missing. Discovery data never fills them in. If you have no
-evidence yet, **Download research checklist** gives you a Markdown list of your finalists, links to official sources for each, and the
-critical facts to confirm for each.
+evidence yet, **Download research checklist** gives you a Markdown list of your finalists, the critical facts to confirm for each, and links to
+official sources (Census, Medicare Care Compare, FCC, FEMA, NOAA). The links are places to look,
+not verified evidence, and the FCC and FEMA maps need an address.
 
 - The app ships with a **synthetic** demo evidence set so you can see how verification works.
   Towns that share a name with a demo town, such as Williamsburg, VA, match it. Results from

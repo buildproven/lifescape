@@ -1577,13 +1577,24 @@ select {
   .action-bar,
   .data-tools,
   .decision-row,
-  .field-wide {
+  .why-slot,
+  .stage-intro p,
+  #manual-search,
+  #manual-results,
+  label[for="manual-search"] {
     display: none !important;
   }
   body {
     background: #fff;
+    color: #000;
   }
   .match-card {
     break-inside: avoid;
+  }
+  .table-wrap {
+    overflow: visible;
+  }
+  .compare-table {
+    min-width: 0;
   }
 }
