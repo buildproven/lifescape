@@ -55,6 +55,16 @@ const STYLES = [
     targets: { college_educated_share: 0.9, population: 0.5, car_light_commute_share: 0.6 },
   },
   {
+    id: "mild",
+    label: "Mild winters",
+    targets: { freezing_nights_per_year: 0.05, annual_snowfall_in: 0.03, hot_days_per_year: 0.3 },
+  },
+  {
+    id: "seasons",
+    label: "Four seasons",
+    targets: { freezing_nights_per_year: 0.6, annual_snowfall_in: 0.45, hot_days_per_year: 0.3 },
+  },
+  {
     id: "retiree",
     label: "Retiree-friendly",
     targets: { older_adult_share: 0.85, median_home_value: 0.4, population_density: 0.35 },
@@ -94,6 +104,8 @@ function formatValue(unit, value) {
   if (unit === "USD") return money.format(value);
   if (unit.startsWith("percent")) return `${Number(value).toFixed(1)}%`;
   if (unit === "people per square mile") return `${whole.format(value)} people per sq mi`;
+  if (unit === "days per year") return `${whole.format(value)} days per year`;
+  if (unit === "inches per year") return `${whole.format(value)} in per year`;
   return whole.format(value);
 }
 
@@ -657,6 +669,29 @@ function movementText(item) {
   return `Moved ${direction} ${moved} ${moved === 1 ? "place" : "places"}${because}.`;
 }
 
+const CLIMATE_FIELDS = [
+  "freezing_nights_per_year",
+  "hot_days_per_year",
+  "annual_precip_in",
+  "annual_snowfall_in",
+];
+
+function climateSourceNote(item) {
+  const asked = item.fields.some(
+    (detail) => CLIMATE_FIELDS.includes(detail.field) && detail.targeted
+  );
+  if (!asked) return "";
+  const sources = item.climate_sources ?? [];
+  if (!sources.length) {
+    return '<p class="field-help">Climate: no NOAA station within 30 miles reports these normals.</p>';
+  }
+  const parts = sources.map(
+    (source) =>
+      `${escapeHtml(source.group)} from ${escapeHtml(source.name)} (${escapeHtml(source.miles.toFixed(1))} mi)`
+  );
+  return `<p class="field-help">Climate (NOAA 1991–2020 normals, nearest station; elevation is not compared): ${parts.join("; ")}.</p>`;
+}
+
 function whyPanel(item) {
   const rows = item.fields
     .map((detail) => {
@@ -695,6 +730,7 @@ function whyPanel(item) {
       <th scope="col">Your target</th><th scope="col">Status</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${clipped ? `<ul class="clip-notes">${clipped}</ul>` : ""}
     ${unknown}
+    ${climateSourceNote(item)}
     <p class="field-help">Catalog ${escapeHtml(item.catalog_version)}, data from ${escapeHtml(item.data_date)}.
       ${item.component_count} of ${item.profile_target_count} requested qualities had data.</p>
   </div>`;

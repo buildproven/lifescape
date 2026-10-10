@@ -124,11 +124,16 @@ This PRD corrects a gap between the original implementation milestone and the in
   share, college-educated share, older-adult share, and preferred or excluded states or regions.
   **Car-light commute share is an ACS commute-mode proxy, not a walkability score.** Each supported
   dimension has a documented field definition, unit, observation date, source or derivation, and
-  a non-null value for at least 80% of catalog places with population of 2,500 or more. Climate,
-  healthcare access, nature and outdoor access, airport access, and cultural or social activity
-  remain named discovery needs, but the first catalog does not accept them as scored qualities or
-  claim matches for them. Adding one requires a PRD amendment with a source and shipped-catalog
-  coverage criterion.
+  a non-null value for at least 80% of catalog places with population of 2,500 or more.
+  **Amendment (BUI-1107):** the catalog also supports four NOAA 1991–2020 U.S. Climate Normals
+  qualities: freezing nights per year, hot days (90°F+) per year, annual precipitation, and annual
+  snowfall. Each place takes the nearest NOAA station within 30 miles that reports the needed
+  normals, keeps the station name and distance as provenance, and is left null (never imputed or
+  assumed zero) when none qualifies. Climate qualities are discovery data: they cannot clear a gate
+  or change an evidence-backed score. Healthcare access, nature and outdoor access, airport
+  access, and cultural or social activity remain named discovery needs, but the catalog does not
+  accept them as scored qualities or claim matches for them. Adding one requires a PRD amendment
+  with a source and shipped-catalog coverage criterion.
 - FR5: Discovery uses a versioned catalog of U.S. incorporated places and Census-designated
   places. The catalog contains normalized place identity and the available discovery dimensions.
   Missing fields remain null. Lookup includes the complete catalog. Automated recommendations use

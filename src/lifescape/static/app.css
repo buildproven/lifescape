@@ -1477,6 +1477,7 @@ select {
 .stage,
 .match-list,
 .match-card,
+.match-card > *,
 .why-panel {
   min-width: 0;
 }

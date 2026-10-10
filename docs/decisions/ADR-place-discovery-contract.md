@@ -26,8 +26,10 @@ interface; they do not calculate recommendation scores.
 The default provider is a packaged, versioned discovery catalog built from official U.S. Census
 Gazetteer and American Community Survey bulk files. Its first supported dimensions are population,
 housing cost, population density, car-light commute share, college-educated share, older-adult
-share, and state or region. It does not claim climate, healthcare, nature, airport, culture, or
-walkability matches. A checked-in build script and manifest record source URLs, source vintage,
+share, and state or region. Amendment (BUI-1107, PRD FR4): four NOAA 1991–2020 climate normals
+(freezing nights, 90°F+ days, precipitation, snowfall) join each place to the nearest reporting
+station within 30 miles, with station provenance and nulls where none qualifies. It does not claim
+healthcare, nature, airport, culture, or walkability matches. A checked-in build script and manifest record source URLs, source vintage,
 hashes, selected fields, derivations, output hash, row count, and per-field coverage. A shipped
 field is supported only when at least 80% of catalog places with population of 2,500 or more have
 a non-null value. Discovery fields remain discovery data. They do not become `ObservationRecord`

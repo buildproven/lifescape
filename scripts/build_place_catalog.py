@@ -2,6 +2,8 @@
 
 Inputs (all keyless, public, pinned by SHA-256 in the manifest):
 - 2024 Census Gazetteer, places: identity, land area, centroid.
+- NOAA U.S. Climate Normals 1991-2020 (annual/seasonal, by station): freezing nights, 90°F+ days,
+  precipitation, snowfall, joined to each place by the nearest reporting station within 30 miles.
 - ACS 2020-2024 5-year table-based summary files: B01003, B25077, B08301, B15003, B01001.
 
 Usage:
@@ -19,7 +21,9 @@ import gzip
 import hashlib
 import io
 import json
+import math
 import sys
+import tarfile
 import urllib.request
 import zipfile
 from collections import Counter
@@ -41,7 +45,22 @@ GAZETTEER_URL = (
     "2024_Gaz_place_national.zip"
 )
 ACS_TABLES = ("b01003", "b25077", "b08301", "b15003", "b01001")
-CATALOG_VERSION = "us-places-acs2024-v1"
+NOAA_URL = (
+    "https://www.ncei.noaa.gov/data/normals-annualseasonal/1991-2020/archive/"
+    "us-climate-normals_1991-2020_v1.0.1_annualseasonal_multivariate_by-station_c20230404.tar.gz"
+)
+NOAA_VINTAGE = "NOAA U.S. Climate Normals 1991-2020 v1.0.1 (annual/seasonal, by station)"
+CLIMATE_RADIUS_MILES = 30.0
+# Each group is joined to the nearest station that reports every variable in the group.
+CLIMATE_GROUPS: dict[str, tuple[tuple[str, str], ...]] = {
+    "temperature": (
+        ("freezing_nights_per_year", "ANN-TMIN-AVGNDS-LSTH032"),
+        ("hot_days_per_year", "ANN-TMAX-AVGNDS-GRTH090"),
+    ),
+    "precipitation": (("annual_precip_in", "ANN-PRCP-NORMAL"),),
+    "snowfall": (("annual_snowfall_in", "ANN-SNOW-NORMAL"),),
+}
+CATALOG_VERSION = "us-places-acs2024-noaa1991-2020-v2"
 ACS_VINTAGE = "ACS 2020-2024 5-year estimates (released December 2025)"
 GAZETTEER_VINTAGE = "2024 Census Gazetteer"
 DATA_DATE = "2024-12-31"
@@ -95,6 +114,39 @@ FIELD_DEFINITIONS: dict[str, dict[str, str]] = {
         "label": "Older-adult share",
         "unit": "percent of residents",
         "definition": "Residents aged 65+ (B01001_E020-E025 + E044-E049) / B01001_E001.",
+    },
+    "freezing_nights_per_year": {
+        "label": "Freezing nights",
+        "unit": "days per year",
+        "definition": (
+            "Average days per year with a daily low at or below 32°F, NOAA 1991-2020 normal "
+            "ANN-TMIN-AVGNDS-LSTH032, from the nearest station within 30 miles."
+        ),
+    },
+    "hot_days_per_year": {
+        "label": "Hot days (90°F+)",
+        "unit": "days per year",
+        "definition": (
+            "Average days per year with a daily high at or above 90°F, NOAA 1991-2020 normal "
+            "ANN-TMAX-AVGNDS-GRTH090, from the nearest station within 30 miles."
+        ),
+    },
+    "annual_precip_in": {
+        "label": "Annual precipitation",
+        "unit": "inches per year",
+        "definition": (
+            "Annual precipitation normal in inches, NOAA 1991-2020 ANN-PRCP-NORMAL, from the "
+            "nearest station within 30 miles. Rain and melted snow; not a measure of sunshine."
+        ),
+    },
+    "annual_snowfall_in": {
+        "label": "Annual snowfall",
+        "unit": "inches per year",
+        "definition": (
+            "Annual snowfall normal in inches, NOAA 1991-2020 ANN-SNOW-NORMAL, from the nearest "
+            "station within 30 miles that reports snowfall. Missing where none does; never "
+            "assumed to be zero."
+        ),
     },
 }
 
@@ -191,9 +243,110 @@ def number(value: float | None, digits: int = 0) -> str:
     return str(round(value)) if digits == 0 else f"{value:.{digits}f}"
 
 
+Station = tuple[str, str, float, float, dict[str, float]]  # id, name, lat, lon, variables
+
+
+def read_noaa_stations(data: bytes) -> list[Station]:
+    """Read U.S. station annual normals from the NOAA tarball; missing values are omitted."""
+    wanted = {variable for group in CLIMATE_GROUPS.values() for _, variable in group}
+    stations: list[Station] = []
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+        for member in archive:
+            if not member.isfile() or not member.name.endswith(".csv"):
+                continue
+            handle = archive.extractfile(member)
+            if handle is None:
+                continue
+            row = next(csv.DictReader(io.TextIOWrapper(handle, encoding="utf-8")), None)
+            if row is None or not row["STATION"].startswith("US"):
+                continue
+            variables: dict[str, float] = {}
+            try:
+                for variable in wanted:
+                    text = (row.get(variable) or "").strip()
+                    if text:
+                        value = float(text)
+                        if value >= 0:  # NOAA marks missing values with -9999
+                            variables[variable] = value
+                latitude, longitude = float(row["LATITUDE"]), float(row["LONGITUDE"])
+            except (KeyError, ValueError) as exc:
+                raise SystemExit(f"unreadable NOAA station file {member.name}: {exc!r}") from exc
+            stations.append(
+                (
+                    row["STATION"],
+                    row["NAME"].strip(),
+                    latitude,
+                    longitude,
+                    variables,
+                )
+            )
+    return sorted(stations, key=lambda station: station[0])
+
+
+def miles_between(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in miles."""
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    a = (
+        math.sin((phi2 - phi1) / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    )
+    return 3958.7613 * 2 * math.asin(math.sqrt(a))
+
+
+class StationIndex:
+    """Nearest station reporting every variable in a group, found through 1-degree cells."""
+
+    def __init__(self, stations: list[Station], variables: tuple[str, ...]) -> None:
+        self.variables = variables
+        self.cells: dict[tuple[int, int], list[Station]] = {}
+        for station in stations:
+            if all(variable in station[4] for variable in variables):
+                cell = (math.floor(station[2]), math.floor(station[3]))
+                self.cells.setdefault(cell, []).append(station)
+
+    def nearest(self, lat: float, lon: float) -> tuple[Station, float] | None:
+        lon_span = min(math.ceil(1.0 / max(math.cos(math.radians(lat)), 0.2)) + 1, 90)
+        best: tuple[float, str, Station] | None = None
+        for d_lat in range(-2, 3):
+            for d_lon in range(-lon_span, lon_span + 1):
+                # Longitude cells wrap across the antimeridian (western Aleutian places).
+                lon_cell = (math.floor(lon) + d_lon + 180) % 360 - 180
+                for station in self.cells.get((math.floor(lat) + d_lat, lon_cell), ()):
+                    miles = miles_between(lat, lon, station[2], station[3])
+                    if miles <= CLIMATE_RADIUS_MILES and (
+                        best is None or (miles, station[0]) < best[:2]
+                    ):
+                        best = (miles, station[0], station)
+        return None if best is None else (best[2], best[0])
+
+
+def climate_for(
+    place: dict[str, str], indexes: dict[str, StationIndex]
+) -> tuple[dict[str, str], str]:
+    """Return catalog cells and the provenance JSON for one Gazetteer place."""
+    cells = {field: "" for group in CLIMATE_GROUPS.values() for field, _ in group}
+    sources: dict[str, list[Any]] = {}
+    lat, lon = float(place["INTPTLAT"]), float(place["INTPTLONG"])
+    for group, fields in CLIMATE_GROUPS.items():
+        found = indexes[group].nearest(lat, lon)
+        if found is None:
+            continue
+        station, miles = found
+        for field, variable in fields:
+            cells[field] = number(station[4][variable], 1)
+        sources[group] = [station[0], station[1], round(miles, 1)]
+    return cells, json.dumps(sources, sort_keys=True, separators=(",", ":")) if sources else ""
+
+
 def build_rows(
-    gazetteer: list[dict[str, str]], tables: dict[str, dict[str, dict[str, float | None]]]
+    gazetteer: list[dict[str, str]],
+    tables: dict[str, dict[str, dict[str, float | None]]],
+    stations: list[Station],
 ) -> list[dict[str, str]]:
+    indexes = {
+        group: StationIndex(stations, tuple(variable for _, variable in fields))
+        for group, fields in CLIMATE_GROUPS.items()
+    }
     merged: dict[str, dict[str, float | None]] = {}
     for table in tables.values():
         for geoid, values in table.items():
@@ -211,6 +364,7 @@ def build_rows(
         population = acs.get("B01003_E001")
         land = float(place["ALAND_SQMI"]) if place["ALAND_SQMI"] else 0.0
         density = population / land if population is not None and land > 0 else None
+        climate, climate_sources = climate_for(place, indexes)
         rows.append(
             {
                 "place_id": place["GEOID"],
@@ -225,9 +379,11 @@ def build_rows(
                 ),
                 "college_educated_share": number(share(acs, COLLEGE_VARIABLES, "B15003_E001"), 2),
                 "older_adult_share": number(share(acs, OLDER_ADULT_VARIABLES, "B01001_E001"), 2),
+                **climate,
                 "land_area_sqmi": place["ALAND_SQMI"],
                 "latitude": place["INTPTLAT"],
                 "longitude": place["INTPTLONG"],
+                "climate_sources": climate_sources,
             }
         )
     return rows
@@ -280,7 +436,13 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
         inputs[table] = {"url": url, "vintage": ACS_VINTAGE, "sha256": sha256_bytes(data)}
         tables[table] = read_acs_table(data)
 
-    rows = build_rows(read_gazetteer(gazetteer_bytes), tables)
+    noaa_bytes = fetch(NOAA_URL, CACHE / "noaa-normals-1991-2020-annualseasonal.tar.gz")
+    inputs["noaa_normals"] = {
+        "url": NOAA_URL,
+        "vintage": NOAA_VINTAGE,
+        "sha256": sha256_bytes(noaa_bytes),
+    }
+    rows = build_rows(read_gazetteer(gazetteer_bytes), tables, read_noaa_stations(noaa_bytes))
     raw, compressed = encode_catalog(rows)
     coverage, bounds = coverage_and_bounds(rows)
     failing = {field: c["share"] for field, c in coverage.items() if c["share"] < 0.8}
@@ -293,6 +455,11 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
         "inputs": inputs,
         "geography": "U.S. states and DC: incorporated places and Census-designated places",
         "excluded_geography": "Puerto Rico places are not in the first catalog.",
+        "climate_join": (
+            f"Each place uses the nearest NOAA station within {CLIMATE_RADIUS_MILES:.0f} miles "
+            "that reports the needed normals, measured from the Census place centroid. Station "
+            "elevation is not compared; values are left missing when no station qualifies."
+        ),
         "sentinel_policy": SENTINEL_POLICY,
         "serving_universe": f"places with known population >= {MINIMUM_SERVING_POPULATION}",
         "fields": FIELD_DEFINITIONS,

@@ -84,7 +84,7 @@ def start_search(page: Page, example: str = "Traverse City", *, limits: bool = F
     """Choose an example town; optionally continue to the boundaries step."""
     page.get_by_label("A town you already like").fill(example)
     page.get_by_role("button", name="Use as example").first.click()
-    page.get_by_text("Comparing 6 qualities.").wait_for()
+    page.get_by_text("Comparing 10 qualities.").wait_for()
     if limits:
         page.get_by_role("button", name="Set limits first (price, regions)").click()
 
@@ -222,7 +222,7 @@ def test_discovery_recovers_from_a_malformed_saved_search(tmp_path: Path) -> Non
         page.reload()
         banner_says(page, "could not be opened")
         assert page.evaluate("localStorage.getItem('lifescape.scenario.backup')") is not None
-        assert page.locator("#quality-list .quality-row").count() == 6
+        assert page.locator("#quality-list .quality-row").count() == 10
         page.locator("#scenario-banner").get_by_role("button", name="Start fresh").click()
         assert page.evaluate("localStorage.getItem('lifescape.scenario')") is None
         page.evaluate("localStorage.setItem('lifescape.scenario', '{not json')")
@@ -259,7 +259,7 @@ def test_discovery_rejects_a_saved_snapshot_missing_recommendation_fields(
             "() => document.querySelector('#scenario-banner').textContent"
             ".includes('invalid recommendation snapshot')"
         )
-        assert page.locator("#quality-list .quality-row").count() == 6
+        assert page.locator("#quality-list .quality-row").count() == 10
         assert errors == []
         browser.close()
 
@@ -379,22 +379,26 @@ def test_evidence_handoff_runs_only_with_reviewed_evidence(tmp_path: Path) -> No
         page.goto(url)
         start_search(page)
         find_places(page)
-        # Williamsburg, VA is the first match and also a synthetic benchmark town.
+        # The first match has no evidence; Williamsburg, VA and Lake Geneva, WI are synthetic
+        # benchmark towns, added by name so ranking changes cannot move the test.
         keep(page, 1)
         page.get_by_role("button", name="Review shortlist").click()
         assert page.get_by_role("button", name="Verify finalists").is_disabled()
+        page.get_by_label("Add a town yourself").fill("Williamsburg, VA")
+        page.get_by_role("button", name="Add manually").first.click()
         page.get_by_label("Add a town yourself").fill("Abanda")
         page.get_by_role("button", name="Add manually").first.click()
         page.get_by_role("button", name="Verify finalists").click()
 
         page.get_by_role("heading", name="Test your finalists with evidence").wait_for()
         rows = page.locator(".handoff-row")
-        assert rows.count() == 2
-        assert "metrics provided" in rows.nth(0).inner_text()
-        assert "No reviewed evidence for this town yet" in rows.nth(1).inner_text()
-        rows.nth(1).locator("summary").click()
-        assert rows.nth(1).locator(".metric-list li.is-absent").count() == 17
-        assert rows.nth(1).locator(".metric-list .tag", has_text="Critical").count() >= 1
+        assert rows.count() == 3
+        assert "No reviewed evidence for this town yet" in rows.nth(0).inner_text()
+        assert "metrics provided" in rows.nth(1).inner_text()
+        assert "No reviewed evidence for this town yet" in rows.nth(2).inner_text()
+        rows.nth(2).locator("summary").click()
+        assert rows.nth(2).locator(".metric-list li.is-absent").count() == 17
+        assert rows.nth(2).locator(".metric-list .tag", has_text="Critical").count() >= 1
         # A discovery record alone cannot enable the comparison: only one town has evidence.
         assert page.get_by_role("button", name="Run comparison").is_disabled()
         assert "at least two" in page.locator("#action-hint").inner_text()
@@ -402,8 +406,8 @@ def test_evidence_handoff_runs_only_with_reviewed_evidence(tmp_path: Path) -> No
         page.get_by_label("Add a town yourself").fill("Lake Geneva")
         page.get_by_role("button", name="Add manually").first.click()
         page.get_by_role("button", name="Verify finalists").click()
-        page.locator(".handoff-row").nth(2).wait_for()
-        assert page.get_by_text("2 of 3 ready to compare").is_visible()
+        page.locator(".handoff-row").nth(3).wait_for()
+        assert page.get_by_text("2 of 4 ready to compare").is_visible()
         page.get_by_role("button", name="Run comparison").click()
 
         page.locator("#result-lead h2").wait_for()
@@ -857,7 +861,7 @@ def test_shortlist_compares_kept_towns_side_by_side_with_source_links(
 
         assert page.locator("#compare-section").is_visible()
         assert page.locator("#compare-table thead th").count() == 3
-        assert page.locator("#compare-table tbody tr").count() == 7
+        assert page.locator("#compare-table tbody tr").count() == 11
         assert page.locator("#compare-table th[scope=row]", has_text="Discovery match").count() == 1
 
         page.get_by_role("button", name="Verify finalists").click()
@@ -873,4 +877,25 @@ def test_shortlist_compares_kept_towns_side_by_side_with_source_links(
         ):
             assert link in text
         assert "not verified evidence; FCC and FEMA need an address" in text
+        browser.close()
+
+
+def test_climate_style_finds_mild_winters_and_names_the_weather_station(tmp_path: Path) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        errors = watch_errors(page)
+        page.goto(url)
+        page.get_by_role("button", name="Mild winters").click()
+        page.get_by_text("Comparing 3 qualities.").wait_for()
+        find_places(page)
+
+        assert page.locator("#match-list .match-card").count() == 10
+        first = page.locator("#match-list .match-card").first
+        first.get_by_role("button", name="Why this place?").click()
+        assert first.get_by_text("Freezing nights").first.is_visible()
+        note = first.locator(".why-panel .field-help", has_text="NOAA 1991").inner_text()
+        assert "mi)" in note and "elevation is not compared" in note
+        assert fits_viewport(page)
+        assert errors == []
         browser.close()

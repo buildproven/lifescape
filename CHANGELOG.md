@@ -4,6 +4,12 @@
 
 ### Added
 
+- **Climate qualities (BUI-1107).** Discovery now also matches on four NOAA 1991–2020 climate
+  normals: freezing nights, hot days (90°F+), annual precipitation, and annual snowfall. Each
+  town takes the nearest NOAA station within 30 miles, the Why panel names the station and
+  distance, and a value stays missing (never zero) when no station qualifies. Two new one-tap
+  styles, **Mild winters** and **Four seasons**. Catalog is now `us-places-acs2024-noaa1991-2020-v2`.
+
 - **Side-by-side comparison.** With two or more kept towns, the shortlist shows a table of all six
   Census qualities and the match percentage. Unknown values read "Unknown", never imputed.
 - **Print or save as PDF** for the shortlist.
