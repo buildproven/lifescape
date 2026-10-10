@@ -328,23 +328,46 @@ def _parse_place(row: dict[str, str]) -> Place:
         row["state"],
         row["region"],
         values,
-        _parse_climate_sources(row["climate_sources"], row["place_id"]),
+        _parse_climate_sources(row["climate_sources"], row["place_id"], values),
     )
 
 
-def _parse_climate_sources(raw: str, place_id: str) -> dict[str, tuple[str, str, float]]:
-    """Station provenance as ``{group: (station id, station name, miles)}``; blank means none."""
-    if not raw:
-        return {}
-    parsed = json.loads(raw)
+_CLIMATE_GROUP_FIELDS: Final[dict[str, tuple[str, ...]]] = {
+    "temperature": ("freezing_nights_per_year", "hot_days_per_year"),
+    "precipitation": ("annual_precip_in",),
+    "snowfall": ("annual_snowfall_in",),
+}
+
+
+def _parse_climate_sources(
+    raw: str, place_id: str, values: dict[str, float | None]
+) -> dict[str, tuple[str, str, float]]:
+    """Station provenance as ``{group: (station id, station name, miles)}``; blank means none.
+
+    Every climate value must name its station: a populated value without a source group, or a
+    source group without values, makes the catalog unusable rather than silently unattributed.
+    """
+    parsed = json.loads(raw) if raw else {}
+    if not isinstance(parsed, dict) or not set(parsed) <= set(_CLIMATE_GROUP_FIELDS):
+        raise ValueError(f"invalid climate sources for {place_id}")
     sources: dict[str, tuple[str, str, float]] = {}
     for group, entry in parsed.items():
+        if not (isinstance(entry, list) and len(entry) == 3):
+            raise ValueError(f"invalid climate source for {place_id}")
         station, name, miles = entry
         if not (
-            isinstance(station, str) and isinstance(name, str) and isinstance(miles, int | float)
+            isinstance(station, str)
+            and isinstance(name, str)
+            and isinstance(miles, int | float)
+            and not isinstance(miles, bool)
+            and math.isfinite(miles)
+            and miles >= 0
         ):
             raise ValueError(f"invalid climate source for {place_id}")
-        sources[str(group)] = (station, name, float(miles))
+        sources[group] = (station, name, float(miles))
+    for group, fields in _CLIMATE_GROUP_FIELDS.items():
+        if any(values[field] is not None for field in fields) and group not in sources:
+            raise ValueError(f"climate value without a station for {place_id}")
     return sources
 
 

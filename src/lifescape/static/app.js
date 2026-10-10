@@ -669,14 +669,25 @@ function movementText(item) {
   return `Moved ${direction} ${moved} ${moved === 1 ? "place" : "places"}${because}.`;
 }
 
+const CLIMATE_FIELDS = [
+  "freezing_nights_per_year",
+  "hot_days_per_year",
+  "annual_precip_in",
+  "annual_snowfall_in",
+];
+
 function climateSourceNote(item) {
+  const asked = item.fields.some(
+    (detail) => CLIMATE_FIELDS.includes(detail.field) && detail.targeted
+  );
+  if (!asked) return "";
   const sources = item.climate_sources ?? [];
   if (!sources.length) {
     return '<p class="field-help">Climate: no NOAA station within 30 miles reports these normals.</p>';
   }
   const parts = sources.map(
     (source) =>
-      `${escapeHtml(source.group)} from ${escapeHtml(source.name)} (${escapeHtml(String(source.miles))} mi)`
+      `${escapeHtml(source.group)} from ${escapeHtml(source.name)} (${escapeHtml(source.miles.toFixed(1))} mi)`
   );
   return `<p class="field-help">Climate (NOAA 1991–2020 normals, nearest station; elevation is not compared): ${parts.join("; ")}.</p>`;
 }

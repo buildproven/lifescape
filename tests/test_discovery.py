@@ -65,8 +65,10 @@ ROWS: dict[str, tuple[str, str, float | None, ...]] = {
 
 def build_catalog(
     rows: dict[str, tuple[str, str, float | None, ...]] | None = None,
+    climate_sources: dict[str, str] | None = None,
 ) -> PlaceCatalog:
     rows = ROWS if rows is None else rows
+    climate_sources = climate_sources or {}
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(CATALOG_COLUMNS)
@@ -75,7 +77,7 @@ def build_catalog(
             [place_id, name, state, STATE_REGIONS[state]]
             + ["" if value is None else value for value in values]
             + [""] * (len(SCORED_FIELDS) - len(values))
-            + ["1.0", "0", "0", ""]
+            + ["1.0", "0", "0", climate_sources.get(place_id, "")]
         )
     compressed = gzip.compress(buffer.getvalue().encode(), mtime=0)
     manifest = {
@@ -460,7 +462,7 @@ def test_negative_missing_value_sentinel_is_rejected() -> None:
 
 def test_duplicate_ids_and_wrong_columns_are_rejected() -> None:
     header = ",".join(CATALOG_COLUMNS)
-    row = "1,Dup,NC,South,5000,1,1,1,1,1,1,0,0"
+    row = "1,Dup,NC,South,5000,1,1,1,1,1,,,,,1,0,0,"
     for text, message in (
         (f"{header}\n{row}\n{row}\n", "duplicate"),
         ("wrong,columns\n1,2\n", "columns"),
@@ -664,8 +666,10 @@ def test_incomplete_manifest_reports_unavailable_instead_of_crashing() -> None:
 def test_shipped_climate_values_keep_provenance_and_never_assume_zero(real: PlaceCatalog) -> None:
     traverse = real.lookup("Traverse City, MI")[0]
 
-    assert 100 < traverse.values["freezing_nights_per_year"] < 200  # type: ignore[operator]
-    assert traverse.values["annual_snowfall_in"] > 50  # type: ignore[operator]
+    freezing = traverse.values["freezing_nights_per_year"]
+    snowfall = traverse.values["annual_snowfall_in"]
+    assert freezing is not None and 100 < freezing < 200
+    assert snowfall is not None and snowfall > 50
     assert set(traverse.climate_sources) == {"temperature", "precipitation", "snowfall"}
     assert all(miles <= 30 for _, _, miles in traverse.climate_sources.values())
     for place in real.places.values():
@@ -686,5 +690,29 @@ def test_mild_winter_targets_recommend_places_with_few_freezing_nights(real: Pla
     assert len(result["recommendations"]) == 10
     for item in result["recommendations"]:
         place = real.places[item["place_id"]]
-        assert place.values["freezing_nights_per_year"] is not None
-        assert place.values["freezing_nights_per_year"] < 20  # type: ignore[operator]
+        freezing = place.values["freezing_nights_per_year"]
+        assert freezing is not None and freezing < 20
+
+
+def test_every_shipped_climate_value_names_its_station(real: PlaceCatalog) -> None:
+    groups = {
+        "temperature": ("freezing_nights_per_year", "hot_days_per_year"),
+        "precipitation": ("annual_precip_in",),
+        "snowfall": ("annual_snowfall_in",),
+    }
+    for place in real.places.values():
+        for group, fields in groups.items():
+            has_value = any(place.values[field] is not None for field in fields)
+            assert has_value == (group in place.climate_sources), (place.place_id, group)
+
+
+def test_catalog_rejects_a_climate_value_without_a_station() -> None:
+    row = {"A": ("Alpha", "NC", 5000, 500, 50, 20, 40, 30, 12.5, None, None, None)}
+    sourced = '{"temperature":["US1","Station One",3.5]}'
+
+    with pytest.raises(CatalogUnavailableError, match="without a station"):
+        build_catalog(row)
+    catalog = build_catalog(row, {"A": sourced})
+    assert catalog.places["A"].climate_sources == {"temperature": ("US1", "Station One", 3.5)}
+    with pytest.raises(CatalogUnavailableError, match="invalid climate source"):
+        build_catalog(row, {"A": '{"temperature":"US1"}'})

@@ -167,3 +167,14 @@ def test_climate_snowfall_is_missing_not_zero_without_a_snow_station() -> None:
     assert cells["annual_snowfall_in"] == "" and cells["hot_days_per_year"] == ""
     assert '"precipitation":["USRAIN","Usrain",0.0]' in sources
     assert "snowfall" not in sources
+
+
+def test_climate_join_wraps_across_the_antimeridian() -> None:
+    variables = ("ANN-PRCP-NORMAL",)
+    stations = [_station("USWEST", 52.9, -179.9, **{"ANN-PRCP-NORMAL": 30.0})]
+    index = build.StationIndex(stations, variables)
+
+    found = index.nearest(52.9, 179.9)
+
+    assert found is not None and found[0][0] == "USWEST"
+    assert found[1] < 10

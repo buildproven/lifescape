@@ -257,23 +257,26 @@ def read_noaa_stations(data: bytes) -> list[Station]:
             handle = archive.extractfile(member)
             if handle is None:
                 continue
-            rows = list(csv.DictReader(io.TextIOWrapper(handle, encoding="utf-8")))
-            if not rows or not rows[0]["STATION"].startswith("US"):
+            row = next(csv.DictReader(io.TextIOWrapper(handle, encoding="utf-8")), None)
+            if row is None or not row["STATION"].startswith("US"):
                 continue
-            row = rows[0]
             variables: dict[str, float] = {}
-            for variable in wanted:
-                text = (row.get(variable) or "").strip()
-                if text:
-                    value = float(text)
-                    if value >= 0:  # NOAA marks missing values with -9999
-                        variables[variable] = value
+            try:
+                for variable in wanted:
+                    text = (row.get(variable) or "").strip()
+                    if text:
+                        value = float(text)
+                        if value >= 0:  # NOAA marks missing values with -9999
+                            variables[variable] = value
+                latitude, longitude = float(row["LATITUDE"]), float(row["LONGITUDE"])
+            except (KeyError, ValueError) as exc:
+                raise SystemExit(f"unreadable NOAA station file {member.name}: {exc!r}") from exc
             stations.append(
                 (
                     row["STATION"],
                     row["NAME"].strip(),
-                    float(row["LATITUDE"]),
-                    float(row["LONGITUDE"]),
+                    latitude,
+                    longitude,
                     variables,
                 )
             )
@@ -306,9 +309,9 @@ class StationIndex:
         best: tuple[float, str, Station] | None = None
         for d_lat in range(-2, 3):
             for d_lon in range(-lon_span, lon_span + 1):
-                for station in self.cells.get(
-                    (math.floor(lat) + d_lat, math.floor(lon) + d_lon), ()
-                ):
+                # Longitude cells wrap across the antimeridian (western Aleutian places).
+                lon_cell = (math.floor(lon) + d_lon + 180) % 360 - 180
+                for station in self.cells.get((math.floor(lat) + d_lat, lon_cell), ()):
                     miles = miles_between(lat, lon, station[2], station[3])
                     if miles <= CLIMATE_RADIUS_MILES and (
                         best is None or (miles, station[0]) < best[:2]
