@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Side-by-side comparison.** With two or more kept towns, the shortlist shows a table of all six
+  Census qualities and the match percentage. Unknown values read "Unknown", never imputed.
+- **Print or save as PDF** for the shortlist.
+- **Official-source links** in the research checklist (Census profile, Medicare Care Compare, FCC
+  broadband map, FEMA flood map, NOAA climate normals) for each finalist.
+
 ## 1.0.0 — 2026-10-04
 
 First complete release. Lifescape finds U.S. places from towns you like, helps you keep a

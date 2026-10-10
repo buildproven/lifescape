@@ -837,3 +837,40 @@ def test_research_checklist_lists_finalists_and_critical_facts_to_confirm(
         assert "not verified evidence" in text
         assert "Lifescape never guesses a missing value" in text
         browser.close()
+
+
+def test_shortlist_compares_kept_towns_side_by_side_with_source_links(
+    tmp_path: Path,
+) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+        start_search(page)
+        find_places(page)
+        keep(page, 1)
+        page.get_by_role("button", name="Review shortlist").click()
+        assert page.locator("#compare-section").is_hidden()
+        page.get_by_role("button", name="Back").click()
+        keep(page, 1)
+        page.get_by_role("button", name="Review shortlist").click()
+
+        assert page.locator("#compare-section").is_visible()
+        assert page.locator("#compare-table thead th").count() == 3
+        assert page.locator("#compare-table tbody tr").count() == 7
+        assert page.locator("#compare-table th[scope=row]", has_text="Discovery match").count() == 1
+
+        page.get_by_role("button", name="Verify finalists").click()
+        with page.expect_download() as download:
+            page.get_by_role("button", name="Download research checklist").click()
+        text = Path(download.value.path()).read_text(encoding="utf-8")
+        assert text.count("https://data.census.gov/profile?g=1600000US") == 2
+        for link in (
+            "https://broadbandmap.fcc.gov/",
+            "https://www.medicare.gov/care-compare/",
+            "https://msc.fema.gov/portal/home",
+            "https://www.ncei.noaa.gov/access/us-climate-normals/",
+        ):
+            assert link in text
+        assert "not verified evidence; FCC and FEMA need an address" in text
+        browser.close()

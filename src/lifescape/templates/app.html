@@ -189,6 +189,13 @@
             </div>
           </div>
           <div id="shortlist-list" class="match-list"></div>
+          <section id="compare-section" class="compare" aria-labelledby="compare-heading" hidden>
+            <h3 id="compare-heading" class="subhead">Side by side</h3>
+            <p class="field-help" id="compare-note"></p>
+            <div class="table-wrap" tabindex="0" role="region" aria-labelledby="compare-heading">
+              <table class="compare-table" id="compare-table"></table>
+            </div>
+          </section>
           <div class="field field-wide">
             <label for="manual-search">Add a town yourself</label>
             <input
@@ -200,6 +207,9 @@
             <div id="manual-results" class="lookup-results" aria-live="polite"></div>
           </div>
           <div class="data-tools">
+            <button class="text-button" id="print-button" type="button">
+              Print or save as PDF
+            </button>
             <button class="text-button" id="export-button" type="button">
               Export search as JSON
             </button>

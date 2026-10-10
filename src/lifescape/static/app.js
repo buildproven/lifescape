@@ -871,6 +871,7 @@ function renderShortlist() {
   const recommendations = entries
     .filter((entry) => entry.source === "recommendation")
     .map((entry) => entry.recommendation);
+  renderCompare(recommendations);
   bindCard("#shortlist-list", [...recommendations, ...unsure]);
   $$("#shortlist-list [data-remove-manual]").forEach((button) =>
     button.addEventListener("click", () => {
@@ -882,6 +883,41 @@ function renderShortlist() {
       updateNav();
     })
   );
+}
+
+function renderCompare(kept) {
+  const section = $("#compare-section");
+  section.hidden = kept.length < 2;
+  if (kept.length < 2) return;
+  const manual = scenario().shortlist.filter((entry) => entry.source === "manual").length;
+  $("#compare-note").textContent =
+    "Census values for the towns you kept. Lower or higher is not better; compare against your own limits." +
+    (manual ? ` Hand-added towns (${manual}) have no discovery data and are left out.` : "");
+  const head = kept.map((item) => `<th scope="col">${escapeHtml(item.label)}</th>`).join("");
+  const fields = new Map();
+  for (const item of kept) {
+    for (const field of item.fields) if (!fields.has(field.field)) fields.set(field.field, field);
+  }
+  const rows = [...fields.values()]
+    .map((field) => {
+      const cells = kept
+        .map((item) => {
+          const match = item.fields.find((entry) => entry.field === field.field);
+          const value = match?.candidate_value;
+          return value === null || value === undefined
+            ? '<td class="is-unknown">Unknown</td>'
+            : `<td>${escapeHtml(formatValue(match.unit, value))}</td>`;
+        })
+        .join("");
+      return `<tr><th scope="row">${escapeHtml(field.label)}</th>${cells}</tr>`;
+    })
+    .join("");
+  const matchRow = kept
+    .map((item) => `<td>${escapeHtml(String(item.match_percent))}%</td>`)
+    .join("");
+  $("#compare-table").innerHTML =
+    `<thead><tr><th scope="col">Quality</th>${head}</tr></thead><tbody>${rows}` +
+    `<tr><th scope="row">Discovery match</th>${matchRow}</tr></tbody>`;
 }
 
 async function searchManual() {
@@ -1066,6 +1102,17 @@ function researchChecklist() {
         lines.push(`- ${field.label}: ${formatValue(field.unit, field.candidate_value)}`);
       }
     }
+    lines.push(
+      "",
+      "Check these official sources (not verified evidence; FCC and FEMA need an address):"
+    );
+    lines.push(
+      `- [Census profile](https://data.census.gov/profile?g=1600000US${encodeURIComponent(entry.place_id)})`,
+      "- [Medicare Care Compare (hospitals, doctors)](https://www.medicare.gov/care-compare/)",
+      "- [FCC broadband map (enter an address)](https://broadbandmap.fcc.gov/)",
+      "- [FEMA flood map (enter an address)](https://msc.fema.gov/portal/home)",
+      "- [NOAA climate normals](https://www.ncei.noaa.gov/access/us-climate-normals/)"
+    );
     lines.push("", "Confirm:");
     for (const metric of critical) lines.push(`- [ ] ${metric.name}`);
     lines.push("");
@@ -1436,6 +1483,7 @@ $("#reset-button").addEventListener("click", (event) => {
 });
 $("#limits-link").addEventListener("click", () => setStep("limits"));
 $("#try-example").addEventListener("click", tryExample);
+$("#print-button").addEventListener("click", () => window.print());
 $("#checklist-button").addEventListener("click", () => {
   const url = URL.createObjectURL(new Blob([researchChecklist()], { type: "text/markdown" }));
   const link = document.createElement("a");
