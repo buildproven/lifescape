@@ -7,5 +7,7 @@
   "testCommand": "make test",
   "linearProject": "lifescape",
   "dailyBudgetUsd": 5,
-  "install": "uv sync --frozen --extra dev && npm ci"
+  "install": "uv sync --frozen --extra dev && npm ci",
+  "review": true,
+  "heldOutAuthorTier": 3
 }
