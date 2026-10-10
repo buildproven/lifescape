@@ -927,7 +927,7 @@ function renderCompare(kept) {
   if (kept.length < 2) return;
   const manual = scenario().shortlist.filter((entry) => entry.source === "manual").length;
   $("#compare-note").textContent =
-    "Census values for the towns you kept. Lower or higher is not better; compare against your own limits." +
+    "Census and NOAA climate values for the towns you kept. Lower or higher is not better; compare against your own limits." +
     (manual ? ` Hand-added towns (${manual}) have no discovery data and are left out.` : "");
   const head = kept.map((item) => `<th scope="col">${escapeHtml(item.label)}</th>`).join("");
   const fields = new Map();
