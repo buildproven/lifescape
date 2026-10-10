@@ -11,7 +11,7 @@
   styles, **Mild winters** and **Four seasons**. Catalog is now `us-places-acs2024-noaa1991-2020-v2`.
 
 - **Side-by-side comparison.** With two or more kept towns, the shortlist shows a table of all six
-  Census qualities and the match percentage. Unknown values read "Unknown", never imputed.
+  Census qualities and the match percentage. Unknown values read "Unknown", never imputed. Climate rows appear with the Census rows.
 - **Print or save as PDF** for the shortlist.
 - **Official-source links** in the research checklist (Census profile, Medicare Care Compare, FCC
   broadband map, FEMA flood map, NOAA climate normals) for each finalist.
