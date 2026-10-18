@@ -1520,6 +1520,8 @@ def test_discovery_bootstrap_describes_the_catalog_and_records_load_time(tmp_pat
     assert summary["minimum_population"] == 2500
     assert {item["field"] for item in summary["fields"]} >= {"population", "median_home_value"}
     assert all(item["lower"] < item["upper"] for item in summary["fields"])
+    signed = {item["field"] for item in summary["fields"] if item["signed"]}
+    assert signed == {"elevation_ft"}
     assert app.state.catalog_load_seconds >= 0
 
 

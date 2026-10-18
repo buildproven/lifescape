@@ -138,6 +138,41 @@ def test_place_character_values_are_read_and_a_negative_elevation_is_allowed() -
         build_catalog(
             {"X": ("Bad", "CA", 15000, 300, 40, 10, 40, 25, None, None, None, None, 0, -1, 0, 0)}
         )
+    with pytest.raises(CatalogUnavailableError, match="must be 0 or 1"):
+        build_catalog(
+            {
+                "X": (
+                    "Bad",
+                    "CA",
+                    15000,
+                    300,
+                    40,
+                    10,
+                    40,
+                    25,
+                    None,
+                    None,
+                    None,
+                    None,
+                    0,
+                    1,
+                    100,
+                    0.5,
+                )
+            }
+        )
+
+
+def test_profiles_allow_signed_elevation_and_require_a_boolean_suburb_target() -> None:
+    profile = SearchProfile(
+        targets={"elevation_ft": -230, "large_metro_suburb": 0},
+        hard_constraints=({"field": "elevation_ft", "operator": "max", "value": -100},),
+    )
+
+    assert profile.targets["elevation_ft"] == -230
+    assert profile.hard_constraints[0].value == -100
+    with pytest.raises(ValueError, match="must be 0 or 1"):
+        SearchProfile(targets={"large_metro_suburb": 0.5})
 
 
 def test_place_character_units_read_naturally() -> None:
