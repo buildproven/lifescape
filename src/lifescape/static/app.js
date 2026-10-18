@@ -106,6 +106,9 @@ function formatValue(unit, value) {
   if (unit === "people per square mile") return `${whole.format(value)} people per sq mi`;
   if (unit === "days per year") return `${whole.format(value)} days per year`;
   if (unit === "inches per year") return `${whole.format(value)} in per year`;
+  if (unit === "feet above sea level") return `${whole.format(value)} ft above sea level`;
+  if (unit === "miles") return `${whole.format(value)} miles`;
+  if (unit === "yes or no") return value >= 0.5 ? "Yes" : "No";
   return whole.format(value);
 }
 

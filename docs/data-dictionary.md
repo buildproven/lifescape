@@ -26,7 +26,7 @@ The full machine-readable definitions are in `config/metrics.yaml`.
 
 ## Discovery catalog fields (advisory, never evidence)
 
-Catalog `us-places-acs2024-noaa1991-2020-v2`, normalization `discovery-winsorized-minmax-v1`, algorithm
+Catalog `us-places-acs2024-noaa1991-2020-character-v3`, normalization `discovery-winsorized-minmax-v1`, algorithm
 `place-discovery-v1`. Values are `null` when missing; any negative ACS value (including the
 `-666666666` and `-999999999` annotations) is stored as `null`. These fields are not
 `ObservationRecord` values and never enter `execute_run`. Bounds are the 5th and 95th percentiles
@@ -44,6 +44,10 @@ Catalog `us-places-acs2024-noaa1991-2020-v2`, normalization `discovery-winsorize
 | `hot_days_per_year` | `ANN-TMAX-AVGNDS-GRTH090` at the nearest station within 30 mi | days per year | NOAA 1991–2020 normals |
 | `annual_precip_in` | `ANN-PRCP-NORMAL` at the nearest station within 30 mi | inches per year | NOAA 1991–2020 normals |
 | `annual_snowfall_in` | `ANN-SNOW-NORMAL` at the nearest station reporting it within 30 mi; `null` otherwise, never `0` | inches per year | NOAA 1991–2020 normals |
+| `elevation_ft` | `ELEV_IN_FT` of the GNIS populated place with the same name in the same state nearest the place centroid, within 5 mi; `null` otherwise. The only field that can be negative | feet above sea level | USGS GNIS 2021-08-25 archive |
+| `water_distance_mi` | Great-circle miles from the centroid to the nearest ocean coastline or Great Lakes shore. Exact to shoreline segments within 60 mi, to shoreline points under 4 mi apart beyond. Inland lakes and rivers are not counted | miles | Natural Earth 1:10m v5.1.2 |
+| `large_metro_distance_mi` | Great-circle miles to the nearest principal city of a metropolitan area with 1,000,000+ people; `0` for those cities. Principal cities are the places named in the metro title | miles | Gazetteer CBSA, ACS B01003 |
+| `large_metro_suburb` | `1` when the place is not a principal city of such a metro and lies within 25 mi of one, else `0` (a distance rule, not a Census urban-area designation) | yes or no | Gazetteer CBSA, ACS B01003 |
 
 Each place also carries a `climate_sources` provenance cell (station id, name, and miles for the
 temperature, precipitation, and snowfall joins).

@@ -28,7 +28,10 @@ Gazetteer and American Community Survey bulk files. Its first supported dimensio
 housing cost, population density, car-light commute share, college-educated share, older-adult
 share, and state or region. Amendment (BUI-1107, PRD FR4): four NOAA 1991–2020 climate normals
 (freezing nights, 90°F+ days, precipitation, snowfall) join each place to the nearest reporting
-station within 30 miles, with station provenance and nulls where none qualifies. It does not claim
+station within 30 miles, with station provenance and nulls where none qualifies. Amendment
+(BUI-1396, PRD FR4): elevation, distance to an ocean or Great Lake, distance to a metro of
+1,000,000+ people, and a large-metro suburb flag come from keyless public files, with nulls where
+the source has no value. It does not claim
 healthcare, nature, airport, culture, or walkability matches. A checked-in build script and manifest record source URLs, source vintage,
 hashes, selected fields, derivations, output hash, row count, and per-field coverage. A shipped
 field is supported only when at least 80% of catalog places with population of 2,500 or more have

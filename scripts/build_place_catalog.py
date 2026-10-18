@@ -5,6 +5,10 @@ Inputs (all keyless, public, pinned by SHA-256 in the manifest):
 - NOAA U.S. Climate Normals 1991-2020 (annual/seasonal, by station): freezing nights, 90°F+ days,
   precipitation, snowfall, joined to each place by the nearest reporting station within 30 miles.
 - ACS 2020-2024 5-year table-based summary files: B01003, B25077, B08301, B15003, B01001.
+- Natural Earth 1:10m ocean coastline and Great Lakes outlines: distance to nearest shore.
+- USGS GNIS populated-place elevations (2021-08-25 archive): elevation above sea level.
+- 2024 Census Gazetteer core-based statistical areas plus ACS B01003 metro population: distance to
+  the principal cities of metros over 1 million people, and a suburb flag.
 
 Usage:
     uv run python scripts/build_place_catalog.py            # build and write catalog + manifest
@@ -22,13 +26,15 @@ import hashlib
 import io
 import json
 import math
+import re
 import sys
 import tarfile
 import urllib.request
 import zipfile
 from collections import Counter
+from itertools import pairwise
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from lifescape.discovery import (
     CATALOG_COLUMNS,
@@ -60,7 +66,27 @@ CLIMATE_GROUPS: dict[str, tuple[tuple[str, str], ...]] = {
     "precipitation": (("annual_precip_in", "ANN-PRCP-NORMAL"),),
     "snowfall": (("annual_snowfall_in", "ANN-SNOW-NORMAL"),),
 }
-CATALOG_VERSION = "us-places-acs2024-noaa1991-2020-v2"
+GAZETTEER_CBSA_URL = (
+    "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/"
+    "2024_Gaz_cbsa_national.zip"
+)
+NATURAL_EARTH_BASE = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson"
+COASTLINE_URL = f"{NATURAL_EARTH_BASE}/ne_10m_coastline.geojson"
+LAKES_URL = f"{NATURAL_EARTH_BASE}/ne_10m_lakes.geojson"
+GNIS_URL = (
+    "https://prd-tnm.s3.amazonaws.com/StagedProducts/GeographicNames/Archive/MainDomestic/"
+    "AllStates.zip"
+)
+GNIS_VINTAGE = "USGS GNIS Domestic Names, 2021-08-25 archive"
+NATURAL_EARTH_VINTAGE = "Natural Earth 1:10m physical vectors v5.1.2 (public domain)"
+GREAT_LAKES = ("Lake Superior", "Lake Michigan", "Lake Huron", "Lake Erie", "Lake Ontario")
+LARGE_METRO_POPULATION = 1_000_000
+METRO_SUBURB_RADIUS_MILES = 25.0
+ELEVATION_RADIUS_MILES = 5.0
+EXACT_SHORE_MILES = 60.0  # nearer than this, distance is measured to the shoreline segments
+FAR_SHORE_SPACING_MILES = 4.0  # farther, to shoreline vertices thinned to this spacing
+SHORE_CELL_DEGREES = 0.5
+CATALOG_VERSION = "us-places-acs2024-noaa1991-2020-character-v3"
 ACS_VINTAGE = "ACS 2020-2024 5-year estimates (released December 2025)"
 GAZETTEER_VINTAGE = "2024 Census Gazetteer"
 DATA_DATE = "2024-12-31"
@@ -148,8 +174,49 @@ FIELD_DEFINITIONS: dict[str, dict[str, str]] = {
             "assumed to be zero."
         ),
     },
+    "elevation_ft": {
+        "label": "Elevation",
+        "unit": "feet above sea level",
+        "definition": (
+            "Elevation of the USGS GNIS populated place with the same name in the same state "
+            "nearest the Census place centroid, within 5 miles (GNIS ELEV_IN_FT, 2021-08-25 "
+            "archive). Missing where no such place reports elevation."
+        ),
+    },
+    "water_distance_mi": {
+        "label": "Distance to ocean or Great Lake",
+        "unit": "miles",
+        "definition": (
+            "Great-circle miles from the Census place centroid to the nearest ocean coastline or "
+            "Great Lakes shore (Natural Earth 1:10m). Inland lakes and rivers are not counted. "
+            "Measured to shoreline segments within 60 miles and to shoreline points under 4 "
+            "miles apart beyond that."
+        ),
+    },
+    "large_metro_distance_mi": {
+        "label": "Distance to a large metro",
+        "unit": "miles",
+        "definition": (
+            "Great-circle miles from the Census place centroid to the nearest principal city of "
+            "a metropolitan area with 1,000,000 or more people (ACS B01003 for the Census CBSA). "
+            "Principal cities are the places named in the metro title; 0 for those cities."
+        ),
+    },
+    "large_metro_suburb": {
+        "label": "Large-metro suburb",
+        "unit": "yes or no",
+        "definition": (
+            "1 when the place is not itself a principal city of a metropolitan area over "
+            "1,000,000 people and lies within 25 miles of one; otherwise 0. A distance rule, "
+            "not a Census urban-area designation."
+        ),
+    },
 }
 
+CITY_STATUS_WORDS = re.compile(
+    r" (city|town|village|borough|municipality|(metro|metropolitan|consolidated|unified) "
+    r"government)( \(balance\))?$"
+)
 LSAD_SUFFIXES = (
     " city and borough",
     " census designated place",
@@ -241,6 +308,167 @@ def number(value: float | None, digits: int = 0) -> str:
     if value is None:
         return ""
     return str(round(value)) if digits == 0 else f"{value:.{digits}f}"
+
+
+def planar_miles(lat: float, lon: float, other_lat: float, other_lon: float) -> tuple[float, float]:
+    """East and north offsets in miles from a point, accurate within a few hundred miles."""
+    delta_lon = (other_lon - lon + 180) % 360 - 180
+    return (
+        math.radians(delta_lon) * math.cos(math.radians(lat)) * 3958.7613,
+        math.radians(other_lat - lat) * 3958.7613,
+    )
+
+
+def unit_vector(lat: float, lon: float) -> tuple[float, float, float]:
+    phi, lam = math.radians(lat), math.radians(lon)
+    return (math.cos(phi) * math.cos(lam), math.cos(phi) * math.sin(lam), math.sin(phi))
+
+
+def vector_miles(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    return 3958.7613 * math.acos(min(1.0, max(-1.0, dot)))
+
+
+Shore = list[list[tuple[float, float]]]  # polylines of (latitude, longitude)
+
+
+def read_shorelines(coastline: bytes, lakes: bytes) -> Shore:
+    """Ocean coastline plus the five Great Lakes outlines, kept where they can serve U.S. places."""
+
+    def in_range(lat: float, lon: float) -> bool:
+        return 15.0 <= lat <= 75.0 and (lon <= -50.0 or lon >= 160.0)
+
+    def clip(line: list[list[float]]) -> Shore:
+        pieces: Shore = []
+        current: list[tuple[float, float]] = []
+        for lon, lat in line:
+            if in_range(lat, lon):
+                current.append((lat, lon))
+            elif current:
+                pieces.append(current)
+                current = []
+        if current:
+            pieces.append(current)
+        return [piece for piece in pieces if len(piece) > 1]
+
+    lines: Shore = []
+    for feature in json.loads(coastline)["features"]:
+        geometry = feature["geometry"]
+        parts = (
+            [geometry["coordinates"]]
+            if geometry["type"] == "LineString"
+            else geometry["coordinates"]
+        )
+        for part in parts:
+            lines.extend(clip(part))
+    found: set[str] = set()
+    for feature in json.loads(lakes)["features"]:
+        name = feature["properties"]["name"]
+        if name not in GREAT_LAKES:
+            continue
+        found.add(name)
+        geometry = feature["geometry"]
+        polygons = (
+            [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
+        )
+        for polygon in polygons:
+            for ring in polygon:
+                lines.extend(clip(ring))
+    if found != set(GREAT_LAKES):
+        raise SystemExit(f"Natural Earth lakes are missing {sorted(set(GREAT_LAKES) - found)}")
+    return lines
+
+
+class ShoreIndex:
+    """Nearest-shore miles for many places, sharing work between places in one grid cell."""
+
+    def __init__(self, lines: Shore) -> None:
+        self.segments: list[tuple[float, float, float, float]] = []
+        self.thin: list[tuple[float, float, float]] = []
+        self.grid: dict[tuple[int, int], list[int]] = {}
+        for line in lines:
+            kept = line[0]
+            self.thin.append(unit_vector(*kept))
+            for start, end in pairwise(line):
+                segment = len(self.segments)
+                self.segments.append((*start, *end))
+                for cell in self._cells(start, end):
+                    self.grid.setdefault(cell, []).append(segment)
+                steps = math.ceil(miles_between(*start, *end) / FAR_SHORE_SPACING_MILES)
+                for step in range(1, steps + 1):
+                    lat = start[0] + (end[0] - start[0]) * step / steps
+                    lon = start[1] + (end[1] - start[1]) * step / steps
+                    if miles_between(*kept, lat, lon) >= FAR_SHORE_SPACING_MILES:
+                        kept = (lat, lon)
+                        self.thin.append(unit_vector(lat, lon))
+
+    @staticmethod
+    def _cells(start: tuple[float, float], end: tuple[float, float]) -> set[tuple[int, int]]:
+        lat_cells = range(math.floor(min(start[0], end[0])), math.floor(max(start[0], end[0])) + 1)
+        lon_low, lon_high = sorted((start[1], end[1]))
+        lon_cells = range(math.floor(lon_low), math.floor(lon_high) + 1)
+        return {(lat, lon) for lat in lat_cells for lon in lon_cells}
+
+    def _segments_near(self, lat: float, lon: float, radius: float) -> set[int]:
+        lat_span = math.ceil(radius / 69.0) + 1
+        lon_span = min(math.ceil(radius / (69.0 * max(math.cos(math.radians(lat)), 0.2))) + 1, 90)
+        found: set[int] = set()
+        for d_lat in range(-lat_span, lat_span + 1):
+            for d_lon in range(-lon_span, lon_span + 1):
+                lon_cell = (math.floor(lon) + d_lon + 180) % 360 - 180
+                found.update(self.grid.get((math.floor(lat) + d_lat, lon_cell), ()))
+        return found
+
+    def distances(self, places: list[tuple[str, float, float]]) -> dict[str, float]:
+        """Return ``{place id: miles to nearest shore}`` for ``(id, lat, lon)`` places."""
+        cells: dict[tuple[int, int], list[tuple[str, float, float]]] = {}
+        for place in places:
+            key = (
+                math.floor(place[1] / SHORE_CELL_DEGREES),
+                math.floor(place[2] / SHORE_CELL_DEGREES),
+            )
+            cells.setdefault(key, []).append(place)
+        result: dict[str, float] = {}
+        for (lat_cell, lon_cell), members in sorted(cells.items()):
+            center_lat = (lat_cell + 0.5) * SHORE_CELL_DEGREES
+            center_lon = (lon_cell + 0.5) * SHORE_CELL_DEGREES
+            center = unit_vector(center_lat, center_lon)
+            half_diagonal = miles_between(
+                center_lat,
+                center_lon,
+                center_lat + SHORE_CELL_DEGREES / 2,
+                center_lon + SHORE_CELL_DEGREES / 2,
+            )
+            cx, cy, cz = center
+            dots = [cx * x + cy * y + cz * z for x, y, z in self.thin]
+            nearest = 3958.7613 * math.acos(min(1.0, max(dots)))
+            reach = nearest + 2 * half_diagonal
+            if nearest <= EXACT_SHORE_MILES:
+                segments = [
+                    self.segments[i]
+                    for i in sorted(self._segments_near(center_lat, center_lon, reach))
+                ]
+                for place_id, lat, lon in members:
+                    result[place_id] = min(segment_miles(lat, lon, *seg) for seg in segments)
+            else:
+                floor = math.cos(min(reach / 3958.7613, math.pi))
+                nearby = [v for v, dot in zip(self.thin, dots, strict=True) if dot >= floor]
+                for place_id, lat, lon in members:
+                    here = unit_vector(lat, lon)
+                    result[place_id] = min(vector_miles(here, vector) for vector in nearby)
+        return result
+
+
+def segment_miles(
+    lat: float, lon: float, lat1: float, lon1: float, lat2: float, lon2: float
+) -> float:
+    """Miles from a point to a short shoreline segment, in a local flat projection."""
+    x1, y1 = planar_miles(lat, lon, lat1, lon1)
+    x2, y2 = planar_miles(lat, lon, lat2, lon2)
+    dx, dy = x2 - x1, y2 - y1
+    length_squared = dx * dx + dy * dy
+    t = 0.0 if length_squared == 0 else max(0.0, min(1.0, -(x1 * dx + y1 * dy) / length_squared))
+    return math.hypot(x1 + t * dx, y1 + t * dy)
 
 
 Station = tuple[str, str, float, float, dict[str, float]]  # id, name, lat, lon, variables
@@ -338,10 +566,159 @@ def climate_for(
     return cells, json.dumps(sources, sort_keys=True, separators=(",", ":")) if sources else ""
 
 
+CHARACTER_FIELDS = (
+    "elevation_ft",
+    "water_distance_mi",
+    "large_metro_distance_mi",
+    "large_metro_suburb",
+)
+Elevations = dict[tuple[str, str], list[tuple[float, float, float]]]  # (state, name) -> points
+Metro = tuple[str, list[str], list[str]]  # CBSA title, principal city names, state codes
+
+
+class Geography(NamedTuple):
+    """Place-character inputs: shoreline, GNIS elevations, and large-metro definitions."""
+
+    shore: ShoreIndex
+    elevations: Elevations
+    metros: list[Metro]
+
+
+def match_name(name: str) -> str:
+    """Fold a place name for matching: drop a trailing qualifier, punctuation, and Saint/St."""
+    base = name.split(" (")[0].casefold().replace("saint ", "st ").replace("st. ", "st ")
+    return "".join(character for character in base if character.isalnum())
+
+
+def read_gnis_elevations(data: bytes) -> Elevations:
+    """Read GNIS populated places that report an elevation, grouped by state."""
+    found: Elevations = {}
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        for entry in sorted(archive.namelist()):
+            if not entry.endswith("_Features_20210825.txt"):
+                continue
+            text = archive.read(entry).decode("utf-8-sig")
+            for row in csv.DictReader(io.StringIO(text), delimiter="|"):
+                if row["FEATURE_CLASS"] != "Populated Place" or not row["ELEV_IN_FT"].strip():
+                    continue
+                try:
+                    point = (
+                        float(row["PRIM_LAT_DEC"]),
+                        float(row["PRIM_LONG_DEC"]),
+                        float(row["ELEV_IN_FT"]),
+                    )
+                except ValueError as exc:
+                    raise SystemExit(f"unreadable GNIS row in {entry}: {exc!r}") from exc
+                found.setdefault((row["STATE_ALPHA"], match_name(row["FEATURE_NAME"])), []).append(
+                    point
+                )
+    return found
+
+
+def elevation_for(name: str, state: str, lat: float, lon: float, elevations: Elevations) -> str:
+    """Feet for the nearest same-named GNIS populated place within 5 miles; blank otherwise."""
+    best: tuple[float, float] | None = None
+    for c_lat, c_lon, feet in elevations.get((state, match_name(name)), ()):
+        miles = miles_between(lat, lon, c_lat, c_lon)
+        if miles <= ELEVATION_RADIUS_MILES and (best is None or (miles, feet) < best):
+            best = (miles, feet)
+    return "" if best is None else number(best[1])
+
+
+def read_large_metros(cbsa_gazetteer: bytes, b01003: bytes) -> list[Metro]:
+    """Metropolitan areas with 1,000,000+ people, with the principal cities their titles name."""
+    populations: dict[str, float] = {}
+    for line in b01003.decode("utf-8").splitlines()[1:]:
+        geo_id, estimate, *_ = line.split("|")
+        if geo_id.startswith("310M700US") and estimate.lstrip("-").isdigit():
+            populations[geo_id.removeprefix("310M700US")] = float(estimate)
+    with zipfile.ZipFile(io.BytesIO(cbsa_gazetteer)) as archive:
+        name = next(entry for entry in archive.namelist() if entry.endswith(".txt"))
+        text = archive.read(name).decode("utf-8")
+    reader = csv.DictReader(io.StringIO(text), delimiter="\t")
+    reader.fieldnames = [field.strip() for field in reader.fieldnames or []]
+    metros: list[Metro] = []
+    for row in reader:
+        title = row["NAME"].strip()
+        if (
+            row["CBSA_TYPE"].strip() != "1"
+            or populations.get(row["GEOID"].strip(), 0.0) < LARGE_METRO_POPULATION
+        ):
+            continue
+        head, _, states = title.removesuffix(" Metro Area").rpartition(", ")
+        cities = head.split("--") if "--" in head else head.split("-")
+        if any(state in STATE_REGIONS for state in states.split("-")):  # not Puerto Rico
+            metros.append((title, cities, states.split("-")))
+    return metros
+
+
+def metro_cores(
+    metros: list[Metro], places: list[dict[str, Any]]
+) -> tuple[dict[str, tuple[float, float]], list[str]]:
+    """Map each metro's principal cities to the largest same-named place in its states.
+
+    Returns ``({place id: (lat, lon)}, [metro titles whose first city matched no place])``.
+    """
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    for place in places:
+        # "Indianapolis city (balance)" keeps its legal-status words after display_name().
+        plain = CITY_STATUS_WORDS.sub("", place["name"])
+        for name in {match_name(place["name"]), match_name(plain)}:
+            by_name.setdefault(name, []).append(place)
+    cores: dict[str, tuple[float, float]] = {}
+    unmatched: list[str] = []
+    for title, cities, states in metros:
+        matched = False
+        for city in cities:
+            options = [p for p in by_name.get(match_name(city), ()) if p["state"] in states]
+            if options:
+                best = max(options, key=lambda p: (p["population"] or 0.0, p["id"]))
+                cores[best["id"]] = (best["lat"], best["lon"])
+                matched = matched or city == cities[0]
+        if not matched:
+            unmatched.append(title)
+    return cores, unmatched
+
+
+def character_cells(
+    places: list[dict[str, Any]], geography: Geography
+) -> dict[str, dict[str, str]]:
+    """Return the place-character catalog cells keyed by place id; unknown stays blank."""
+    cores, unmatched = metro_cores(geography.metros, places)
+    if unmatched:
+        raise SystemExit(f"no Gazetteer place matches the first city of metros: {unmatched}")
+    shore = geography.shore.distances([(p["id"], p["lat"], p["lon"]) for p in places])
+    cells: dict[str, dict[str, str]] = {}
+    for place in places:
+        core_miles = min(
+            (
+                0.0 if core_id == place["id"] else miles_between(place["lat"], place["lon"], *where)
+                for core_id, where in cores.items()
+            ),
+            default=None,
+        )
+        cells[place["id"]] = {
+            "elevation_ft": elevation_for(
+                place["name"], place["state"], place["lat"], place["lon"], geography.elevations
+            ),
+            "water_distance_mi": number(shore[place["id"]], 1),
+            "large_metro_distance_mi": number(core_miles, 1),
+            "large_metro_suburb": (
+                ""
+                if core_miles is None
+                else "1"
+                if 0 < core_miles <= METRO_SUBURB_RADIUS_MILES
+                else "0"
+            ),
+        }
+    return cells
+
+
 def build_rows(
     gazetteer: list[dict[str, str]],
     tables: dict[str, dict[str, dict[str, float | None]]],
     stations: list[Station],
+    geography: Geography | None = None,
 ) -> list[dict[str, str]]:
     indexes = {
         group: StationIndex(stations, tuple(variable for _, variable in fields))
@@ -354,8 +731,27 @@ def build_rows(
 
     candidates = [row for row in gazetteer if row["USPS"] in STATE_REGIONS]
     name_counts = Counter((display_name(row["NAME"]), row["USPS"]) for row in candidates)
+    candidates.sort(key=lambda row: row["GEOID"])
+    character = (
+        {}
+        if geography is None
+        else character_cells(
+            [
+                {
+                    "id": row["GEOID"],
+                    "name": display_name(row["NAME"]),
+                    "state": row["USPS"],
+                    "lat": float(row["INTPTLAT"]),
+                    "lon": float(row["INTPTLONG"]),
+                    "population": merged.get(row["GEOID"], {}).get("B01003_E001"),
+                }
+                for row in candidates
+            ],
+            geography,
+        )
+    )
     rows: list[dict[str, str]] = []
-    for place in sorted(candidates, key=lambda row: row["GEOID"]):
+    for place in candidates:
         acs = merged.get(place["GEOID"], {})
         name = display_name(place["NAME"])
         kind = place["NAME"].removeprefix(name).strip()
@@ -380,6 +776,7 @@ def build_rows(
                 "college_educated_share": number(share(acs, COLLEGE_VARIABLES, "B15003_E001"), 2),
                 "older_adult_share": number(share(acs, OLDER_ADULT_VARIABLES, "B01001_E001"), 2),
                 **climate,
+                **character.get(place["GEOID"], dict.fromkeys(CHARACTER_FIELDS, "")),
                 "land_area_sqmi": place["ALAND_SQMI"],
                 "latitude": place["INTPTLAT"],
                 "longitude": place["INTPTLONG"],
@@ -430,9 +827,12 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
         "sha256": sha256_bytes(gazetteer_bytes),
     }
     tables: dict[str, dict[str, dict[str, float | None]]] = {}
+    metro_population = b""
     for table in ACS_TABLES:
         url = f"{ACS_BASE}/data/5YRData/acsdt5y2024-{table}.dat"
         data = fetch(url, CACHE / f"acsdt5y2024-{table}.dat")
+        if table == "b01003":
+            metro_population = data
         inputs[table] = {"url": url, "vintage": ACS_VINTAGE, "sha256": sha256_bytes(data)}
         tables[table] = read_acs_table(data)
 
@@ -442,7 +842,32 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
         "vintage": NOAA_VINTAGE,
         "sha256": sha256_bytes(noaa_bytes),
     }
-    rows = build_rows(read_gazetteer(gazetteer_bytes), tables, read_noaa_stations(noaa_bytes))
+    sources = {
+        "cbsa_gazetteer": (GAZETTEER_CBSA_URL, GAZETTEER_VINTAGE, "2024_Gaz_cbsa_national.zip"),
+        "natural_earth_coastline": (
+            COASTLINE_URL,
+            NATURAL_EARTH_VINTAGE,
+            "ne_10m_coastline.geojson",
+        ),
+        "natural_earth_lakes": (LAKES_URL, NATURAL_EARTH_VINTAGE, "ne_10m_lakes.geojson"),
+        "gnis_populated_places": (GNIS_URL, GNIS_VINTAGE, "gnis-AllStates-20210825.zip"),
+    }
+    downloaded: dict[str, bytes] = {}
+    for key, (url, vintage, cache_name) in sources.items():
+        downloaded[key] = fetch(url, CACHE / cache_name)
+        inputs[key] = {"url": url, "vintage": vintage, "sha256": sha256_bytes(downloaded[key])}
+    geography = Geography(
+        ShoreIndex(
+            read_shorelines(
+                downloaded["natural_earth_coastline"], downloaded["natural_earth_lakes"]
+            )
+        ),
+        read_gnis_elevations(downloaded["gnis_populated_places"]),
+        read_large_metros(downloaded["cbsa_gazetteer"], metro_population),
+    )
+    rows = build_rows(
+        read_gazetteer(gazetteer_bytes), tables, read_noaa_stations(noaa_bytes), geography
+    )
     raw, compressed = encode_catalog(rows)
     coverage, bounds = coverage_and_bounds(rows)
     failing = {field: c["share"] for field, c in coverage.items() if c["share"] < 0.8}
@@ -459,6 +884,14 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
             f"Each place uses the nearest NOAA station within {CLIMATE_RADIUS_MILES:.0f} miles "
             "that reports the needed normals, measured from the Census place centroid. Station "
             "elevation is not compared; values are left missing when no station qualifies."
+        ),
+        "character_join": (
+            "Elevation, shoreline distance, and large-metro distance are measured from the "
+            "Census place centroid. Elevation is the GNIS populated place of the same name in "
+            f"the same state within {ELEVATION_RADIUS_MILES:.0f} miles; it is left missing when "
+            "none reports one. Large metros are Census metropolitan areas with "
+            f"{LARGE_METRO_POPULATION:,}+ people (ACS B01003); their principal cities are the "
+            "places named in the metro title."
         ),
         "sentinel_policy": SENTINEL_POLICY,
         "serving_universe": f"places with known population >= {MINIMUM_SERVING_POPULATION}",

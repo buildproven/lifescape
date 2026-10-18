@@ -4,6 +4,12 @@
 
 ### Added
 
+- **Place-character qualities (BUI-1396).** Discovery now also matches on elevation, distance to
+  an ocean or Great Lake, distance to a metro of 1,000,000+ people, and whether the town is a
+  suburb of one, so a lake-town example such as Traverse City, MI no longer returns an inland
+  Minneapolis suburb first. Values come from public Natural Earth, USGS GNIS, and Census files;
+  a value stays missing when its source has none. Catalog is now
+  `us-places-acs2024-noaa1991-2020-character-v3`.
 - **Climate qualities (BUI-1107).** Discovery now also matches on four NOAA 1991–2020 climate
   normals: freezing nights, hot days (90°F+), annual precipitation, and annual snowfall. Each
   town takes the nearest NOAA station within 30 miles, the Why panel names the station and
