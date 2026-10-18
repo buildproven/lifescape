@@ -35,6 +35,7 @@ from lifescape.discovery import (
     MINIMUM_SERVING_POPULATION,
     REGIONS,
     SCORED_FIELDS,
+    SIGNED_FIELDS,
     STATE_REGIONS,
     CatalogUnavailableError,
     DiscoveryError,
@@ -534,6 +535,7 @@ def _discovery_summary(
                 **catalog.fields[field],
                 "lower": catalog.bounds[field]["lower"],
                 "upper": catalog.bounds[field]["upper"],
+                "signed": field in SIGNED_FIELDS,
             }
             for field in SCORED_FIELDS
         ],

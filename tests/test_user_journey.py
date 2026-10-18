@@ -84,7 +84,7 @@ def start_search(page: Page, example: str = "Traverse City", *, limits: bool = F
     """Choose an example town; optionally continue to the boundaries step."""
     page.get_by_label("A town you already like").fill(example)
     page.get_by_role("button", name="Use as example").first.click()
-    page.get_by_text("Comparing 10 qualities.").wait_for()
+    page.get_by_text("Comparing 14 qualities.").wait_for()
     if limits:
         page.get_by_role("button", name="Set limits first (price, regions)").click()
 
@@ -222,7 +222,7 @@ def test_discovery_recovers_from_a_malformed_saved_search(tmp_path: Path) -> Non
         page.reload()
         banner_says(page, "could not be opened")
         assert page.evaluate("localStorage.getItem('lifescape.scenario.backup')") is not None
-        assert page.locator("#quality-list .quality-row").count() == 10
+        assert page.locator("#quality-list .quality-row").count() == 14
         page.locator("#scenario-banner").get_by_role("button", name="Start fresh").click()
         assert page.evaluate("localStorage.getItem('lifescape.scenario')") is None
         page.evaluate("localStorage.setItem('lifescape.scenario', '{not json')")
@@ -259,7 +259,7 @@ def test_discovery_rejects_a_saved_snapshot_missing_recommendation_fields(
             "() => document.querySelector('#scenario-banner').textContent"
             ".includes('invalid recommendation snapshot')"
         )
-        assert page.locator("#quality-list .quality-row").count() == 10
+        assert page.locator("#quality-list .quality-row").count() == 14
         assert errors == []
         browser.close()
 
@@ -818,6 +818,42 @@ def test_style_fine_tune_is_collapsed_until_wanted(tmp_path: Path) -> None:
         browser.close()
 
 
+def test_place_character_controls_send_discrete_suburb_and_signed_elevation_values(
+    tmp_path: Path,
+) -> None:
+    with running_app(tmp_path / "output") as url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport=VIEWPORTS[1])
+        page.goto(url)
+        page.get_by_role("button", name="College town").click()
+        page.get_by_text("Fine-tune what matters").click()
+
+        suburb = page.locator('#quality-list .quality-row[data-field="large_metro_suburb"]')
+        suburb.locator("[data-role=mode]").select_option("custom")
+        suburb_target = suburb.locator("[data-role=target]")
+        assert suburb_target.evaluate("element => element.tagName") == "SELECT"
+        assert suburb_target.input_value() == "0"
+        assert suburb_target.locator("option").evaluate_all(
+            "options => options.map(option => option.value)"
+        ) == ["0", "1"]
+
+        page.get_by_role("button", name="Set limits first (price, regions)").click()
+        elevation_min = page.get_by_label("Elevation at least")
+        assert elevation_min.get_attribute("min") is None
+        elevation_min.fill("-250")
+        with page.expect_request("**/api/place-recommendations") as request_info:
+            page.get_by_role("button", name="Find places").click()
+
+        request = request_info.value.post_data_json
+        assert request["targets"]["large_metro_suburb"] == 0
+        assert {
+            "field": "elevation_ft",
+            "operator": "min",
+            "value": -250,
+        } in request["hard_constraints"]
+        browser.close()
+
+
 def test_research_checklist_lists_finalists_and_critical_facts_to_confirm(
     tmp_path: Path,
 ) -> None:
@@ -861,7 +897,7 @@ def test_shortlist_compares_kept_towns_side_by_side_with_source_links(
 
         assert page.locator("#compare-section").is_visible()
         assert page.locator("#compare-table thead th").count() == 3
-        assert page.locator("#compare-table tbody tr").count() == 11
+        assert page.locator("#compare-table tbody tr").count() == 15
         assert page.locator("#compare-table th[scope=row]", has_text="Discovery match").count() == 1
 
         page.get_by_role("button", name="Verify finalists").click()

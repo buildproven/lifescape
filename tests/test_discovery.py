@@ -23,6 +23,7 @@ import lifescape.discovery as discovery_module
 from lifescape.discovery import (
     CATALOG_COLUMNS,
     SCORED_FIELDS,
+    SIGNED_FIELDS,
     STATE_REGIONS,
     CatalogUnavailableError,
     DiscoveryService,
@@ -144,6 +145,10 @@ def test_missing_values_never_raise_a_score_and_keep_their_weight(
         "hot_days_per_year",
         "annual_precip_in",
         "annual_snowfall_in",
+        "elevation_ft",
+        "water_distance_mi",
+        "large_metro_distance_mi",
+        "large_metro_suburb",
     ]
     # Sum of weight * similarity (4 * 3) over the full weight (6 * 3): 0.666667, not 1.0.
     assert charlie["total_match"] == 0.666667
@@ -512,7 +517,8 @@ def test_shipped_catalog_meets_the_fr4_coverage_floor(real: PlaceCatalog) -> Non
     assert all(
         value is None or value >= 0
         for place in real.places.values()
-        for value in place.values.values()
+        for field, value in place.values.items()
+        if field not in SIGNED_FIELDS
     )
 
 
@@ -538,6 +544,10 @@ def test_shipped_manifest_records_provenance_and_unsupported_qualities(
         "b15003",
         "b01001",
         "noaa_normals",
+        "cbsa_gazetteer",
+        "natural_earth_coastline",
+        "natural_earth_lakes",
+        "gnis_populated_places",
     }
     assert all(len(item["sha256"]) == 64 for item in manifest["inputs"].values())
     assert "-666666666" in manifest["sentinel_policy"]

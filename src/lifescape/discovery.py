@@ -43,6 +43,10 @@ ScoredField = Literal[
     "hot_days_per_year",
     "annual_precip_in",
     "annual_snowfall_in",
+    "elevation_ft",
+    "water_distance_mi",
+    "large_metro_distance_mi",
+    "large_metro_suburb",
 ]
 
 SCORED_FIELDS: Final[tuple[ScoredField, ...]] = (
@@ -56,7 +60,14 @@ SCORED_FIELDS: Final[tuple[ScoredField, ...]] = (
     "hot_days_per_year",
     "annual_precip_in",
     "annual_snowfall_in",
+    "elevation_ft",
+    "water_distance_mi",
+    "large_metro_distance_mi",
+    "large_metro_suburb",
 )
+# Elevation is the only quality that can be below zero (Death Valley, Salton Sea, New Orleans).
+SIGNED_FIELDS: Final[frozenset[str]] = frozenset({"elevation_ft"})
+BINARY_FIELDS: Final[frozenset[str]] = frozenset({"large_metro_suburb"})
 CATALOG_COLUMNS: Final[tuple[str, ...]] = (
     "place_id",
     "name",
@@ -110,7 +121,13 @@ class HardConstraint(DiscoveryModel):
 
     field: ScoredField
     operator: Literal["min", "max"]
-    value: float = Field(allow_inf_nan=False, ge=0)
+    value: float = Field(allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def value_is_valid_for_field(self) -> HardConstraint:
+        if self.value < 0 and self.field not in SIGNED_FIELDS:
+            raise ValueError(f"constraint for {self.field} must be a nonnegative number")
+        return self
 
     @property
     def constraint_id(self) -> str:
@@ -132,12 +149,14 @@ class SearchProfile(DiscoveryModel):
 
     @field_validator("targets")
     @classmethod
-    def targets_are_finite_and_nonnegative(
+    def targets_are_finite_and_valid_for_field(
         cls, value: dict[ScoredField, float]
     ) -> dict[ScoredField, float]:
         for field, target in value.items():
-            if not math.isfinite(target) or target < 0:
+            if not math.isfinite(target) or (target < 0 and field not in SIGNED_FIELDS):
                 raise ValueError(f"target for {field} must be a nonnegative number")
+            if field in BINARY_FIELDS and target not in (0, 1):
+                raise ValueError(f"target for {field} must be 0 or 1")
         return value
 
     @field_validator("priorities")
@@ -317,8 +336,12 @@ def _parse_place(row: dict[str, str]) -> Place:
     for field in SCORED_FIELDS:
         raw = row[field]
         value = float(raw) if raw else None
-        if value is not None and (not math.isfinite(value) or value < 0):
+        if value is not None and (
+            not math.isfinite(value) or (value < 0 and field not in SIGNED_FIELDS)
+        ):
             raise ValueError(f"{field} must be a nonnegative number for {row['place_id']}")
+        if value is not None and field in BINARY_FIELDS and value not in (0, 1):
+            raise ValueError(f"{field} must be 0 or 1 for {row['place_id']}")
         values[field] = value
     if row["state"] not in STATE_REGIONS or STATE_REGIONS[row["state"]] != row["region"]:
         raise ValueError(f"invalid state or region for {row['place_id']}")
@@ -382,6 +405,12 @@ def format_value(field_unit: str, value: float) -> str:
         return f"{value:,.0f} days per year"
     if field_unit == "inches per year":
         return f"{value:,.0f} in per year"
+    if field_unit == "feet above sea level":
+        return f"{value:,.0f} ft above sea level"
+    if field_unit == "miles":
+        return f"{value:,.0f} miles"
+    if field_unit == "yes or no":
+        return "Yes" if value >= 0.5 else "No"
     return f"{value:,.0f}"
 
 

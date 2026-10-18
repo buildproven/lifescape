@@ -16,6 +16,10 @@
       "lower": 10.82,
       "upper": 70.37
     },
+    "elevation_ft": {
+      "lower": 13.0,
+      "upper": 3907.0
+    },
     "freezing_nights_per_year": {
       "lower": 0.8,
       "upper": 165.8
@@ -23,6 +27,14 @@
     "hot_days_per_year": {
       "lower": 3.0,
       "upper": 114.7
+    },
+    "large_metro_distance_mi": {
+      "lower": 5.7,
+      "upper": 227.3
+    },
+    "large_metro_suburb": {
+      "lower": 0.0,
+      "upper": 1.0
     },
     "median_home_value": {
       "lower": 103400.0,
@@ -39,9 +51,14 @@
     "population_density": {
       "lower": 357.8,
       "upper": 6805.2
+    },
+    "water_distance_mi": {
+      "lower": 0.9,
+      "upper": 483.8
     }
   },
-  "catalog_version": "us-places-acs2024-noaa1991-2020-v2",
+  "catalog_version": "us-places-acs2024-noaa1991-2020-character-v3",
+  "character_join": "Elevation, shoreline distance, and large-metro distance are measured from the Census place centroid. Elevation is the GNIS populated place of the same name in the same state within 5 miles; it is left missing when none reports one. Large metros are Census metropolitan areas with 1,000,000+ people (ACS B01003); their principal cities are the places named in the metro title.",
   "climate_join": "Each place uses the nearest NOAA station within 30 miles that reports the needed normals, measured from the Census place centroid. Station elevation is not compared; values are left missing when no station qualifies.",
   "coverage": {
     "annual_precip_in": {
@@ -64,6 +81,11 @@
       "serving_places": 10215,
       "share": 1.0
     },
+    "elevation_ft": {
+      "non_null": 9614,
+      "serving_places": 10215,
+      "share": 0.9412
+    },
     "freezing_nights_per_year": {
       "non_null": 10214,
       "serving_places": 10215,
@@ -73,6 +95,16 @@
       "non_null": 10214,
       "serving_places": 10215,
       "share": 0.9999
+    },
+    "large_metro_distance_mi": {
+      "non_null": 10215,
+      "serving_places": 10215,
+      "share": 1.0
+    },
+    "large_metro_suburb": {
+      "non_null": 10215,
+      "serving_places": 10215,
+      "share": 1.0
     },
     "median_home_value": {
       "non_null": 10125,
@@ -90,6 +122,11 @@
       "share": 1.0
     },
     "population_density": {
+      "non_null": 10215,
+      "serving_places": 10215,
+      "share": 1.0
+    },
+    "water_distance_mi": {
       "non_null": 10215,
       "serving_places": 10215,
       "share": 1.0
@@ -118,6 +155,11 @@
       "label": "College-educated share",
       "unit": "percent of adults 25+"
     },
+    "elevation_ft": {
+      "definition": "Elevation of the USGS GNIS populated place with the same name in the same state nearest the Census place centroid, within 5 miles (GNIS ELEV_IN_FT, 2021-08-25 archive). Missing where no such place reports elevation.",
+      "label": "Elevation",
+      "unit": "feet above sea level"
+    },
     "freezing_nights_per_year": {
       "definition": "Average days per year with a daily low at or below 32\u00b0F, NOAA 1991-2020 normal ANN-TMIN-AVGNDS-LSTH032, from the nearest station within 30 miles.",
       "label": "Freezing nights",
@@ -127,6 +169,16 @@
       "definition": "Average days per year with a daily high at or above 90\u00b0F, NOAA 1991-2020 normal ANN-TMAX-AVGNDS-GRTH090, from the nearest station within 30 miles.",
       "label": "Hot days (90\u00b0F+)",
       "unit": "days per year"
+    },
+    "large_metro_distance_mi": {
+      "definition": "Great-circle miles from the Census place centroid to the nearest principal city of a metropolitan area with 1,000,000 or more people (ACS B01003 for the Census CBSA). Principal cities are the places named in the metro title; 0 for those cities.",
+      "label": "Distance to a large metro",
+      "unit": "miles"
+    },
+    "large_metro_suburb": {
+      "definition": "1 when the place is not itself a principal city of a metropolitan area over 1,000,000 people and lies within 25 miles of one; otherwise 0. A distance rule, not a Census urban-area designation.",
+      "label": "Large-metro suburb",
+      "unit": "yes or no"
     },
     "median_home_value": {
       "definition": "Median value of owner-occupied housing units, ACS B25077 (B25077_E001).",
@@ -147,6 +199,11 @@
       "definition": "B01003_E001 divided by Gazetteer land area (ALAND_SQMI).",
       "label": "Population density",
       "unit": "people per square mile"
+    },
+    "water_distance_mi": {
+      "definition": "Great-circle miles from the Census place centroid to the nearest ocean coastline or Great Lakes shore (Natural Earth 1:10m). Inland lakes and rivers are not counted. Measured to shoreline segments within 60 miles and to shoreline points under 4 miles apart beyond that.",
+      "label": "Distance to ocean or Great Lake",
+      "unit": "miles"
     }
   },
   "geography": "U.S. states and DC: incorporated places and Census-designated places",
@@ -176,10 +233,30 @@
       "url": "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-b25077.dat",
       "vintage": "ACS 2020-2024 5-year estimates (released December 2025)"
     },
+    "cbsa_gazetteer": {
+      "sha256": "0ec21c5d83982467903f1500fbbae87311edc81f09bed8ec1bbded80bce7eec3",
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_cbsa_national.zip",
+      "vintage": "2024 Census Gazetteer"
+    },
     "gazetteer": {
       "sha256": "cf262fc92b2326f7a8c62a89d156a60eb17d64d6d35f7a62310c43bb08972c06",
       "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_place_national.zip",
       "vintage": "2024 Census Gazetteer"
+    },
+    "gnis_populated_places": {
+      "sha256": "03e7c1187904c108041b8a7e7218f7190cef5822cdfcf93a720e02eab310fdaf",
+      "url": "https://prd-tnm.s3.amazonaws.com/StagedProducts/GeographicNames/Archive/MainDomestic/AllStates.zip",
+      "vintage": "USGS GNIS Domestic Names, 2021-08-25 archive"
+    },
+    "natural_earth_coastline": {
+      "sha256": "6f75ae0e0de157b14946e2255eb1f5486d9a13819032e26d4610852d296788f6",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_coastline.geojson",
+      "vintage": "Natural Earth 1:10m physical vectors v5.1.2 (public domain)"
+    },
+    "natural_earth_lakes": {
+      "sha256": "2d036f53dedec578001c5c30c2959ee7d4eebc1306900fa4367c49929ec8f2d9",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_lakes.geojson",
+      "vintage": "Natural Earth 1:10m physical vectors v5.1.2 (public domain)"
     },
     "noaa_normals": {
       "sha256": "0fdb814203150780d4ee0c5d53c7844a237a21881101fb7d922b0aa3a1fd190f",
@@ -189,9 +266,9 @@
   },
   "normalization_version": "discovery-winsorized-minmax-v1",
   "output_file": "place-catalog.csv.gz",
-  "output_sha256": "068538db1206f0c5e2b744e03850a63d3499ef735b82d2180433aab3dfd91c9e",
+  "output_sha256": "3b669cdfeecba74b59bb9ab5c25f420930f8a6cdb215a91adbc090414e17c24c",
   "row_count": 32041,
   "sentinel_policy": "Every negative ACS estimate (including -666666666 and -999999999) becomes null.",
   "serving_universe": "places with known population >= 2500",
-  "uncompressed_sha256": "f4636b3a8f2c8a8437d1f74b6f8968b3dc0caa0494aae2ddd9745d9fa4deb170"
+  "uncompressed_sha256": "7f742d5d498b7732afdd9ddfc6dfa2f601750451eaa544973d86fd4d5ea27f3b"
 }

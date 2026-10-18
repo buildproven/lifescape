@@ -130,7 +130,13 @@ This PRD corrects a gap between the original implementation milestone and the in
   snowfall. Each place takes the nearest NOAA station within 30 miles that reports the needed
   normals, keeps the station name and distance as provenance, and is left null (never imputed or
   assumed zero) when none qualifies. Climate qualities are discovery data: they cannot clear a gate
-  or change an evidence-backed score. Healthcare access, nature and outdoor access, airport
+  or change an evidence-backed score.
+  **Amendment (BUI-1396):** the catalog also supports four place-character qualities: elevation,
+  distance to the nearest ocean coastline or Great Lake, distance to the nearest principal city of
+  a metropolitan area with 1,000,000 or more people, and a flag for places within 25 miles of one
+  that are not principal cities themselves. They come from keyless public files (USGS GNIS,
+  Natural Earth, Census Gazetteer CBSA and ACS B01003), are left null when the source has no
+  value, and are discovery data under the same rule as climate. Healthcare access, nature and outdoor access, airport
   access, and cultural or social activity remain named discovery needs, but the catalog does not
   accept them as scored qualities or claim matches for them. Adding one requires a PRD amendment
   with a source and shipped-catalog coverage criterion.

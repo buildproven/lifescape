@@ -67,7 +67,8 @@ not verified evidence, and the FCC and FEMA maps need an address.
 
 ## Limits you should know
 
-Matches use six Census-derived numbers and four NOAA climate normals (freezing nights, 90°F+ days,
-precipitation, snowfall), not healthcare or walkability. Climate comes from the nearest weather
+Matches use six Census-derived numbers, four NOAA climate normals (freezing nights, 90°F+ days,
+precipitation, snowfall), and four place-character qualities (elevation, distance to an ocean or
+Great Lake, distance to a large metro, large-metro suburb), not healthcare or walkability. Climate comes from the nearest weather
 station within 30 miles, which can sit at a different elevation than the town. See
 [known limitations](limitations.md).

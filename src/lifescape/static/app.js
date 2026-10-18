@@ -106,6 +106,9 @@ function formatValue(unit, value) {
   if (unit === "people per square mile") return `${whole.format(value)} people per sq mi`;
   if (unit === "days per year") return `${whole.format(value)} days per year`;
   if (unit === "inches per year") return `${whole.format(value)} in per year`;
+  if (unit === "feet above sea level") return `${whole.format(value)} ft above sea level`;
+  if (unit === "miles") return `${whole.format(value)} miles`;
+  if (unit === "yes or no") return value >= 0.5 ? "Yes" : "No";
   return whole.format(value);
 }
 
@@ -449,13 +452,33 @@ function renderFeel() {
   updateTargetSummary();
 }
 
+function defaultTarget(item) {
+  return item.unit === "yes or no" ? item.lower : (item.lower + item.upper) / 2;
+}
+
+function targetControl(item, target, step) {
+  const label = `${escapeHtml(item.label)} target`;
+  if (item.unit === "yes or no") {
+    return `<select data-role="target" aria-label="${label}">
+      <option value="0" ${target === 0 ? "selected" : ""}>No</option>
+      <option value="1" ${target === 1 ? "selected" : ""}>Yes</option>
+    </select>`;
+  }
+  if (item.signed) {
+    return `<input type="number" inputmode="decimal" data-role="target" step="any" value="${target}"
+      aria-label="${label}">`;
+  }
+  return `<input type="range" data-role="target" min="${item.lower}" max="${item.upper}" step="${step}" value="${target}"
+    aria-label="${label}">`;
+}
+
 function qualityRow(item) {
   const field = item.field;
   const exemplarValues = profile().exemplars.filter((exemplar) => exemplar.values?.[field] != null);
   const mode = modeFor(field);
   const lower = item.lower;
   const upper = item.upper;
-  const target = profile().targets[field] ?? (lower + upper) / 2;
+  const target = profile().targets[field] ?? defaultTarget(item);
   const step = Math.max((upper - lower) / 200, 0.01);
   const options = [];
   if (exemplarValues.length) options.push(["example", "my example town"]);
@@ -477,9 +500,8 @@ function qualityRow(item) {
         .join("")}</select></label>
     <div class="mini-field custom-target" ${mode === "custom" ? "" : "hidden"}>
       <label><span>Target</span>
-        <input type="range" data-role="target" min="${lower}" max="${upper}" step="${step}" value="${target}"
-          aria-label="${escapeHtml(item.label)} target"></label>
-      <output data-role="target-output">${escapeHtml(formatValue(item.unit, Number(target)))}</output>
+        ${targetControl(item, Number(target), step)}</label>
+      ${item.unit === "yes or no" ? "" : `<output data-role="target-output">${escapeHtml(formatValue(item.unit, Number(target)))}</output>`}
     </div>
     <label class="mini-field" ${active ? "" : "hidden"}><span>How much it matters</span>
       <select data-role="priority">${[1, 2, 3, 4, 5]
@@ -503,18 +525,20 @@ function renderQualities() {
       else delete modes[field];
       profile().modes = modes;
       if (event.target.value === "custom" && profile().targets[field] === undefined) {
-        profile().targets[field] = (item.lower + item.upper) / 2;
+        profile().targets[field] = defaultTarget(item);
       }
       persist();
       renderQualities();
       updateTargetSummary();
     });
-    row.querySelector("[data-role=target]").addEventListener("input", (event) => {
-      profile().targets[field] = Number(event.target.value);
-      row.querySelector("[data-role=target-output]").textContent = formatValue(
-        item.unit,
-        Number(event.target.value)
-      );
+    const targetInput = row.querySelector("[data-role=target]");
+    const targetEvent = targetInput instanceof HTMLSelectElement ? "change" : "input";
+    targetInput.addEventListener(targetEvent, (event) => {
+      if (event.target.value === "") return;
+      const value = Number(event.target.value);
+      profile().targets[field] = value;
+      const output = row.querySelector("[data-role=target-output]");
+      if (output) output.textContent = formatValue(item.unit, value);
       persist();
     });
     row.querySelector("[data-role=priority]").addEventListener("change", (event) => {
@@ -529,7 +553,7 @@ function renderLimits() {
     .map((item) => {
       const limit = profile().limits[item.field] ?? {};
       const input = (operator, label) => `<label class="mini-field"><span>${label}</span>
-        <input type="number" inputmode="decimal" min="0" step="any" data-field="${escapeHtml(item.field)}" data-operator="${operator}"
+        <input type="number" inputmode="decimal" ${item.signed ? "" : 'min="0"'} step="any" data-field="${escapeHtml(item.field)}" data-operator="${operator}"
           value="${limit[operator] ?? ""}" aria-label="${escapeHtml(item.label)} ${label.toLowerCase()}"></label>`;
       return `<div class="limit-row"><strong>${escapeHtml(item.label)}<small>${escapeHtml(item.unit)}</small></strong>
         ${input("min", "At least")}${input("max", "No more than")}</div>`;
