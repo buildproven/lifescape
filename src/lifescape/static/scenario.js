@@ -58,11 +58,14 @@
   function validateRecommendation(item) {
     const numbers = ["match_percent", "rank", "component_count", "profile_target_count"];
     const texts = ["place_id", "label", "name", "state", "catalog_version", "data_date"];
+    // match_band and feel_summary are absent from snapshots saved before bands existed.
+    const optionalTexts = ["match_band", "feel_summary"];
     if (
       !isObject(item) ||
       !texts.every((key) => isText(item[key])) ||
       !ARRAY_FIELDS.every((key) => Array.isArray(item[key])) ||
-      !numbers.every((key) => Number.isFinite(item[key]))
+      !numbers.every((key) => Number.isFinite(item[key])) ||
+      !optionalTexts.every((key) => item[key] === undefined || isText(item[key]))
     ) {
       throw new Error("invalid recommendation snapshot");
     }

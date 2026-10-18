@@ -33,11 +33,18 @@ your home directory).
    towns on every quality. Add any town by hand. **Print or save as PDF** makes a paper copy;
    **Export search as JSON** saves a backup; **Start over** clears this browser.
 
-## What the match percentage means
+## What the match band means
 
-It measures how closely a town's public Census numbers resemble your examples and targets. It is
-not a quality score and not a prediction that you will like the town. It ignores anything we do
-not have data for, and missing data lowers a town's score instead of helping it.
+Each card starts with one line that describes the town in plain words, using only public Census,
+NOAA and other catalog values we have for it. A quality we have no value for is never mentioned.
+Next come **Why it appeared** and the **Biggest trade-off**.
+
+The band (**Strong**, **Good**, or **Possible**) shows how closely a town's public numbers resemble
+your examples and targets. We do not show a percentage because the data cannot support that
+precision. A band is not a quality score and not a prediction that you will like the town. It
+ignores anything we do not have data for, and missing data lowers a town's band instead of helping
+it. Shortlist comparisons and the research checklist show the same band. Towns you saved before
+bands existed still open and show their band.
 
 ## Verifying finalists
 

@@ -760,8 +760,21 @@ function whyPanel(item) {
   </div>`;
 }
 
+/* Coarse band for a discovery match. Snapshots saved before bands existed derive it from total_match. */
+function matchBand(item) {
+  if (typeof item.match_band === "string" && item.match_band) return item.match_band;
+  const total = item.total_match;
+  if (!Number.isFinite(total)) return "";
+  return total >= 0.85 ? "Strong" : total >= 0.7 ? "Good" : "Possible";
+}
+
 function matchCard(item, { snapshot = false } = {}) {
   const decision = decisionFor(item.place_id);
+  const band = matchBand(item);
+  const summary =
+    typeof item.feel_summary === "string" && item.feel_summary
+      ? `<p class="feel-summary">${escapeHtml(item.feel_summary)}</p>`
+      : "";
   const reasons = item.reasons.map((reason) => `<li>${escapeHtml(reason.text)}</li>`).join("");
   const difference = item.differences[0];
   const unknown = item.unknown_constraints.length
@@ -779,7 +792,8 @@ function matchCard(item, { snapshot = false } = {}) {
   return `<article class="match-card ${decision === "reject" ? "is-rejected" : ""}" data-place-id="${escapeHtml(item.place_id)}">
     <header><span class="rank">${snapshot ? "Kept" : String(item.rank).padStart(2, "0")}</span>
       <h3>${escapeHtml(item.label)}</h3>
-      <span class="match-score" aria-label="${item.match_percent} percent discovery match">${item.match_percent}% match</span></header>
+      ${band ? `<span class="match-score" role="img" aria-label="${escapeHtml(band)} discovery match">${escapeHtml(band)}</span>` : ""}</header>
+    ${summary}
     <p class="card-label">Why it appeared</p>
     <ul class="reason-list">${reasons}</ul>
     <p class="card-label">Biggest trade-off</p>
@@ -973,7 +987,7 @@ function renderCompare(kept) {
     })
     .join("");
   const matchRow = kept
-    .map((item) => `<td>${escapeHtml(String(item.match_percent))}%</td>`)
+    .map((item) => `<td>${escapeHtml(matchBand(item) || "Not rated")}</td>`)
     .join("");
   $("#compare-table").innerHTML =
     `<thead><tr><th scope="col">Quality</th>${head}</tr></thead><tbody>${rows}` +
@@ -1157,7 +1171,7 @@ function researchChecklist() {
     lines.push(`## ${entry.label}`);
     const rec = entry.recommendation;
     if (rec) {
-      lines.push(`Discovery match: ${rec.match_percent}% (not verified evidence)`);
+      lines.push(`Discovery match: ${matchBand(rec) || "Not rated"} (not verified evidence)`);
       for (const field of rec.fields) {
         lines.push(`- ${field.label}: ${formatValue(field.unit, field.candidate_value)}`);
       }
