@@ -55,3 +55,16 @@ temperature, precipitation, and snowfall joins).
 Identity: `place_id` (7-digit state+place FIPS), `name`, `state`, `region` (Census region), plus
 `land_area_sqmi`, `latitude`, `longitude`. The manifest `src/lifescape/data/place-catalog.manifest.json`
 records source URLs, SHA-256 hashes, per-field coverage, and bounds.
+
+### Recommendation card fields (derived, advisory)
+
+Added to each discovery recommendation by `DiscoveryService.search`. Both come only from that
+place's structured catalog values and total match; `total_match` and `match_percent` are unchanged.
+
+| Field | Derivation |
+|---|---|
+| `match_band` | `Strong` when `total_match` ≥ 0.85, `Good` when ≥ 0.70 and below 0.85, `Possible` below 0.70. The app shows the band instead of a percentage. |
+| `feel_summary` | One line (no newline) built from non-null values: size from `population`, then winters, summers, snow, shoreline distance, large-metro distance, and high elevation when those values exist and cross a threshold. A null value is never mentioned. Contains no `%` and no "match". |
+
+Snapshots saved without these fields still load; the app derives the band from `total_match` and
+omits the summary.

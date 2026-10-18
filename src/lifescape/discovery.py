@@ -31,6 +31,8 @@ MINIMUM_SERVING_POPULATION: Final = 2500
 MINIMUM_MATCH_COMPONENTS: Final = 2
 DEFAULT_WEIGHT: Final = 3
 REASON_SIMILARITY_FLOOR: Final = 0.75
+STRONG_MATCH_FLOOR: Final = 0.85
+GOOD_MATCH_FLOOR: Final = 0.70
 
 ScoredField = Literal[
     "population",
@@ -414,6 +416,74 @@ def format_value(field_unit: str, value: float) -> str:
     return f"{value:,.0f}"
 
 
+def match_band(total_match: float) -> str:
+    """Coarse band for a total match: a percentage would imply precision the catalog lacks."""
+    if total_match >= STRONG_MATCH_FLOOR:
+        return "Strong"
+    if total_match >= GOOD_MATCH_FLOOR:
+        return "Good"
+    return "Possible"
+
+
+def _join_phrases(phrases: list[str]) -> str:
+    if len(phrases) <= 2:
+        return " and ".join(phrases)
+    return ", ".join(phrases[:-1]) + f", and {phrases[-1]}"
+
+
+def feel_summary(values: dict[str, float | None]) -> str:
+    """One plain line describing a town from its non-null catalog values only (PRD FR9).
+
+    A quality whose value is missing is never mentioned, and no quality is inferred or imputed.
+    """
+    population = values.get("population")
+    if population is None:
+        head = "A town"
+    else:
+        size = (
+            "small town"
+            if population < 10_000
+            else "town"
+            if population < 50_000
+            else "mid-size city"
+            if population < 250_000
+            else "large city"
+        )
+        head = f"A {size} of about {population:,.0f} people"
+    features: list[str] = []
+    freezing = values.get("freezing_nights_per_year")
+    if freezing is not None and freezing <= 30:
+        features.append("mild winters")
+    elif freezing is not None and freezing >= 130:
+        features.append("cold winters")
+    hot = values.get("hot_days_per_year")
+    if hot is not None and hot >= 60:
+        features.append("hot summers")
+    elif hot is not None and hot <= 10:
+        features.append("cool summers")
+    snow = values.get("annual_snowfall_in")
+    if snow is not None and snow >= 40:
+        features.append("heavy snow")
+    water = values.get("water_distance_mi")
+    if water is not None and water <= 50:
+        features.append(
+            "the ocean or a Great Lake shore within 5 miles"
+            if water <= 5
+            else f"the ocean or a Great Lake shore about {water:,.0f} miles away"
+        )
+    metro = values.get("large_metro_distance_mi")
+    if values.get("large_metro_suburb") == 1 and metro is not None:
+        features.append("a large metro within 25 miles")
+    elif metro is not None and metro >= 100:
+        features.append("no large metro within 100 miles")
+    elevation = values.get("elevation_ft")
+    if elevation is not None and elevation >= 3000:
+        features.append(f"a high elevation of {elevation:,.0f} ft")
+    if not features:
+        return f"{head}." if population is not None else "Few catalog values describe this town."
+    return f"{head} with {_join_phrases(features[:4])}."
+
+
 class DiscoveryService:
     """``search(SearchProfile) -> result``: the single seam for all recommendation policy."""
 
@@ -678,6 +748,8 @@ class DiscoveryService:
             "population": place.population,
             "total_match": total,
             "match_percent": round(total * 100),
+            "match_band": match_band(total),
+            "feel_summary": feel_summary(place.values),
             "component_count": len(components),
             "profile_target_count": len(resolved),
             "components": components,
