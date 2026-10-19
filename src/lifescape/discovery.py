@@ -406,7 +406,7 @@ def format_value(field_unit: str, value: float) -> str:
     if field_unit == "days per year":
         return f"{value:,.0f} days per year"
     if field_unit == "inches per year":
-        return f"{value:,.0f} in per year"
+        return f"{value:,.0f} inches per year"
     if field_unit == "feet above sea level":
         return f"{value:,.0f} ft above sea level"
     if field_unit == "miles":
@@ -661,6 +661,8 @@ class DiscoveryService:
         return f"{target} in {matched['name']}" if matched else f"your target of {target}"
 
     def _reason_text(self, component: dict[str, Any], *, strong: bool) -> dict[str, str]:
+        if component["unit"] == "yes or no":
+            return {"field": component["field"], "text": self._boolean_reason(component, strong)}
         candidate = format_value(component["unit"], component["candidate_value"])
         verb = "Close to" if strong else "Nearest available to"
         return {
@@ -669,6 +671,24 @@ class DiscoveryService:
                 f"{component['label']}: {candidate}. {verb} {self._describe_target(component)}."
             ),
         }
+
+    @staticmethod
+    def _boolean_phrase(label: str, value: float) -> str:
+        noun = label[:1].lower() + label[1:]
+        return f"a {noun}" if value >= 0.5 else f"not a {noun}"
+
+    def _boolean_reason(self, component: dict[str, Any], strong: bool) -> str:
+        """Write a yes/no quality as a sentence, never as "Close to No" (PRD G3)."""
+        candidate = self._boolean_phrase(component["label"], component["candidate_value"])
+        sentence = candidate[:1].upper() + candidate[1:]
+        matched = component["matched_exemplar"]
+        if strong:
+            return (
+                f"{sentence}, like {matched['name']}." if matched else f"{sentence}, as you asked."
+            )
+        wanted = self._boolean_phrase(component["label"], component["target_value"])
+        whose = matched["name"] if matched else "your target"
+        return f"{sentence}. Nearest available to {whose}, which is {wanted}."
 
     def _difference_text(self, component: dict[str, Any]) -> dict[str, str]:
         candidate = format_value(component["unit"], component["candidate_value"])

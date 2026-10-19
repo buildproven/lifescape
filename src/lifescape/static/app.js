@@ -105,7 +105,7 @@ function formatValue(unit, value) {
   if (unit.startsWith("percent")) return `${Number(value).toFixed(1)}%`;
   if (unit === "people per square mile") return `${whole.format(value)} people per sq mi`;
   if (unit === "days per year") return `${whole.format(value)} days per year`;
-  if (unit === "inches per year") return `${whole.format(value)} in per year`;
+  if (unit === "inches per year") return `${whole.format(value)} inches per year`;
   if (unit === "feet above sea level") return `${whole.format(value)} ft above sea level`;
   if (unit === "miles") return `${whole.format(value)} miles`;
   if (unit === "yes or no") return value >= 0.5 ? "Yes" : "No";
@@ -768,6 +768,26 @@ function matchBand(item) {
   return total >= 0.85 ? "Strong" : total >= 0.7 ? "Good" : "Possible";
 }
 
+/* Snapshots saved before BUI-1401 store reason copy such as "67 in per year" and
+   "Large-metro suburb: No. Close to No in Traverse City, MI." Rewrite it from the structured
+   component so a reloaded card reads the same as a fresh one (PRD G3). */
+function currentCopy(entry, item) {
+  const text = String(entry.text).replaceAll(" in per year", " inches per year");
+  const component = item.components.find((candidate) => candidate.field === entry.field);
+  if (component?.unit !== "yes or no" || !/ to (Yes|No)\b/.test(text)) return text;
+  const phrase = (value) => {
+    const noun = component.label.charAt(0).toLowerCase() + component.label.slice(1);
+    return value >= 0.5 ? `a ${noun}` : `not a ${noun}`;
+  };
+  const candidate = phrase(component.candidate_value);
+  const sentence = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+  const matched = component.matched_exemplar?.name;
+  if (component.candidate_value >= 0.5 === component.target_value >= 0.5) {
+    return matched ? `${sentence}, like ${matched}.` : `${sentence}, as you asked.`;
+  }
+  return `${sentence}. Nearest available to ${matched ?? "your target"}, which is ${phrase(component.target_value)}.`;
+}
+
 function matchCard(item, { snapshot = false } = {}) {
   const decision = decisionFor(item.place_id);
   const band = matchBand(item);
@@ -775,7 +795,9 @@ function matchCard(item, { snapshot = false } = {}) {
     typeof item.feel_summary === "string" && item.feel_summary
       ? `<p class="feel-summary">${escapeHtml(item.feel_summary)}</p>`
       : "";
-  const reasons = item.reasons.map((reason) => `<li>${escapeHtml(reason.text)}</li>`).join("");
+  const reasons = item.reasons
+    .map((reason) => `<li>${escapeHtml(currentCopy(reason, item))}</li>`)
+    .join("");
   const difference = item.differences[0];
   const unknown = item.unknown_constraints.length
     ? `<p class="tag-line"><span class="tag is-missing">Needs verification</span> ${escapeHtml(item.unknown_constraints.length)} limit${item.unknown_constraints.length === 1 ? "" : "s"} could not be checked.</p>`
@@ -797,7 +819,7 @@ function matchCard(item, { snapshot = false } = {}) {
     <p class="card-label">Why it appeared</p>
     <ul class="reason-list">${reasons}</ul>
     <p class="card-label">Biggest trade-off</p>
-    <p class="trade-off">${escapeHtml(difference?.text ?? "No trade-off was recorded.")}</p>
+    <p class="trade-off">${escapeHtml(difference ? currentCopy(difference, item) : "No trade-off was recorded.")}</p>
     ${unknown}${missing}
     <p class="movement">${escapeHtml(movementText(item))}</p>
     <div class="decision-row" role="group" aria-label="Your decision for ${escapeHtml(item.label)}">${buttons}
