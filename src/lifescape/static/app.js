@@ -1179,6 +1179,23 @@ function updateVerifyAction(none = false) {
   );
 }
 
+/* ---------- verification preview ---------- */
+
+function renderVerificationPreview() {
+  const critical = state.evidence.metricDetails.filter((metric) => metric.critical);
+  const html = `<span>What verification checks</span>
+    <div>
+      <p>Matches are discovery leads, not verified evidence. At the last step, Lifescape tests your finalists against your household's requirements, using reviewed evidence for these critical facts:</p>
+      <ul class="verification-checks">${critical
+        .map((metric) => `<li>${escapeHtml(metric.name)}</li>`)
+        .join("")}</ul>
+      <p>Lifescape never guesses a missing value. Unknowns stay visible.</p>
+    </div>`;
+  $$("[data-verification-preview]").forEach((element) => {
+    element.innerHTML = html;
+  });
+}
+
 /* ---------- research checklist ---------- */
 
 function researchChecklist() {
@@ -1488,6 +1505,7 @@ async function importEvidence(file) {
 /* ---------- startup ---------- */
 
 function renderAll() {
+  renderVerificationPreview();
   renderFeel();
   renderLimits();
   renderMatches();
