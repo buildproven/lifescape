@@ -20,6 +20,10 @@ def test_keel_config_omits_held_out_author_tier(keel_config: dict[str, Any]) -> 
     assert "heldOutAuthorTier" not in keel_config
 
 
+def test_keel_config_omits_daily_budget(keel_config: dict[str, Any]) -> None:
+    assert "dailyBudgetUsd" not in keel_config
+
+
 def test_keel_config_keeps_expected_values(keel_config: dict[str, Any]) -> None:
     assert keel_config["checks"] == {
         "lint": "make lint",
@@ -28,6 +32,5 @@ def test_keel_config_keeps_expected_values(keel_config: dict[str, Any]) -> None:
     }
     assert keel_config["testCommand"] == "make test"
     assert keel_config["linearProject"] == "lifescape"
-    assert keel_config["dailyBudgetUsd"] == 5
     assert keel_config["install"] == "uv sync --frozen --extra dev && npm ci"
     assert keel_config["review"] is True
