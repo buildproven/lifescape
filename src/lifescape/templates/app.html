@@ -115,7 +115,24 @@
             <div id="quality-list" class="quality-list"></div>
           </details>
 
-          <aside class="notice is-info verification-preview" data-verification-preview></aside>
+          <div data-preview-slot>
+            <aside
+              class="notice is-info verification-preview"
+              id="verification-preview"
+              aria-labelledby="verification-preview-title"
+            >
+              <span id="verification-preview-title">What verification checks</span>
+              <div>
+                <p>
+                  Matches are discovery leads, not verified evidence. At the last step, Lifescape
+                  tests your finalists against your household's requirements, using reviewed
+                  evidence for these critical facts:
+                </p>
+                <ul class="verification-checks" id="verification-checks"></ul>
+                <p>Lifescape never guesses a missing value and keeps unknowns visible.</p>
+              </div>
+            </aside>
+          </div>
 
           <div class="data-tools">
             <button class="text-button" id="limits-link" type="button">
@@ -190,7 +207,7 @@
               <strong id="shortlist-count">0</strong><span>kept</span>
             </div>
           </div>
-          <aside class="notice is-info verification-preview" data-verification-preview></aside>
+          <div data-preview-slot></div>
           <div id="shortlist-list" class="match-list"></div>
           <section id="compare-section" class="compare" aria-labelledby="compare-heading" hidden>
             <h3 id="compare-heading" class="subhead">Side by side</h3>

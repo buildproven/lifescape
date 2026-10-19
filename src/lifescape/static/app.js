@@ -1182,18 +1182,17 @@ function updateVerifyAction(none = false) {
 /* ---------- verification preview ---------- */
 
 function renderVerificationPreview() {
-  const critical = state.evidence.metricDetails.filter((metric) => metric.critical);
-  const html = `<span>What verification checks</span>
-    <div>
-      <p>Matches are discovery leads, not verified evidence. At the last step, Lifescape tests your finalists against your household's requirements, using reviewed evidence for these critical facts:</p>
-      <ul class="verification-checks">${critical
-        .map((metric) => `<li>${escapeHtml(metric.name)}</li>`)
-        .join("")}</ul>
-      <p>Lifescape never guesses a missing value. Unknowns stay visible.</p>
-    </div>`;
-  $$("[data-verification-preview]").forEach((element) => {
-    element.innerHTML = html;
-  });
+  $("#verification-checks").innerHTML = state.evidence.metricDetails
+    .filter((metric) => metric.critical)
+    .map((metric) => `<li>${escapeHtml(metric.name)}</li>`)
+    .join("");
+  placeVerificationPreview(state.step);
+}
+
+/* One preview element moves into the active stage's slot, so the page never holds two copies. */
+function placeVerificationPreview(step) {
+  const slot = $(`[data-stage="${step}"] [data-preview-slot]`);
+  if (slot) slot.append($("#verification-preview"));
 }
 
 /* ---------- research checklist ---------- */
@@ -1285,6 +1284,7 @@ function setStep(step) {
   $("#step-eyebrow").textContent = eyebrow;
   $("#step-title").textContent = title;
   $("#synthetic-notice").hidden = !["verify", "results"].includes(step);
+  placeVerificationPreview(step);
   $("#back-button").hidden = step === "feel" || step === "results";
   const next = $("#next-button");
   next.disabled = false;

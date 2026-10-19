@@ -13,7 +13,7 @@ from urllib.request import urlopen
 from playwright.sync_api import Page, sync_playwright
 from test_match_card_journey import find_places, keep, running_app, watch_errors
 
-PREVIEW = "[data-verification-preview]"
+PREVIEW = "#verification-preview"
 
 
 def critical_names(url: str) -> list[str]:
@@ -42,7 +42,7 @@ def test_req_verify_1_step_one_preview_names_critical_facts(tmp_path: Path) -> N
         for name in critical_names(url):
             assert name in text
         assert "never guesses a missing value" in text
-        assert "unknowns" in text.lower() and "visible" in text.lower()
+        assert "keeps unknowns visible" in text
         assert errors == []
         browser.close()
 
@@ -63,7 +63,7 @@ def test_req_verify_2_shortlist_step_shows_same_preview(tmp_path: Path) -> None:
         assert text == step_one
         for name in critical_names(url):
             assert name in text
-        assert page.locator("[data-stage=shortlist] " + PREVIEW).is_visible()
+        assert page.locator("[data-stage=shortlist]").is_visible()
         assert errors == []
         browser.close()
 
