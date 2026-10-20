@@ -1179,6 +1179,22 @@ function updateVerifyAction(none = false) {
   );
 }
 
+/* ---------- verification preview ---------- */
+
+function renderVerificationPreview() {
+  $("#verification-checks").innerHTML = state.evidence.metricDetails
+    .filter((metric) => metric.critical)
+    .map((metric) => `<li>${escapeHtml(metric.name)}</li>`)
+    .join("");
+  placeVerificationPreview(state.step);
+}
+
+/* One preview element moves into the active stage's slot, so the page never holds two copies. */
+function placeVerificationPreview(step) {
+  const slot = $(`[data-stage="${step}"] [data-preview-slot]`);
+  if (slot) slot.append($("#verification-preview"));
+}
+
 /* ---------- research checklist ---------- */
 
 function researchChecklist() {
@@ -1268,6 +1284,7 @@ function setStep(step) {
   $("#step-eyebrow").textContent = eyebrow;
   $("#step-title").textContent = title;
   $("#synthetic-notice").hidden = !["verify", "results"].includes(step);
+  placeVerificationPreview(step);
   $("#back-button").hidden = step === "feel" || step === "results";
   const next = $("#next-button");
   next.disabled = false;
@@ -1488,6 +1505,7 @@ async function importEvidence(file) {
 /* ---------- startup ---------- */
 
 function renderAll() {
+  renderVerificationPreview();
   renderFeel();
   renderLimits();
   renderMatches();
