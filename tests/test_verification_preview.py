@@ -26,6 +26,7 @@ def critical_names(url: str) -> list[str]:
 
 def visible_preview(page: Page) -> str:
     preview = page.locator(f"{PREVIEW}:visible")
+    preview.wait_for()
     assert preview.count() == 1
     return preview.inner_text()
 
@@ -103,3 +104,15 @@ def test_req_verify_4_fresh_load_hides_shortlist_and_empty_state(tmp_path: Path)
         assert not page.get_by_text("Nothing kept yet").first.is_visible()
         assert errors == []
         browser.close()
+
+
+def test_req_verify_4_preview_is_hidden_in_the_served_html(tmp_path: Path) -> None:
+    from fastapi.testclient import TestClient
+
+    from lifescape.web import create_app
+
+    with TestClient(create_app(tmp_path / "output"), base_url="http://127.0.0.1") as client:
+        html = client.get("/").text
+    tag = re.search(r"<aside[^>]*id=\"verification-preview\"[^>]*>", html)
+    assert tag is not None
+    assert re.search(r"\bhidden\b", tag.group(0))
