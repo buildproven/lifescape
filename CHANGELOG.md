@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-10-20
+
+### Fixed
+
+- **Verification preview no longer flashes empty (BUI-1462).** The "What verification checks" panel stays hidden until its list of critical facts has loaded, and the Find places button is disabled in the served HTML (PR #58).
 
 ### Changed
 
