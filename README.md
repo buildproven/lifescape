@@ -10,6 +10,10 @@ evidence decides; uncertainty stays visible.** Discovery data can suggest a town
 a gate or affect an evidence-backed score. Unknown critical evidence blocks a finalist. Lifescape
 never guesses a missing value or produces a purchase recommendation.
 
+See it first: a [40-second tour of the app](https://lifescape.buildproven.ai/#tour) and a
+[finished synthetic decision](https://lifescape.buildproven.ai/demo). The public site is static and
+runs no app code; the app itself runs only on your computer.
+
 The approved [place-discovery PRD](docs/prd/lifescape-place-discovery.md) is the product source of
 truth. Product work must cite its goal, functional requirement, non-functional requirement, or
 acceptance criterion. The [delivery tasks](docs/prd/lifescape-place-discovery-tasks.md) define the

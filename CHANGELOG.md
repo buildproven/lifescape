@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Product tour video.** The public landing page shows a 40-second recorded walkthrough of the
+  local app (`static/tour.mp4`), with a poster and a text list of the steps.
+
 ## 1.1.0 — 2026-10-20
 
 ### Fixed

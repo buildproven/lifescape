@@ -1325,3 +1325,48 @@ a:focus-visible {
     animation: none;
   }
 }
+
+.tour {
+  width: var(--page);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(30px, 5vw, 80px);
+  align-items: center;
+  padding: 110px 0 20px;
+}
+
+.tour h2 {
+  margin: 0 0 20px;
+  font-family: var(--serif);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  font-size: clamp(34px, 3.6vw, 54px);
+  line-height: 1.02;
+}
+
+.tour-video {
+  margin: 0;
+}
+
+.tour-video video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: #13251d;
+  border: 1px solid rgba(19, 37, 29, 0.25);
+}
+
+.tour-video figcaption {
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+@media (max-width: 860px) {
+  .tour {
+    grid-template-columns: 1fr;
+    padding-top: 70px;
+  }
+}
