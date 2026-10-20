@@ -9,7 +9,9 @@ test:
 	uv run pytest
 
 lint:
+	uv run ruff format --check .
 	uv run ruff check .
+	npm run quality:frontend
 
 typecheck:
 	uv run mypy src
