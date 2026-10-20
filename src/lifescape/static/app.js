@@ -93,6 +93,14 @@ const money = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 const whole = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+// Matches Python's f"{value:,.1f}": grouped, one decimal, ties rounded half to even.
+// A distance of -0 (JSON "-0.0") reads "0.0", as toFixed wrote it.
+const tenths = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+  roundingMode: "halfEven",
+  signDisplay: "negative",
+});
 
 const scenario = () => state.scenario;
 const fieldMeta = (field) => state.discovery.fields.find((item) => item.field === field);
@@ -112,7 +120,7 @@ function formatValue(unit, value) {
     return miles === "1" ? "1 mile" : `${miles} miles`;
   }
   if (unit === "straight-line miles") {
-    const miles = Number(value).toFixed(1);
+    const miles = tenths.format(value);
     return miles === "1.0" ? "1 straight-line mile" : `${miles} straight-line miles`;
   }
   if (unit === "yes or no") return value >= 0.5 ? "Yes" : "No";
