@@ -1218,7 +1218,9 @@ function renderVerificationPreview() {
     .filter((metric) => metric.critical)
     .map((metric) => `<li>${escapeHtml(metric.name)}</li>`)
     .join("");
-  $("#verification-preview").hidden = !state.evidence.metricDetails.some((metric) => metric.critical);
+  $("#verification-preview").hidden = !state.evidence.metricDetails.some(
+    (metric) => metric.critical
+  );
   placeVerificationPreview(state.step);
 }
 
