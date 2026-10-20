@@ -448,9 +448,11 @@ def format_value(field_unit: str, value: float) -> str:
     if field_unit == "feet above sea level":
         return f"{value:,.0f} ft above sea level"
     if field_unit == "miles":
-        return f"{value:,.0f} miles"
+        miles = f"{value:,.0f}"
+        return "1 mile" if miles == "1" else f"{miles} miles"
     if field_unit == "straight-line miles":
-        return f"{value:,.1f} straight-line miles"
+        miles = f"{value:,.1f}"
+        return "1 straight-line mile" if miles == "1.0" else f"{miles} straight-line miles"
     if field_unit == "yes or no":
         return "Yes" if value >= 0.5 else "No"
     return f"{value:,.0f}"

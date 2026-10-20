@@ -107,8 +107,14 @@ function formatValue(unit, value) {
   if (unit === "days per year") return `${whole.format(value)} days per year`;
   if (unit === "inches per year") return `${whole.format(value)} inches per year`;
   if (unit === "feet above sea level") return `${whole.format(value)} ft above sea level`;
-  if (unit === "miles") return `${whole.format(value)} miles`;
-  if (unit === "straight-line miles") return `${Number(value).toFixed(1)} straight-line miles`;
+  if (unit === "miles") {
+    const miles = whole.format(value);
+    return miles === "1" ? "1 mile" : `${miles} miles`;
+  }
+  if (unit === "straight-line miles") {
+    const miles = Number(value).toFixed(1);
+    return miles === "1.0" ? "1 straight-line mile" : `${miles} straight-line miles`;
+  }
   if (unit === "yes or no") return value >= 0.5 ? "Yes" : "No";
   return whole.format(value);
 }
