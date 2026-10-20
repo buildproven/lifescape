@@ -797,10 +797,14 @@ function matchBand(item) {
 }
 
 /* Snapshots saved before BUI-1401 store reason copy such as "67 in per year" and
-   "Large-metro suburb: No. Close to No in Traverse City, MI." Rewrite it from the structured
-   component so a reloaded card reads the same as a fresh one (PRD G3). */
+   "Large-metro suburb: No. Close to No in Traverse City, MI."; snapshots saved before BUI-1446
+   store "1 miles" and "1.0 straight-line miles". Rewrite it from the structured component so a
+   reloaded card reads the same as a fresh one (PRD G3). */
 function currentCopy(entry, item) {
-  const text = String(entry.text).replaceAll(" in per year", " inches per year");
+  const text = String(entry.text)
+    .replaceAll(" in per year", " inches per year")
+    .replace(/(?<![\d.,])1 miles\b/g, "1 mile")
+    .replace(/(?<![\d.,])1\.0 straight-line miles\b/g, "1 straight-line mile");
   const component = item.components.find((candidate) => candidate.field === entry.field);
   if (component?.unit !== "yes or no" || !/ to (Yes|No)\b/.test(text)) return text;
   const phrase = (value) => {
