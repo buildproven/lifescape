@@ -1135,6 +1135,23 @@ input[type="range"]::-webkit-slider-thumb {
 .notice[hidden] {
   display: none;
 }
+.verification-preview {
+  align-items: flex-start;
+  margin: 24px 0;
+}
+.verification-preview div {
+  display: grid;
+  flex: 1 1 280px;
+  gap: 8px;
+}
+.verification-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
 h1:focus {
   outline: none;
 }
