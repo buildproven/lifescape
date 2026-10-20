@@ -140,8 +140,9 @@ This PRD corrects a gap between the original implementation milestone and the in
   **Amendment (BUI-1111):** the catalog also supports one healthcare-access quality: straight-line
   miles from the Census place centroid to the nearest emergency-capable hospital, meaning a
   hospital in the pinned CMS Hospital General Information file whose Emergency Services field is
-  Yes. A facility is located at the centroid of its ZIP Code Tabulation Area (2024 Census
-  Gazetteer), so the distance is approximate. The quality is labelled "straight-line miles", is
+  Yes. A facility is located at its street address by the Census Geocoder with the pinned
+  `Public_AR_Census2020` benchmark (BUI-1444); one the geocoder cannot match is located at the
+  centroid of its ZIP Code Tabulation Area (2024 Census Gazetteer), so the distance is approximate. The quality is labelled "straight-line miles", is
   not drive time, and is not a statement about care quality or capacity. Each place keeps the
   nearest facility's CMS id, name, and miles as provenance, and a match card that cites the
   quality names the facility and the miles. The value is left null (never imputed) when the source

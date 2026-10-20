@@ -551,6 +551,7 @@ def test_shipped_manifest_records_provenance_and_unsupported_qualities(
         "gnis_populated_places",
         "zcta_gazetteer",
         "cms_hospitals",
+        "census_geocoder",
     }
     assert all(len(item["sha256"]) == 64 for item in manifest["inputs"].values())
     assert "-666666666" in manifest["sentinel_policy"]

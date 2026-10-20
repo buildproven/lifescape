@@ -26,7 +26,7 @@ The full machine-readable definitions are in `config/metrics.yaml`.
 
 ## Discovery catalog fields (advisory, never evidence)
 
-Catalog `us-places-acs2024-noaa1991-2020-character-hospital-v4`, normalization `discovery-winsorized-minmax-v1`, algorithm
+Catalog `us-places-acs2024-noaa1991-2020-character-hospital-v5`, normalization `discovery-winsorized-minmax-v1`, algorithm
 `place-discovery-v1`. Values are `null` when missing; any negative ACS value (including the
 `-666666666` and `-999999999` annotations) is stored as `null`. These fields are not
 `ObservationRecord` values and never enter `execute_run`. Bounds are the 5th and 95th percentiles
@@ -48,13 +48,16 @@ Catalog `us-places-acs2024-noaa1991-2020-character-hospital-v4`, normalization `
 | `water_distance_mi` | Great-circle miles from the centroid to the nearest ocean coastline or Great Lakes shore. Exact to shoreline segments within 60 mi, to shoreline points under 4 mi apart beyond. Inland lakes and rivers are not counted | miles | Natural Earth 1:10m v5.1.2 |
 | `large_metro_distance_mi` | Great-circle miles to the nearest principal city of a metropolitan area with 1,000,000+ people; `0` for those cities. Principal cities are the places named in the metro title | miles | Gazetteer CBSA, ACS B01003 |
 | `large_metro_suburb` | `1` when the place is not a principal city of such a metro and lies within 25 mi of one, else `0` (a distance rule, not a Census urban-area designation) | yes or no | Gazetteer CBSA, ACS B01003 |
-| `hospital_distance_mi` | Straight-line (great-circle) miles from the centroid to the nearest hospital in the pinned CMS Hospital General Information file with `Emergency Services` = `Yes`, located at the centroid of its ZIP Code Tabulation Area; `null` when no located emergency hospital exists, never imputed. Not drive time | straight-line miles | CMS Hospital General Information (xubh-q36u), Gazetteer ZCTA |
+| `hospital_distance_mi` | Straight-line (great-circle) miles from the centroid to the nearest hospital in the pinned CMS Hospital General Information file with `Emergency Services` = `Yes`, located at its street address by the Census Geocoder (`Public_AR_Census2020` benchmark), or at the centroid of its ZIP Code Tabulation Area when the geocoder has no match; `null` when no located emergency hospital exists, never imputed. Not drive time | straight-line miles | CMS Hospital General Information (xubh-q36u), Census Geocoder, Gazetteer ZCTA |
 
 Each place also carries a `climate_sources` provenance cell (station id, name, and miles for the
 temperature, precipitation, and snowfall joins) and a `hospital_source` cell (CMS facility id,
 facility name, and miles, matching `hospital_distance_mi`). The manifest records
-`hospital_facilities`: emergency facilities read from the CMS file, how many a ZCTA centroid
-located, and how many were left out because their ZIP Code is not a ZCTA.
+`hospital_facilities`: emergency facilities read from the CMS file, how many were located, how
+many of those the Census Geocoder matched (`census_geocoder`) and how many fell back to a ZCTA
+centroid (`zcta_centroid`), and how many were left out because the geocoder had no match and
+their ZIP Code is not a ZCTA. The input `census_geocoder` pins the benchmark and the SHA-256 of
+the geocoder response, sorted by facility id.
 
 Identity: `place_id` (7-digit state+place FIPS), `name`, `state`, `region` (Census region), plus
 `land_area_sqmi`, `latitude`, `longitude`. The manifest `src/lifescape/data/place-catalog.manifest.json`

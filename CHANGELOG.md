@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- **Hospitals located by street address (BUI-1444).** Emergency hospitals are now placed by the
+  Census Geocoder at their street address, with the pinned `Public_AR_Census2020` benchmark,
+  instead of at their ZIP Code centroid. The ZIP Code centroid is used only for a facility the
+  geocoder cannot match. Facilities left out fell from 103 to 23 of 4,435 (for example FLOWERS
+  HOSPITAL, Dothan, AL, which has a PO Box ZIP Code), and large rural ZIP Codes no longer place a
+  hospital far from its town. Catalog is now
+  `us-places-acs2024-noaa1991-2020-character-hospital-v5`.
+
 ### Added
 
 - **Hospital-access quality (BUI-1111).** Discovery now also matches on straight-line miles to the
