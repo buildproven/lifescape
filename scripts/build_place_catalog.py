@@ -9,9 +9,10 @@ Inputs (all keyless, public, pinned by SHA-256 in the manifest):
 - USGS GNIS populated-place elevations (2021-08-25 archive): elevation above sea level.
 - 2024 Census Gazetteer core-based statistical areas plus ACS B01003 metro population: distance to
   the principal cities of metros over 1 million people, and a suburb flag.
-- CMS Hospital General Information (emergency-capable hospitals) located by the 2024 Census
-  Gazetteer ZIP Code Tabulation Area centroid of each facility's ZIP Code: straight-line miles to
-  the nearest one, with its name.
+- CMS Hospital General Information (emergency-capable hospitals) located by street address with
+  the pinned Public_AR_Census2020 Census Geocoder benchmark, or by the 2024 Census Gazetteer ZIP
+  Code Tabulation Area centroid when the geocoder finds no match: straight-line miles to the
+  nearest one, with its name.
 
 Usage:
     uv run python scripts/build_place_catalog.py            # build and write catalog + manifest
@@ -35,6 +36,7 @@ import tarfile
 import urllib.request
 import zipfile
 from collections import Counter
+from collections.abc import Callable, Iterable
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -81,6 +83,12 @@ ZCTA_URL = (
     "2024_Gaz_zcta_national.zip"
 )
 ZCTA_VINTAGE = "2024 Census Gazetteer, ZIP Code Tabulation Areas"
+GEOCODER_URL = "https://geocoding.geo.census.gov/geocoder/locations/addressbatch"
+# A dated benchmark, never Public_AR_Current, so a rebuild matches the same address ranges.
+GEOCODER_BENCHMARK = "Public_AR_Census2020"
+GEOCODER_VINTAGE = f"U.S. Census Geocoder batch address match, {GEOCODER_BENCHMARK} benchmark"
+GEOCODER_BATCH_LIMIT = 10_000  # the geocoder's documented maximum records per batch file
+GEOCODER_STATUSES = ("Match", "No_Match", "Tie")
 GAZETTEER_CBSA_URL = (
     "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/"
     "2024_Gaz_cbsa_national.zip"
@@ -101,7 +109,7 @@ ELEVATION_RADIUS_MILES = 5.0
 EXACT_SHORE_MILES = 60.0  # nearer than this, distance is measured to the shoreline segments
 FAR_SHORE_SPACING_MILES = 4.0  # farther, to shoreline vertices thinned to this spacing
 SHORE_CELL_DEGREES = 0.5
-CATALOG_VERSION = "us-places-acs2024-noaa1991-2020-character-hospital-v4"
+CATALOG_VERSION = "us-places-acs2024-noaa1991-2020-character-hospital-v5"
 ACS_VINTAGE = "ACS 2020-2024 5-year estimates (released December 2025)"
 GAZETTEER_VINTAGE = "2024 Census Gazetteer"
 DATA_DATE = "2024-12-31"
@@ -232,8 +240,10 @@ FIELD_DEFINITIONS: dict[str, dict[str, str]] = {
         "definition": (
             "Straight-line (great-circle) miles from the Census place centroid to the nearest "
             "hospital in the CMS Hospital General Information file whose Emergency Services "
-            "field is Yes. A facility is located at the centroid of its ZIP Code Tabulation "
-            "Area, so the distance can be off by a few miles. Not drive time and not a "
+            "field is Yes. A facility is located at its street address by the Census Geocoder "
+            f"({GEOCODER_BENCHMARK} benchmark); one the geocoder cannot match is located at the "
+            "centroid of its ZIP Code Tabulation Area, which can be off by a few miles. Not "
+            "drive time and not a "
             "statement about service quality; the facility name is kept as provenance. Missing "
             "where the source holds no located emergency hospital; never imputed."
         ),
@@ -595,6 +605,118 @@ def climate_for(
 
 Hospital = tuple[str, str, float, float]  # CMS facility id, name, latitude, longitude
 HOSPITAL_COLUMNS = ("Facility ID", "Facility Name", "State", "ZIP Code", "Emergency Services")
+ADDRESS_COLUMNS = ("Facility ID", "Address", "City/Town", "State", "ZIP Code")
+
+
+def geocoder_addresses(data: bytes) -> list[list[str]]:
+    """Census Geocoder batch rows (id, street, city, state, ZIP) for the facilities that
+    ``read_cms_hospitals`` keeps: emergency-capable, in catalog states, sorted by facility id."""
+    reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig")))
+    required = (*ADDRESS_COLUMNS, "Emergency Services")
+    missing = [column for column in required if column not in (reader.fieldnames or ())]
+    if missing:
+        raise SystemExit(f"CMS hospital file is missing columns {missing}")
+    return sorted(
+        [row[column].strip() for column in ADDRESS_COLUMNS]
+        for row in reader
+        if row["Emergency Services"].strip() == "Yes" and row["State"].strip() in STATE_REGIONS
+    )
+
+
+def geocoder_request(addresses: bytes) -> urllib.request.Request:
+    """A multipart batch upload of one address file to the pinned benchmark."""
+    boundary = f"lifescape-{hashlib.sha256(addresses).hexdigest()[:32]}"  # RFC 2046: <= 70
+    body = b"".join(
+        (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="benchmark"\r\n\r\n'.encode(),
+            f"{GEOCODER_BENCHMARK}\r\n".encode(),
+            f'--{boundary}\r\nContent-Disposition: form-data; name="addressFile"; '
+            'filename="addresses.csv"\r\nContent-Type: text/csv\r\n\r\n'.encode(),
+            addresses,
+            f"\r\n--{boundary}--\r\n".encode(),
+        )
+    )
+    return urllib.request.Request(
+        GEOCODER_URL,
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+
+
+def post_geocoder_batch(addresses: bytes) -> bytes:
+    with urllib.request.urlopen(geocoder_request(addresses), timeout=600) as response:
+        body: bytes = response.read()
+    return body
+
+
+def csv_bytes(rows: list[list[str]]) -> bytes:
+    buffer = io.StringIO(newline="")
+    csv.writer(buffer, lineterminator="\n").writerows(rows)
+    return buffer.getvalue().encode()
+
+
+def census_geocode(
+    addresses: list[list[str]], cache: Path, post: Callable[[bytes], bytes] = post_geocoder_batch
+) -> bytes:
+    """Geocode in batches of at most ``GEOCODER_BATCH_LIMIT``; return rows sorted by id.
+
+    The geocoder returns rows in no fixed order, so the response is sorted before it is cached
+    and hashed. The cache file is keyed by the benchmark and the request, so a new CMS file is
+    geocoded again rather than matched against an old response.
+    """
+    batches = [
+        addresses[start : start + GEOCODER_BATCH_LIMIT]
+        for start in range(0, len(addresses), GEOCODER_BATCH_LIMIT)
+    ]
+    key = hashlib.sha256(csv_bytes(addresses)).hexdigest()[:16]
+    destination = cache / f"census-geocoder-{GEOCODER_BENCHMARK}-{key}.csv"
+    if destination.exists():
+        return destination.read_bytes()
+    rows: list[list[str]] = []
+    for batch in batches:
+        print(f"geocoding {len(batch)} hospitals at {GEOCODER_URL}", file=sys.stderr)
+        rows += csv.reader(io.StringIO(post(csv_bytes(batch)).decode("utf-8-sig")))
+    response = csv_bytes(sorted(row for row in rows if row))
+    read_geocoder_matches(response, (address[0] for address in addresses))  # never cache a bad one
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(response)
+    return response
+
+
+def read_geocoder_matches(data: bytes, requested: Iterable[str]) -> dict[str, tuple[float, float]]:
+    """Return ``{facility id: (latitude, longitude)}`` for each geocoder ``Match`` row.
+
+    ``No_Match`` and ``Tie`` rows carry no location. A row for a facility not requested, a
+    repeated or missing facility, an unknown status, or unreadable coordinates stops the build.
+    """
+    expected = set(requested)
+    seen: set[str] = set()
+    matches: dict[str, tuple[float, float]] = {}
+    for row in csv.reader(io.StringIO(data.decode("utf-8-sig"))):
+        if not row:
+            continue
+        facility = row[0].strip()
+        if facility not in expected:
+            raise SystemExit(f"Census Geocoder returned unrequested facility {facility}")
+        if facility in seen:
+            raise SystemExit(f"Census Geocoder response repeats facility {facility}")
+        seen.add(facility)
+        status = row[2].strip() if len(row) > 2 else ""
+        if status not in GEOCODER_STATUSES:
+            raise SystemExit(f"Census Geocoder unknown match status {status!r} for {facility}")
+        if status != "Match":
+            continue
+        try:
+            lon, lat = (float(part) for part in row[5].split(","))
+        except (IndexError, ValueError) as exc:
+            raise SystemExit(f"Census Geocoder unreadable coordinates for {facility}") from exc
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):  # also rejects nan
+            raise SystemExit(f"Census Geocoder unreadable coordinates for {facility}")
+        matches[facility] = (lat, lon)
+    if expected - seen:
+        raise SystemExit(f"Census Geocoder response omits facilities {sorted(expected - seen)}")
+    return matches
 
 
 def read_zcta_centroids(data: bytes) -> dict[str, tuple[float, float]]:
@@ -617,13 +739,17 @@ def read_zcta_centroids(data: bytes) -> dict[str, tuple[float, float]]:
 
 
 def read_cms_hospitals(
-    data: bytes, centroids: dict[str, tuple[float, float]]
+    data: bytes,
+    centroids: dict[str, tuple[float, float]],
+    geocoded: dict[str, tuple[float, float]] | None = None,
 ) -> tuple[list[Hospital], dict[str, int]]:
-    """Emergency-capable hospitals in catalog states that a ZCTA centroid can locate.
+    """Emergency-capable hospitals in catalog states that can be located.
 
-    Returns the located hospitals and counts of emergency facilities read and left unlocated
-    (a ZIP Code that is not a Census ZCTA, such as a hospital-only or PO Box ZIP). An unlocated
-    facility is dropped, never placed by guesswork.
+    A Census Geocoder match in ``geocoded`` (keyed by facility id) locates a facility first; the
+    centroid of its ZIP Code Tabulation Area is the fallback. Returns the located hospitals and
+    counts of emergency facilities read and left unlocated (no geocoder match and a ZIP Code that
+    is not a ZCTA, such as a PO Box ZIP); with ``geocoded``, also how many each method located.
+    An unlocated facility is dropped, never placed by guesswork.
     """
     reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig")))
     missing = [column for column in HOSPITAL_COLUMNS if column not in (reader.fieldnames or ())]
@@ -640,14 +766,18 @@ def read_cms_hospitals(
         if row["Emergency Services"].strip() != "Yes" or row["State"].strip() not in STATE_REGIONS:
             continue
         emergency += 1
-        where = centroids.get(row["ZIP Code"].strip())
+        where = (geocoded or {}).get(facility) or centroids.get(row["ZIP Code"].strip())
         if where is not None:
             hospitals.append((facility, row["Facility Name"].strip(), *where))
-    return hospitals, {
+    counts = {
         "emergency_facilities": emergency,
         "located": len(hospitals),
         "unlocated": emergency - len(hospitals),
     }
+    if geocoded is not None:
+        counts["census_geocoder"] = sum(hospital[0] in geocoded for hospital in hospitals)
+        counts["zcta_centroid"] = counts["located"] - counts["census_geocoder"]
+    return hospitals, counts
 
 
 class HospitalIndex:
@@ -1002,8 +1132,17 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
         read_gnis_elevations(downloaded["gnis_populated_places"]),
         read_large_metros(downloaded["cbsa_gazetteer"], metro_population),
     )
+    addresses = geocoder_addresses(downloaded["cms_hospitals"])
+    geocoder_response = census_geocode(addresses, CACHE)
+    inputs["census_geocoder"] = {
+        "url": f"{GEOCODER_URL}?benchmark={GEOCODER_BENCHMARK}",
+        "vintage": GEOCODER_VINTAGE,
+        "sha256": sha256_bytes(geocoder_response),
+    }
     hospitals, hospital_counts = read_cms_hospitals(
-        downloaded["cms_hospitals"], read_zcta_centroids(downloaded["zcta_gazetteer"])
+        downloaded["cms_hospitals"],
+        read_zcta_centroids(downloaded["zcta_gazetteer"]),
+        read_geocoder_matches(geocoder_response, (address[0] for address in addresses)),
     )
     rows = build_rows(
         read_gazetteer(gazetteer_bytes),
@@ -1040,8 +1179,10 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
         "hospital_join": (
             "Each place uses the nearest hospital in the pinned CMS Hospital General Information "
             "file whose Emergency Services field is Yes, in straight-line (great-circle) miles "
-            "from the Census place centroid. A facility is located at the centroid of its ZIP "
-            "Code Tabulation Area; a facility whose ZIP Code is not a ZCTA is left out. There is "
+            "from the Census place centroid. A facility is located at its street address by the "
+            f"Census Geocoder ({GEOCODER_BENCHMARK} benchmark, Match rows only); one without a "
+            "match is located at the centroid of its ZIP Code Tabulation Area, and one whose ZIP "
+            "Code is not a ZCTA either is left out. There is "
             "no distance cap, drive time is not estimated, and the value is left missing only "
             "when no located facility exists. The facility id, name, and miles are kept per place."
         ),

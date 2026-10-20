@@ -25,8 +25,8 @@
       "upper": 165.8
     },
     "hospital_distance_mi": {
-      "lower": 0.8,
-      "upper": 16.8
+      "lower": 0.5,
+      "upper": 15.7
     },
     "hot_days_per_year": {
       "lower": 3.0,
@@ -61,7 +61,7 @@
       "upper": 483.8
     }
   },
-  "catalog_version": "us-places-acs2024-noaa1991-2020-character-hospital-v4",
+  "catalog_version": "us-places-acs2024-noaa1991-2020-character-hospital-v5",
   "character_join": "Elevation, shoreline distance, and large-metro distance are measured from the Census place centroid. Elevation is the GNIS populated place of the same name in the same state within 5 miles; it is left missing when none reports one. Large metros are Census metropolitan areas with 1,000,000+ people (ACS B01003); their principal cities are the places named in the metro title.",
   "climate_join": "Each place uses the nearest NOAA station within 30 miles that reports the needed normals, measured from the Census place centroid. Station elevation is not compared; values are left missing when no station qualifies.",
   "coverage": {
@@ -175,7 +175,7 @@
       "unit": "days per year"
     },
     "hospital_distance_mi": {
-      "definition": "Straight-line (great-circle) miles from the Census place centroid to the nearest hospital in the CMS Hospital General Information file whose Emergency Services field is Yes. A facility is located at the centroid of its ZIP Code Tabulation Area, so the distance can be off by a few miles. Not drive time and not a statement about service quality; the facility name is kept as provenance. Missing where the source holds no located emergency hospital; never imputed.",
+      "definition": "Straight-line (great-circle) miles from the Census place centroid to the nearest hospital in the CMS Hospital General Information file whose Emergency Services field is Yes. A facility is located at its street address by the Census Geocoder (Public_AR_Census2020 benchmark); one the geocoder cannot match is located at the centroid of its ZIP Code Tabulation Area, which can be off by a few miles. Not drive time and not a statement about service quality; the facility name is kept as provenance. Missing where the source holds no located emergency hospital; never imputed.",
       "label": "Nearest emergency hospital",
       "unit": "straight-line miles"
     },
@@ -222,11 +222,13 @@
   },
   "geography": "U.S. states and DC: incorporated places and Census-designated places",
   "hospital_facilities": {
+    "census_geocoder": 3687,
     "emergency_facilities": 4435,
-    "located": 4332,
-    "unlocated": 103
+    "located": 4412,
+    "unlocated": 23,
+    "zcta_centroid": 725
   },
-  "hospital_join": "Each place uses the nearest hospital in the pinned CMS Hospital General Information file whose Emergency Services field is Yes, in straight-line (great-circle) miles from the Census place centroid. A facility is located at the centroid of its ZIP Code Tabulation Area; a facility whose ZIP Code is not a ZCTA is left out. There is no distance cap, drive time is not estimated, and the value is left missing only when no located facility exists. The facility id, name, and miles are kept per place.",
+  "hospital_join": "Each place uses the nearest hospital in the pinned CMS Hospital General Information file whose Emergency Services field is Yes, in straight-line (great-circle) miles from the Census place centroid. A facility is located at its street address by the Census Geocoder (Public_AR_Census2020 benchmark, Match rows only); one without a match is located at the centroid of its ZIP Code Tabulation Area, and one whose ZIP Code is not a ZCTA either is left out. There is no distance cap, drive time is not estimated, and the value is left missing only when no located facility exists. The facility id, name, and miles are kept per place.",
   "inputs": {
     "b01001": {
       "sha256": "1637b18a96881b81e050df1cd3d5ac38a33208b9b69b40e1dbeb3c4e13718f0e",
@@ -257,6 +259,11 @@
       "sha256": "0ec21c5d83982467903f1500fbbae87311edc81f09bed8ec1bbded80bce7eec3",
       "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_cbsa_national.zip",
       "vintage": "2024 Census Gazetteer"
+    },
+    "census_geocoder": {
+      "sha256": "0c9cd6ab6a39d215201b520a24c1ce4f9f56283684602f30f030f50431d8e5f6",
+      "url": "https://geocoding.geo.census.gov/geocoder/locations/addressbatch?benchmark=Public_AR_Census2020",
+      "vintage": "U.S. Census Geocoder batch address match, Public_AR_Census2020 benchmark"
     },
     "cms_hospitals": {
       "sha256": "f874f09fef895a1ccf5bb7392dcbb2be05c9860339261b093fe00f0c1b013480",
@@ -296,9 +303,9 @@
   },
   "normalization_version": "discovery-winsorized-minmax-v1",
   "output_file": "place-catalog.csv.gz",
-  "output_sha256": "241e83e48951fa79fa4ece5a07ab03278e50118bfb6fe9ad7b15d9caf39b357a",
+  "output_sha256": "48ce6649f2f20a3a2c99d2cc4ed09708eafad1b9a34466e40fd9d4877edc45d2",
   "row_count": 32041,
   "sentinel_policy": "Every negative ACS estimate (including -666666666 and -999999999) becomes null.",
   "serving_universe": "places with known population >= 2500",
-  "uncompressed_sha256": "7e4b84d6f40d8c65099db8e852876cb3f432673cef3f13f418507d305b918816"
+  "uncompressed_sha256": "980db4fdf70f02e4046cb9b45fadd758d4994cc18ddd6c2e7d8ec8eeb754bbb9"
 }

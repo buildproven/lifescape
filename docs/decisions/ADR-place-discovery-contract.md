@@ -32,7 +32,8 @@ station within 30 miles, with station provenance and nulls where none qualifies.
 (BUI-1396, PRD FR4): elevation, distance to an ocean or Great Lake, distance to a metro of
 1,000,000+ people, and a large-metro suburb flag come from keyless public files, with nulls where
 the source has no value. Amendment (BUI-1111, PRD FR4): straight-line miles to the nearest CMS
-emergency-capable hospital, located by its ZIP Code Tabulation Area centroid, with the facility name
+emergency-capable hospital, located by its street address with the pinned Census Geocoder benchmark
+(BUI-1444; the ZIP Code Tabulation Area centroid only when the geocoder has no match), with the facility name
 as provenance. It is not drive time, so it does not replace the `er_drive_minutes` evidence
 metric or the route endpoints in ADR-er-coordinate-evidence. It does not claim
 nature, airport, culture, or walkability matches. A checked-in build script and manifest record source URLs, source vintage,
