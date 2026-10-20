@@ -61,14 +61,15 @@ uv run lifescape app
 ## What discovery uses
 
 Discovery runs offline against a catalog of 32,041 U.S. places built from the 2024 Census Gazetteer
-and ACS 2020–2024 five-year files. It compares fourteen qualities: population, median home value,
+and ACS 2020–2024 five-year files. It compares fifteen qualities: population, median home value,
 population density, car-light commute share, college-educated share, older-adult share, four
 NOAA 1991–2020 climate normals (freezing nights, 90°F+ days, precipitation, snowfall), and four
 place-character qualities (elevation, distance to an ocean or Great Lake, distance to a large
-metro, large-metro suburb). It
+metro, large-metro suburb), and straight-line miles to the nearest CMS emergency-capable hospital
+(not drive time). It
 recommends from the 10,215 places with 2,500 or more people. `scripts/build_place_catalog.py`
-rebuilds the catalog from pinned official files and a manifest of hashes. Healthcare,
-nature, and walkability are not claimed. See [known limitations](docs/limitations.md).
+rebuilds the catalog from pinned official files and a manifest of hashes. Nature and
+walkability are not claimed, and hospital distance never decides a gate. See [known limitations](docs/limitations.md).
 
 ## Traceability
 

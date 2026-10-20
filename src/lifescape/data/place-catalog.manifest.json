@@ -24,6 +24,10 @@
       "lower": 0.8,
       "upper": 165.8
     },
+    "hospital_distance_mi": {
+      "lower": 0.8,
+      "upper": 16.8
+    },
     "hot_days_per_year": {
       "lower": 3.0,
       "upper": 114.7
@@ -57,7 +61,7 @@
       "upper": 483.8
     }
   },
-  "catalog_version": "us-places-acs2024-noaa1991-2020-character-v3",
+  "catalog_version": "us-places-acs2024-noaa1991-2020-character-hospital-v4",
   "character_join": "Elevation, shoreline distance, and large-metro distance are measured from the Census place centroid. Elevation is the GNIS populated place of the same name in the same state within 5 miles; it is left missing when none reports one. Large metros are Census metropolitan areas with 1,000,000+ people (ACS B01003); their principal cities are the places named in the metro title.",
   "climate_join": "Each place uses the nearest NOAA station within 30 miles that reports the needed normals, measured from the Census place centroid. Station elevation is not compared; values are left missing when no station qualifies.",
   "coverage": {
@@ -90,6 +94,11 @@
       "non_null": 10214,
       "serving_places": 10215,
       "share": 0.9999
+    },
+    "hospital_distance_mi": {
+      "non_null": 10215,
+      "serving_places": 10215,
+      "share": 1.0
     },
     "hot_days_per_year": {
       "non_null": 10214,
@@ -165,6 +174,11 @@
       "label": "Freezing nights",
       "unit": "days per year"
     },
+    "hospital_distance_mi": {
+      "definition": "Straight-line (great-circle) miles from the Census place centroid to the nearest hospital in the CMS Hospital General Information file whose Emergency Services field is Yes. A facility is located at the centroid of its ZIP Code Tabulation Area, so the distance can be off by a few miles. Not drive time and not a statement about service quality; the facility name is kept as provenance. Missing where the source holds no located emergency hospital; never imputed.",
+      "label": "Nearest emergency hospital",
+      "unit": "straight-line miles"
+    },
     "hot_days_per_year": {
       "definition": "Average days per year with a daily high at or above 90\u00b0F, NOAA 1991-2020 normal ANN-TMAX-AVGNDS-GRTH090, from the nearest station within 30 miles.",
       "label": "Hot days (90\u00b0F+)",
@@ -207,6 +221,12 @@
     }
   },
   "geography": "U.S. states and DC: incorporated places and Census-designated places",
+  "hospital_facilities": {
+    "emergency_facilities": 4435,
+    "located": 4332,
+    "unlocated": 103
+  },
+  "hospital_join": "Each place uses the nearest hospital in the pinned CMS Hospital General Information file whose Emergency Services field is Yes, in straight-line (great-circle) miles from the Census place centroid. A facility is located at the centroid of its ZIP Code Tabulation Area; a facility whose ZIP Code is not a ZCTA is left out. There is no distance cap, drive time is not estimated, and the value is left missing only when no located facility exists. The facility id, name, and miles are kept per place.",
   "inputs": {
     "b01001": {
       "sha256": "1637b18a96881b81e050df1cd3d5ac38a33208b9b69b40e1dbeb3c4e13718f0e",
@@ -238,6 +258,11 @@
       "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_cbsa_national.zip",
       "vintage": "2024 Census Gazetteer"
     },
+    "cms_hospitals": {
+      "sha256": "f874f09fef895a1ccf5bb7392dcbb2be05c9860339261b093fe00f0c1b013480",
+      "url": "https://data.cms.gov/provider-data/sites/default/files/resources/893c372430d9d71a1c52737d01239d47_1785189955/Hospital_General_Information.csv",
+      "vintage": "CMS Hospital General Information (xubh-q36u), modified 2026-07-22, released 2026-08-13"
+    },
     "gazetteer": {
       "sha256": "cf262fc92b2326f7a8c62a89d156a60eb17d64d6d35f7a62310c43bb08972c06",
       "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_place_national.zip",
@@ -262,13 +287,18 @@
       "sha256": "0fdb814203150780d4ee0c5d53c7844a237a21881101fb7d922b0aa3a1fd190f",
       "url": "https://www.ncei.noaa.gov/data/normals-annualseasonal/1991-2020/archive/us-climate-normals_1991-2020_v1.0.1_annualseasonal_multivariate_by-station_c20230404.tar.gz",
       "vintage": "NOAA U.S. Climate Normals 1991-2020 v1.0.1 (annual/seasonal, by station)"
+    },
+    "zcta_gazetteer": {
+      "sha256": "7b85c04a131672f58b38a950eb82855d5fd4054f0bd9bc3f69aa28897a714e3d",
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_zcta_national.zip",
+      "vintage": "2024 Census Gazetteer, ZIP Code Tabulation Areas"
     }
   },
   "normalization_version": "discovery-winsorized-minmax-v1",
   "output_file": "place-catalog.csv.gz",
-  "output_sha256": "3b669cdfeecba74b59bb9ab5c25f420930f8a6cdb215a91adbc090414e17c24c",
+  "output_sha256": "241e83e48951fa79fa4ece5a07ab03278e50118bfb6fe9ad7b15d9caf39b357a",
   "row_count": 32041,
   "sentinel_policy": "Every negative ACS estimate (including -666666666 and -999999999) becomes null.",
   "serving_universe": "places with known population >= 2500",
-  "uncompressed_sha256": "7f742d5d498b7732afdd9ddfc6dfa2f601750451eaa544973d86fd4d5ea27f3b"
+  "uncompressed_sha256": "7e4b84d6f40d8c65099db8e852876cb3f432673cef3f13f418507d305b918816"
 }

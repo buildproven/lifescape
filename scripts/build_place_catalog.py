@@ -9,6 +9,9 @@ Inputs (all keyless, public, pinned by SHA-256 in the manifest):
 - USGS GNIS populated-place elevations (2021-08-25 archive): elevation above sea level.
 - 2024 Census Gazetteer core-based statistical areas plus ACS B01003 metro population: distance to
   the principal cities of metros over 1 million people, and a suburb flag.
+- CMS Hospital General Information (emergency-capable hospitals) located by the 2024 Census
+  Gazetteer ZIP Code Tabulation Area centroid of each facility's ZIP Code: straight-line miles to
+  the nearest one, with its name.
 
 Usage:
     uv run python scripts/build_place_catalog.py            # build and write catalog + manifest
@@ -66,6 +69,18 @@ CLIMATE_GROUPS: dict[str, tuple[tuple[str, str], ...]] = {
     "precipitation": (("annual_precip_in", "ANN-PRCP-NORMAL"),),
     "snowfall": (("annual_snowfall_in", "ANN-SNOW-NORMAL"),),
 }
+CMS_HOSPITAL_URL = (
+    "https://data.cms.gov/provider-data/sites/default/files/resources/"
+    "893c372430d9d71a1c52737d01239d47_1785189955/Hospital_General_Information.csv"
+)
+CMS_VINTAGE = (
+    "CMS Hospital General Information (xubh-q36u), modified 2026-07-22, released 2026-08-13"
+)
+ZCTA_URL = (
+    "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/"
+    "2024_Gaz_zcta_national.zip"
+)
+ZCTA_VINTAGE = "2024 Census Gazetteer, ZIP Code Tabulation Areas"
 GAZETTEER_CBSA_URL = (
     "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/"
     "2024_Gaz_cbsa_national.zip"
@@ -86,7 +101,7 @@ ELEVATION_RADIUS_MILES = 5.0
 EXACT_SHORE_MILES = 60.0  # nearer than this, distance is measured to the shoreline segments
 FAR_SHORE_SPACING_MILES = 4.0  # farther, to shoreline vertices thinned to this spacing
 SHORE_CELL_DEGREES = 0.5
-CATALOG_VERSION = "us-places-acs2024-noaa1991-2020-character-v3"
+CATALOG_VERSION = "us-places-acs2024-noaa1991-2020-character-hospital-v4"
 ACS_VINTAGE = "ACS 2020-2024 5-year estimates (released December 2025)"
 GAZETTEER_VINTAGE = "2024 Census Gazetteer"
 DATA_DATE = "2024-12-31"
@@ -209,6 +224,18 @@ FIELD_DEFINITIONS: dict[str, dict[str, str]] = {
             "1 when the place is not itself a principal city of a metropolitan area over "
             "1,000,000 people and lies within 25 miles of one; otherwise 0. A distance rule, "
             "not a Census urban-area designation."
+        ),
+    },
+    "hospital_distance_mi": {
+        "label": "Nearest emergency hospital",
+        "unit": "straight-line miles",
+        "definition": (
+            "Straight-line (great-circle) miles from the Census place centroid to the nearest "
+            "hospital in the CMS Hospital General Information file whose Emergency Services "
+            "field is Yes. A facility is located at the centroid of its ZIP Code Tabulation "
+            "Area, so the distance can be off by a few miles. Not drive time and not a "
+            "statement about service quality; the facility name is kept as provenance. Missing "
+            "where the source holds no located emergency hospital; never imputed."
         ),
     },
 }
@@ -566,6 +593,108 @@ def climate_for(
     return cells, json.dumps(sources, sort_keys=True, separators=(",", ":")) if sources else ""
 
 
+Hospital = tuple[str, str, float, float]  # CMS facility id, name, latitude, longitude
+HOSPITAL_COLUMNS = ("Facility ID", "Facility Name", "State", "ZIP Code", "Emergency Services")
+
+
+def read_zcta_centroids(data: bytes) -> dict[str, tuple[float, float]]:
+    """Return ``{5-digit ZCTA: (latitude, longitude)}`` from the Census ZCTA Gazetteer."""
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        name = next(entry for entry in archive.namelist() if entry.endswith(".txt"))
+        text = archive.read(name).decode("utf-8")
+    reader = csv.DictReader(io.StringIO(text), delimiter="\t")
+    reader.fieldnames = [field.strip() for field in reader.fieldnames or []]
+    centroids: dict[str, tuple[float, float]] = {}
+    for row in reader:
+        try:
+            centroids[row["GEOID"].strip()] = (
+                float(row["INTPTLAT"]),
+                float(row["INTPTLONG"]),
+            )
+        except (KeyError, ValueError) as exc:
+            raise SystemExit(f"unreadable ZCTA Gazetteer row {row!r}: {exc!r}") from exc
+    return centroids
+
+
+def read_cms_hospitals(
+    data: bytes, centroids: dict[str, tuple[float, float]]
+) -> tuple[list[Hospital], dict[str, int]]:
+    """Emergency-capable hospitals in catalog states that a ZCTA centroid can locate.
+
+    Returns the located hospitals and counts of emergency facilities read and left unlocated
+    (a ZIP Code that is not a Census ZCTA, such as a hospital-only or PO Box ZIP). An unlocated
+    facility is dropped, never placed by guesswork.
+    """
+    reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig")))
+    missing = [column for column in HOSPITAL_COLUMNS if column not in (reader.fieldnames or ())]
+    if missing:
+        raise SystemExit(f"CMS hospital file is missing columns {missing}")
+    hospitals: list[Hospital] = []
+    seen: set[str] = set()
+    emergency = 0
+    for row in reader:
+        facility = row["Facility ID"].strip()
+        if facility in seen:
+            raise SystemExit(f"CMS hospital file repeats facility {facility}")
+        seen.add(facility)
+        if row["Emergency Services"].strip() != "Yes" or row["State"].strip() not in STATE_REGIONS:
+            continue
+        emergency += 1
+        where = centroids.get(row["ZIP Code"].strip())
+        if where is not None:
+            hospitals.append((facility, row["Facility Name"].strip(), *where))
+    return hospitals, {
+        "emergency_facilities": emergency,
+        "located": len(hospitals),
+        "unlocated": emergency - len(hospitals),
+    }
+
+
+class HospitalIndex:
+    """Nearest hospital for a point, searching 1-degree cells in widening rings."""
+
+    def __init__(self, hospitals: list[Hospital]) -> None:
+        self.cells: dict[tuple[int, int], list[Hospital]] = {}
+        for hospital in hospitals:
+            cell = (math.floor(hospital[2]), math.floor(hospital[3]))
+            self.cells.setdefault(cell, []).append(hospital)
+        self.rings = 181 if hospitals else 0  # a ring of 181 cells spans the whole globe
+
+    def nearest(self, lat: float, lon: float) -> tuple[Hospital, float] | None:
+        """Return the closest hospital and its miles, ties broken by facility id."""
+        best: tuple[float, str, Hospital] | None = None
+        home = (math.floor(lat), math.floor(lon))
+        for ring in range(self.rings):
+            if best is not None:
+                # Cells outside the rings already searched lie beyond a meridian at least
+                # ``ring - 1`` degrees of longitude away, which is at least this far.
+                span = math.radians(min(ring - 1, 90))
+                reach = 3958.7613 * math.asin(math.cos(math.radians(lat)) * math.sin(span))
+                if best[0] <= reach:
+                    break
+            for d_lat in range(-ring, ring + 1):
+                edge = abs(d_lat) == ring
+                for d_lon in range(-ring, ring + 1) if edge else (-ring, ring):
+                    cell = (home[0] + d_lat, (home[1] + d_lon + 180) % 360 - 180)
+                    for hospital in self.cells.get(cell, ()):
+                        miles = miles_between(lat, lon, hospital[2], hospital[3])
+                        if best is None or (miles, hospital[0]) < best[:2]:
+                            best = (miles, hospital[0], hospital)
+        return None if best is None else (best[2], best[0])
+
+
+def hospital_for(lat: float, lon: float, index: HospitalIndex | None) -> tuple[str, str]:
+    """Return the catalog distance cell and the provenance JSON; both blank without a hospital."""
+    found = None if index is None else index.nearest(lat, lon)
+    if found is None:
+        return "", ""
+    hospital, miles = found
+    miles = round(miles, 1)
+    return number(miles, 1), json.dumps(
+        [hospital[0], hospital[1], miles], separators=(",", ":"), ensure_ascii=False
+    )
+
+
 CHARACTER_FIELDS = (
     "elevation_ft",
     "water_distance_mi",
@@ -719,6 +848,7 @@ def build_rows(
     tables: dict[str, dict[str, dict[str, float | None]]],
     stations: list[Station],
     geography: Geography | None = None,
+    hospitals: HospitalIndex | None = None,
 ) -> list[dict[str, str]]:
     indexes = {
         group: StationIndex(stations, tuple(variable for _, variable in fields))
@@ -761,6 +891,9 @@ def build_rows(
         land = float(place["ALAND_SQMI"]) if place["ALAND_SQMI"] else 0.0
         density = population / land if population is not None and land > 0 else None
         climate, climate_sources = climate_for(place, indexes)
+        hospital_distance, hospital_source = hospital_for(
+            float(place["INTPTLAT"]), float(place["INTPTLONG"]), hospitals
+        )
         rows.append(
             {
                 "place_id": place["GEOID"],
@@ -777,10 +910,12 @@ def build_rows(
                 "older_adult_share": number(share(acs, OLDER_ADULT_VARIABLES, "B01001_E001"), 2),
                 **climate,
                 **character.get(place["GEOID"], dict.fromkeys(CHARACTER_FIELDS, "")),
+                "hospital_distance_mi": hospital_distance,
                 "land_area_sqmi": place["ALAND_SQMI"],
                 "latitude": place["INTPTLAT"],
                 "longitude": place["INTPTLONG"],
                 "climate_sources": climate_sources,
+                "hospital_source": hospital_source,
             }
         )
     return rows
@@ -851,6 +986,8 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
         ),
         "natural_earth_lakes": (LAKES_URL, NATURAL_EARTH_VINTAGE, "ne_10m_lakes.geojson"),
         "gnis_populated_places": (GNIS_URL, GNIS_VINTAGE, "gnis-AllStates-20210825.zip"),
+        "zcta_gazetteer": (ZCTA_URL, ZCTA_VINTAGE, "2024_Gaz_zcta_national.zip"),
+        "cms_hospitals": (CMS_HOSPITAL_URL, CMS_VINTAGE, "cms-Hospital_General_Information.csv"),
     }
     downloaded: dict[str, bytes] = {}
     for key, (url, vintage, cache_name) in sources.items():
@@ -865,8 +1002,15 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
         read_gnis_elevations(downloaded["gnis_populated_places"]),
         read_large_metros(downloaded["cbsa_gazetteer"], metro_population),
     )
+    hospitals, hospital_counts = read_cms_hospitals(
+        downloaded["cms_hospitals"], read_zcta_centroids(downloaded["zcta_gazetteer"])
+    )
     rows = build_rows(
-        read_gazetteer(gazetteer_bytes), tables, read_noaa_stations(noaa_bytes), geography
+        read_gazetteer(gazetteer_bytes),
+        tables,
+        read_noaa_stations(noaa_bytes),
+        geography,
+        HospitalIndex(hospitals),
     )
     raw, compressed = encode_catalog(rows)
     coverage, bounds = coverage_and_bounds(rows)
@@ -893,6 +1037,15 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
             f"{LARGE_METRO_POPULATION:,}+ people (ACS B01003); their principal cities are the "
             "places named in the metro title."
         ),
+        "hospital_join": (
+            "Each place uses the nearest hospital in the pinned CMS Hospital General Information "
+            "file whose Emergency Services field is Yes, in straight-line (great-circle) miles "
+            "from the Census place centroid. A facility is located at the centroid of its ZIP "
+            "Code Tabulation Area; a facility whose ZIP Code is not a ZCTA is left out. There is "
+            "no distance cap, drive time is not estimated, and the value is left missing only "
+            "when no located facility exists. The facility id, name, and miles are kept per place."
+        ),
+        "hospital_facilities": hospital_counts,
         "sentinel_policy": SENTINEL_POLICY,
         "serving_universe": f"places with known population >= {MINIMUM_SERVING_POPULATION}",
         "fields": FIELD_DEFINITIONS,

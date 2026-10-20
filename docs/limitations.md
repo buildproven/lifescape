@@ -6,7 +6,9 @@
   density, car-light commute share, college-educated share, older-adult share) and four NOAA
   1991–2020 climate normals (freezing nights, 90°F+ days, annual precipitation, annual snowfall),
   plus four place-character qualities: elevation, distance to an ocean or Great Lake, distance to
-  a metro of 1,000,000+ people, and whether the place is a suburb of one. It makes no claim about healthcare, nature, airports, culture, or walkability.
+  a metro of 1,000,000+ people, and whether the place is a suburb of one, and one healthcare
+  quality: straight-line miles to the nearest emergency-capable hospital. It makes no claim about
+  nature, airports, culture, or walkability.
 - Climate values come from the nearest NOAA station within 30 miles, measured from the Census
   place centroid. Station elevation is not compared, so a mountain town can inherit a valley
   station's numbers. A value is missing, not zero, when no station qualifies; snowfall is the
@@ -18,9 +20,20 @@
   5 miles and is missing where none reports one; the point can differ from the town's range of
   elevations. The suburb flag is a 25-mile distance rule from a metro's principal cities, not a
   Census urban-area designation, and metro size comes from ACS 2020–2024 estimates.
+- Hospital distance is straight-line miles, not drive time, from the Census place centroid to the
+  nearest hospital that the CMS Hospital General Information file lists with Emergency Services
+  "Yes". The file gives street addresses but no coordinates, so each facility is placed at the
+  centroid of its ZIP Code Tabulation Area and the distance can be off by several miles, more in
+  large rural ZIP Codes. 103 of 4,435 listed emergency facilities (2.3%) have a ZIP Code that is not
+  a ZCTA and are left out, so a nearby hospital can be missing. The distance has no cap, so a remote
+  place gets a long, true straight-line figure even where water or mountains make the real trip
+  longer. It says nothing about drive time, trauma level, specialties, capacity, or quality of
+  care, and it is not the `er_drive_minutes` gate: it never clears or fails a gate and is not
+  evidence. The file is a pinned release (modified 2026-07-22); hospitals that opened or closed
+  since are not reflected.
 - Car-light commute share is an ACS commute-mode proxy, not a walkability score.
 - Recommendations and examples cover places with a known population of 2,500 or more (10,215
-  places in catalog `us-places-acs2024-noaa1991-2020-character-v3`). Smaller towns can be looked up and added to a
+  places in catalog `us-places-acs2024-noaa1991-2020-character-hospital-v4`). Smaller towns can be looked up and added to a
   shortlist by hand but receive no match score. Puerto Rico and other territories are outside this
   catalog.
 - The catalog uses ACS 2020–2024 five-year estimates. It does not use margins of error, so close

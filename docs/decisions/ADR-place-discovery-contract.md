@@ -31,8 +31,11 @@ share, and state or region. Amendment (BUI-1107, PRD FR4): four NOAA 1991–2020
 station within 30 miles, with station provenance and nulls where none qualifies. Amendment
 (BUI-1396, PRD FR4): elevation, distance to an ocean or Great Lake, distance to a metro of
 1,000,000+ people, and a large-metro suburb flag come from keyless public files, with nulls where
-the source has no value. It does not claim
-healthcare, nature, airport, culture, or walkability matches. A checked-in build script and manifest record source URLs, source vintage,
+the source has no value. Amendment (BUI-1111, PRD FR4): straight-line miles to the nearest CMS
+emergency-capable hospital, located by its ZIP Code Tabulation Area centroid, with the facility name
+as provenance. It is not drive time, so it does not replace the `er_drive_minutes` evidence
+metric or the route endpoints in ADR-er-coordinate-evidence. It does not claim
+nature, airport, culture, or walkability matches. A checked-in build script and manifest record source URLs, source vintage,
 hashes, selected fields, derivations, output hash, row count, and per-field coverage. A shipped
 field is supported only when at least 80% of catalog places with population of 2,500 or more have
 a non-null value. Discovery fields remain discovery data. They do not become `ObservationRecord`

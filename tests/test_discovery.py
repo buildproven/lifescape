@@ -149,6 +149,7 @@ def test_missing_values_never_raise_a_score_and_keep_their_weight(
         "water_distance_mi",
         "large_metro_distance_mi",
         "large_metro_suburb",
+        "hospital_distance_mi",
     ]
     # Sum of weight * similarity (4 * 3) over the full weight (6 * 3): 0.666667, not 1.0.
     assert charlie["total_match"] == 0.666667
@@ -548,6 +549,8 @@ def test_shipped_manifest_records_provenance_and_unsupported_qualities(
         "natural_earth_coastline",
         "natural_earth_lakes",
         "gnis_populated_places",
+        "zcta_gazetteer",
+        "cms_hospitals",
     }
     assert all(len(item["sha256"]) == 64 for item in manifest["inputs"].values())
     assert "-666666666" in manifest["sentinel_policy"]

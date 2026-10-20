@@ -76,7 +76,7 @@ def fits_viewport(page: Page) -> bool:
 def find_places(page: Page) -> None:
     page.get_by_label("A town you already like").fill("Traverse City")
     page.get_by_role("button", name="Use as example").first.click()
-    page.get_by_text("Comparing 14 qualities.").wait_for()
+    page.get_by_text("Comparing 15 qualities.").wait_for()
     page.get_by_role("button", name="Find places").click()
     page.locator("#match-list .match-card").first.wait_for()
 

@@ -136,9 +136,21 @@ This PRD corrects a gap between the original implementation milestone and the in
   a metropolitan area with 1,000,000 or more people, and a flag for places within 25 miles of one
   that are not principal cities themselves. They come from keyless public files (USGS GNIS,
   Natural Earth, Census Gazetteer CBSA and ACS B01003), are left null when the source has no
-  value, and are discovery data under the same rule as climate. Healthcare access, nature and outdoor access, airport
-  access, and cultural or social activity remain named discovery needs, but the catalog does not
-  accept them as scored qualities or claim matches for them. Adding one requires a PRD amendment
+  value, and are discovery data under the same rule as climate.
+  **Amendment (BUI-1111):** the catalog also supports one healthcare-access quality: straight-line
+  miles from the Census place centroid to the nearest emergency-capable hospital, meaning a
+  hospital in the pinned CMS Hospital General Information file whose Emergency Services field is
+  Yes. A facility is located at the centroid of its ZIP Code Tabulation Area (2024 Census
+  Gazetteer), so the distance is approximate. The quality is labelled "straight-line miles", is
+  not drive time, and is not a statement about care quality or capacity. Each place keeps the
+  nearest facility's CMS id, name, and miles as provenance, and a match card that cites the
+  quality names the facility and the miles. The value is left null (never imputed) when the source
+  holds no located emergency hospital. Shipped coverage must stay at or above 80% of places with
+  population of 2,500 or more. It is discovery data under the same rule as climate: it cannot clear
+  a gate, including the drive-time `er_drive_minutes` gate, or change an evidence-backed score.
+  Nature and outdoor access, airport access, and cultural or social activity remain named
+  discovery needs, but the catalog does not accept them as scored qualities or claim matches for
+  them. Adding one requires a PRD amendment
   with a source and shipped-catalog coverage criterion.
 - FR5: Discovery uses a versioned catalog of U.S. incorporated places and Census-designated
   places. The catalog contains normalized place identity and the available discovery dimensions.

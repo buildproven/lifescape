@@ -108,6 +108,7 @@ function formatValue(unit, value) {
   if (unit === "inches per year") return `${whole.format(value)} inches per year`;
   if (unit === "feet above sea level") return `${whole.format(value)} ft above sea level`;
   if (unit === "miles") return `${whole.format(value)} miles`;
+  if (unit === "straight-line miles") return `${Number(value).toFixed(1)} straight-line miles`;
   if (unit === "yes or no") return value >= 0.5 ? "Yes" : "No";
   return whole.format(value);
 }
@@ -716,6 +717,18 @@ function climateSourceNote(item) {
   return `<p class="field-help">Climate (NOAA 1991–2020 normals, nearest station; elevation is not compared): ${parts.join("; ")}.</p>`;
 }
 
+function hospitalSourceNote(item) {
+  const asked = item.fields.some(
+    (detail) => detail.field === "hospital_distance_mi" && detail.targeted
+  );
+  if (!asked) return "";
+  const source = item.hospital_source;
+  if (!source) {
+    return '<p class="field-help">Hospital: no emergency-capable hospital in the CMS file is known for this town.</p>';
+  }
+  return `<p class="field-help">Hospital (CMS Hospital General Information, emergency services; straight-line miles from the town centroid to the facility's ZIP Code centroid, not drive time): ${escapeHtml(source.name)}, ${escapeHtml(source.miles.toFixed(1))} mi.</p>`;
+}
+
 function whyPanel(item) {
   const rows = item.fields
     .map((detail) => {
@@ -755,6 +768,7 @@ function whyPanel(item) {
     ${clipped ? `<ul class="clip-notes">${clipped}</ul>` : ""}
     ${unknown}
     ${climateSourceNote(item)}
+    ${hospitalSourceNote(item)}
     <p class="field-help">Catalog ${escapeHtml(item.catalog_version)}, data from ${escapeHtml(item.data_date)}.
       ${item.component_count} of ${item.profile_target_count} requested qualities had data.</p>
   </div>`;
