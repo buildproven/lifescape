@@ -4,6 +4,12 @@
 
 ### Added
 
+- **Hospital-access quality (BUI-1111).** Discovery now also matches on straight-line miles to the
+  nearest emergency-capable hospital in the pinned CMS Hospital General Information file. Each
+  town keeps the facility name as provenance and the match card names the facility and the miles.
+  The distance is not drive time, uses the facility's ZIP Code centroid, stays null when no
+  hospital is known, and never affects a gate or evidence-backed score. Catalog is now
+  `us-places-acs2024-noaa1991-2020-character-hospital-v4`.
 - **Place-character qualities (BUI-1396).** Discovery now also matches on elevation, distance to
   an ocean or Great Lake, distance to a metro of 1,000,000+ people, and whether the town is a
   suburb of one, so a lake-town example such as Traverse City, MI no longer returns an inland

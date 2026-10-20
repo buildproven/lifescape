@@ -49,6 +49,7 @@ ScoredField = Literal[
     "water_distance_mi",
     "large_metro_distance_mi",
     "large_metro_suburb",
+    "hospital_distance_mi",
 ]
 
 SCORED_FIELDS: Final[tuple[ScoredField, ...]] = (
@@ -66,6 +67,7 @@ SCORED_FIELDS: Final[tuple[ScoredField, ...]] = (
     "water_distance_mi",
     "large_metro_distance_mi",
     "large_metro_suburb",
+    "hospital_distance_mi",
 )
 # Elevation is the only quality that can be below zero (Death Valley, Salton Sea, New Orleans).
 SIGNED_FIELDS: Final[frozenset[str]] = frozenset({"elevation_ft"})
@@ -80,6 +82,7 @@ CATALOG_COLUMNS: Final[tuple[str, ...]] = (
     "latitude",
     "longitude",
     "climate_sources",
+    "hospital_source",
 )
 REGIONS: Final = ("Northeast", "Midwest", "South", "West")
 
@@ -214,6 +217,7 @@ class Place:
     region: str
     values: dict[str, float | None]
     climate_sources: dict[str, tuple[str, str, float]] = dataclass_field(default_factory=dict)
+    hospital_source: tuple[str, str, float] | None = None
 
     @property
     def population(self) -> float | None:
@@ -354,6 +358,7 @@ def _parse_place(row: dict[str, str]) -> Place:
         row["region"],
         values,
         _parse_climate_sources(row["climate_sources"], row["place_id"], values),
+        _parse_hospital_source(row["hospital_source"], row["place_id"], values),
     )
 
 
@@ -396,6 +401,39 @@ def _parse_climate_sources(
     return sources
 
 
+def _parse_hospital_source(
+    raw: str, place_id: str, values: dict[str, float | None]
+) -> tuple[str, str, float] | None:
+    """Nearest-hospital provenance as ``(facility id, facility name, miles)``; blank means none.
+
+    The distance and its facility travel together: a distance without a facility, a facility
+    without a distance, or a facility whose miles differ from the distance makes the catalog
+    unusable rather than silently unattributed.
+    """
+    distance = values["hospital_distance_mi"]
+    if not raw:
+        if distance is not None:
+            raise ValueError(f"hospital distance without a facility for {place_id}")
+        return None
+    parsed = json.loads(raw)
+    if not (isinstance(parsed, list) and len(parsed) == 3):
+        raise ValueError(f"invalid hospital source for {place_id}")
+    facility, name, miles = parsed
+    if not (
+        isinstance(facility, str)
+        and isinstance(name, str)
+        and name
+        and isinstance(miles, int | float)
+        and not isinstance(miles, bool)
+        and math.isfinite(miles)
+        and miles >= 0
+    ):
+        raise ValueError(f"invalid hospital source for {place_id}")
+    if distance is None or distance != miles:
+        raise ValueError(f"hospital facility does not match the distance for {place_id}")
+    return (facility, name, float(miles))
+
+
 def format_value(field_unit: str, value: float) -> str:
     if field_unit == "USD":
         return f"${value:,.0f}"
@@ -411,6 +449,8 @@ def format_value(field_unit: str, value: float) -> str:
         return f"{value:,.0f} ft above sea level"
     if field_unit == "miles":
         return f"{value:,.0f} miles"
+    if field_unit == "straight-line miles":
+        return f"{value:,.1f} straight-line miles"
     if field_unit == "yes or no":
         return "Yes" if value >= 0.5 else "No"
     return f"{value:,.0f}"
@@ -639,14 +679,15 @@ class DiscoveryService:
         }
 
     def _explain(
-        self, components: list[dict[str, Any]]
+        self, components: list[dict[str, Any]], place: Place
     ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
         """Build reasons and differences from structured components only (PRD FR9)."""
         by_strength = sorted(components, key=lambda c: (-c["similarity"], c["field"]))
         strong = [c for c in by_strength if c["similarity"] >= REASON_SIMILARITY_FLOOR]
         chosen = (strong if len(strong) >= MINIMUM_MATCH_COMPONENTS else by_strength)[:3]
         reasons = [
-            self._reason_text(c, strong=c["similarity"] >= REASON_SIMILARITY_FLOOR) for c in chosen
+            self._reason_text(c, place, strong=c["similarity"] >= REASON_SIMILARITY_FLOOR)
+            for c in chosen
         ]
         weakest = sorted(components, key=lambda c: (c["similarity"], c["field"]))
         gaps = [c for c in weakest if c["similarity"] < REASON_SIMILARITY_FLOOR][:3]
@@ -660,10 +701,14 @@ class DiscoveryService:
         matched = component["matched_exemplar"]
         return f"{target} in {matched['name']}" if matched else f"your target of {target}"
 
-    def _reason_text(self, component: dict[str, Any], *, strong: bool) -> dict[str, str]:
+    def _reason_text(
+        self, component: dict[str, Any], place: Place, *, strong: bool
+    ) -> dict[str, str]:
         if component["unit"] == "yes or no":
             return {"field": component["field"], "text": self._boolean_reason(component, strong)}
         candidate = format_value(component["unit"], component["candidate_value"])
+        if component["field"] == "hospital_distance_mi" and place.hospital_source is not None:
+            candidate = f"{candidate} to {place.hospital_source[1]}"
         verb = "Close to" if strong else "Nearest available to"
         return {
             "field": component["field"],
@@ -759,7 +804,7 @@ class DiscoveryService:
             component["score_contribution"] = round(
                 component["weight"] * component["similarity"] / total_weight, 6
             )
-        reasons, differences = self._explain(components)
+        reasons, differences = self._explain(components, place)
         return {
             "place_id": place.place_id,
             "name": place.name,
@@ -782,6 +827,13 @@ class DiscoveryService:
                 {"group": group, "station": station, "name": name, "miles": miles}
                 for group, (station, name, miles) in sorted(place.climate_sources.items())
             ],
+            "hospital_source": None
+            if place.hospital_source is None
+            else {
+                "facility": place.hospital_source[0],
+                "name": place.hospital_source[1],
+                "miles": place.hospital_source[2],
+            },
             "catalog_version": self.catalog.catalog_version,
             "data_date": self.catalog.data_date,
             "evidence_status": "not verified evidence",
