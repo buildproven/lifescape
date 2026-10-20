@@ -48,3 +48,9 @@ def test_demo_page_links_to_the_current_repository(tmp_path: Path) -> None:
     html = hosted(tmp_path).get("/demo").text
     assert "github.com/buildproven/lifescape-engine" not in html
     assert "github.com/buildproven/lifescape" in html
+
+
+def test_demo_page_embeds_the_tour(tmp_path: Path) -> None:
+    html = hosted(tmp_path).get("/demo").text
+    assert 'poster="/static/tour-poster.jpg"' in html
+    assert '<source src="/static/tour.mp4" type="video/mp4"' in html
