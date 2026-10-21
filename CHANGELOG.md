@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Match list and checklist name every source (BUI-1488).** The match-list notice and the
+  research checklist intro now name Census, NOAA climate normals, place character (USGS and
+  Natural Earth), and CMS hospital data, instead of saying the matches come from Census data.
+
 ### Added
 
 - **Product tour video.** The public landing page shows a 40-second recorded walkthrough of the

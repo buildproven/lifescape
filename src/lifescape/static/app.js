@@ -1236,8 +1236,10 @@ function researchChecklist() {
   const critical = state.evidence.metricDetails.filter((metric) => metric.critical);
   const lines = ["# Lifescape research checklist", ""];
   lines.push(
-    "Matches come from public Census data and show where to look. Confirm each critical fact below",
-    "from a source you trust before relying on a town. Lifescape never guesses a missing value.",
+    "Matches come from public data: Census population and housing, NOAA climate normals, place",
+    "character (USGS and Natural Earth), and CMS hospitals. They show where to look. Confirm each",
+    "critical fact below from a source you trust before relying on a town.",
+    "Lifescape never guesses a missing value.",
     ""
   );
   for (const entry of scenario().shortlist) {
