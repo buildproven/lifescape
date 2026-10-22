@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- **Whole numbers round the same in the browser (BUI-1487).** Miles, days, inches, feet, and
+  density now round exact .5 ties half to even in the browser, as the server does, so a match
+  card reads the same before and after it is re-rendered (for example 2.5 miles reads "2 miles").
+
 - **Match list and checklist name every source (BUI-1488).** The match-list notice and the
   research checklist intro now name Census, NOAA climate normals, place character (USGS and
   Natural Earth), and CMS hospital data, instead of saying the matches come from Census data.
