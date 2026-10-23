@@ -132,3 +132,10 @@ See the [place-discovery contract](docs/decisions/ADR-place-discovery-contract.m
 [superseded CSV-only boundary](docs/decisions/ADR-v1-product-boundary.md),
 [local-app specification](docs/local-app-spec.md), [source policy](docs/source-policy.md), and
 [known limitations](docs/limitations.md).
+
+## Contributing and license
+
+Lifescape is open source under the [MIT License](LICENSE). Read [CONTRIBUTING.md](CONTRIBUTING.md)
+before opening a pull request, and report security problems privately as described in
+[SECURITY.md](SECURITY.md). Everyone taking part follows the
+[Code of Conduct](CODE_OF_CONDUCT.md).
