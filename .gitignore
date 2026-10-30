@@ -1,6 +1,6 @@
 .venv/
 .claude/ralph-next/
-node_modules/
+node_modules
 __pycache__/
 *.py[cod]
 *.sqlite
