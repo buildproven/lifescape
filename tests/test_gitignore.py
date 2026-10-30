@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,6 +14,9 @@ def _git(repo: Path, *args: str) -> str:
     completed = subprocess.run(
         ["git", *args],
         cwd=repo,
+        # A git hook exports GIT_DIR and friends; without this, the commands
+        # act on the repository being pushed instead of the temporary one.
+        env={key: value for key, value in os.environ.items() if not key.startswith("GIT_")},
         check=True,
         capture_output=True,
         text=True,
