@@ -51,3 +51,18 @@ def test_gitignore_ignores_node_modules_directory(repo: Path) -> None:
     (repo / "node_modules" / "pkg" / "index.js").write_text("\n", encoding="utf-8")
 
     assert _untracked(repo) == [".gitignore"]
+
+
+def test_gitignore_check_ignores_a_hook_git_dir(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pushed = tmp_path / "pushed"
+    pushed.mkdir()
+    _git(pushed, "init", "--quiet")
+    (pushed / "unrelated.txt").write_text("\n", encoding="utf-8")
+    # A pre-push hook exports the git dir and work tree of the repository being pushed.
+    monkeypatch.setenv("GIT_DIR", str(pushed / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(pushed))
+    (repo / "node_modules" / "pkg").mkdir(parents=True)
+
+    assert _untracked(repo) == [".gitignore"]
