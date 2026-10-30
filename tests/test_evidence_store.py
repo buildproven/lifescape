@@ -1,7 +1,7 @@
 from datetime import date
 from pathlib import Path
 
-from lifescape.db import get_observation, initialize_database, save_observation
+from lifescape.evidence_store import get_observation, initialize_evidence_store, save_observation
 from lifescape.models import (
     Confidence,
     ObservationRecord,
@@ -33,7 +33,7 @@ def _observation() -> ObservationRecord:
 
 def test_saved_observation_round_trips_with_place_and_provenance(tmp_path: Path) -> None:
     db = tmp_path / "evidence.db"
-    initialize_database(db)
+    initialize_evidence_store(db)
     saved = _observation()
     save_observation(db, saved)
 
@@ -42,6 +42,6 @@ def test_saved_observation_round_trips_with_place_and_provenance(tmp_path: Path)
 
 def test_missing_observation_returns_none(tmp_path: Path) -> None:
     db = tmp_path / "evidence.db"
-    initialize_database(db)
+    initialize_evidence_store(db)
 
     assert get_observation(db, "p1", "median_rent") is None
