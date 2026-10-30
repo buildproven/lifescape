@@ -988,3 +988,37 @@ a:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+.demo-tour {
+  width: var(--page);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(255px, 0.7fr) minmax(0, 1.3fr);
+  gap: clamp(30px, 6vw, 90px);
+  align-items: center;
+  padding: 100px 0 10px;
+}
+
+.demo-tour h2 {
+  margin: 0 0 16px;
+  font-family: var(--serif);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  font-size: clamp(32px, 3.4vw, 50px);
+  line-height: 1.02;
+}
+
+.demo-tour video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: var(--pine-deep);
+  border: 1px solid var(--ink);
+}
+
+@media (max-width: 860px) {
+  .demo-tour {
+    grid-template-columns: 1fr;
+    padding-top: 60px;
+  }
+}
