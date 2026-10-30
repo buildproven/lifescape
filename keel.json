@@ -4,7 +4,7 @@
     "test": "make test",
     "typecheck": "uv run --extra dev mypy src"
   },
-  "testCommand": "make test",
+  "testCommand": "uv run pytest -v",
   "testFilesCommand": "uv run pytest {files}",
   "linearProject": "lifescape",
   "install": "uv sync --frozen --extra dev && npm ci",
