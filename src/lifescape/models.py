@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from enum import StrEnum
 from math import isfinite
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -203,6 +202,7 @@ class UserProfile(StrictModel):
 # Add support for local database configurations
 class LocalDatabaseConfig(StrictModel):
     """Configuration for local database sources."""
+
     enabled: bool = False
     path: str = "local_evidence.db"
     cache_enabled: bool = True
@@ -211,4 +211,5 @@ class LocalDatabaseConfig(StrictModel):
 
 class ExtendedSourcesConfig(SourcesConfig):
     """Extended sources configuration with local database support."""
+
     local_database: LocalDatabaseConfig = Field(default_factory=LocalDatabaseConfig)

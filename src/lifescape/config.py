@@ -12,6 +12,7 @@ import yaml
 from pydantic import BaseModel
 
 from lifescape.models import (
+    ExtendedSourcesConfig,
     GatesConfig,
     MetricDefinition,
     RegionsConfig,
@@ -20,7 +21,6 @@ from lifescape.models import (
     StrictModel,
     UserProfile,
     WeightsConfig,
-    ExtendedSourcesConfig,
 )
 
 
