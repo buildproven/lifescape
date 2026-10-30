@@ -543,7 +543,7 @@ def test_landing_keyboard_focus_and_disclosure_contrast(tmp_path: Path) -> None:
         page.goto(url)
 
         focused_links: list[str] = []
-        for _ in range(12):
+        for _ in range(20):
             page.keyboard.press("Tab")
             focused_links.append(
                 page.evaluate(

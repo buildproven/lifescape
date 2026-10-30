@@ -92,7 +92,11 @@ const money = new Intl.NumberFormat("en-US", {
   currency: "USD",
   maximumFractionDigits: 0,
 });
-const whole = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+// Matches Python's f"{value:,.0f}": grouped, no decimals, ties rounded half to even.
+const whole = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 0,
+  roundingMode: "halfEven",
+});
 // Matches Python's f"{value:,.1f}": grouped, one decimal, ties rounded half to even.
 // A distance of -0 (JSON "-0.0") reads "0.0", as toFixed wrote it.
 const tenths = new Intl.NumberFormat("en-US", {
@@ -1236,8 +1240,10 @@ function researchChecklist() {
   const critical = state.evidence.metricDetails.filter((metric) => metric.critical);
   const lines = ["# Lifescape research checklist", ""];
   lines.push(
-    "Matches come from public Census data and show where to look. Confirm each critical fact below",
-    "from a source you trust before relying on a town. Lifescape never guesses a missing value.",
+    "Matches come from public data: Census population and housing, NOAA climate normals, place",
+    "character (USGS and Natural Earth), and CMS hospitals. They show where to look. Confirm each",
+    "critical fact below from a source you trust before relying on a town.",
+    "Lifescape never guesses a missing value.",
     ""
   );
   for (const entry of scenario().shortlist) {
