@@ -30,7 +30,7 @@ def test_keel_config_keeps_expected_values(keel_config: dict[str, Any]) -> None:
         "test": "make test",
         "typecheck": "uv run --extra dev mypy src",
     }
-    assert keel_config["testCommand"] == "make test"
+    assert keel_config["testCommand"] == "uv run pytest -v"
     assert keel_config["linearProject"] == "lifescape"
     assert keel_config["install"] == "uv sync --frozen --extra dev && npm ci"
     assert keel_config["review"] is True
