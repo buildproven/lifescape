@@ -20,7 +20,7 @@ You need Python 3.12 and [uv](https://docs.astral.sh/uv/), plus Node.js (see `.n
 
 ```bash
 make install     # uv sync, Playwright Chromium, npm ci
-lifescape app    # run the app on http://127.0.0.1:8765
+make app         # run the app on http://127.0.0.1:8765 (uv run lifescape app)
 ```
 
 ## Before you open a pull request
@@ -28,7 +28,8 @@ lifescape app    # run the app on http://127.0.0.1:8765
 ```bash
 make lint        # ruff format + check, prettier, eslint, stylelint
 make typecheck   # mypy --strict
-make test        # pytest, 90% coverage floor
+make test        # pytest
+make quality     # full gate: formatters, linters, mypy, pytest with the 90% coverage floor, build
 ```
 
 Run `tests/test_user_journey.py` on its own; concurrent Playwright runs time out. Add a test that
