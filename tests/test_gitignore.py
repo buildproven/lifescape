@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,6 +14,9 @@ def _git(repo: Path, *args: str) -> str:
     completed = subprocess.run(
         ["git", *args],
         cwd=repo,
+        # A git hook exports GIT_DIR and friends; without this, the commands
+        # act on the repository being pushed instead of the temporary one.
+        env={key: value for key, value in os.environ.items() if not key.startswith("GIT_")},
         check=True,
         capture_output=True,
         text=True,
@@ -45,5 +49,20 @@ def test_gitignore_ignores_symlinked_node_modules(repo: Path, tmp_path: Path) ->
 def test_gitignore_ignores_node_modules_directory(repo: Path) -> None:
     (repo / "node_modules" / "pkg").mkdir(parents=True)
     (repo / "node_modules" / "pkg" / "index.js").write_text("\n", encoding="utf-8")
+
+    assert _untracked(repo) == [".gitignore"]
+
+
+def test_gitignore_check_ignores_a_hook_git_dir(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pushed = tmp_path / "pushed"
+    pushed.mkdir()
+    _git(pushed, "init", "--quiet")
+    (pushed / "unrelated.txt").write_text("\n", encoding="utf-8")
+    # A pre-push hook exports the git dir and work tree of the repository being pushed.
+    monkeypatch.setenv("GIT_DIR", str(pushed / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(pushed))
+    (repo / "node_modules" / "pkg").mkdir(parents=True)
 
     assert _untracked(repo) == [".gitignore"]
