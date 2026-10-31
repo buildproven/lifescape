@@ -229,6 +229,8 @@ class LocalDatabaseConfig(StrictModel):
 
     enabled: bool = False
     path: str = "local_evidence.db"
+    # A place fetched longer ago than this, or with errors, is fetched again.
+    max_age_days: int = Field(default=30, ge=1)
 
 
 class ExtendedSourcesConfig(SourcesConfig):

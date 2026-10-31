@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from lifescape.database_provider import DatabaseEvidenceProvider, provider_from_config
-from lifescape.evidence_store import initialize_evidence_store, save_observation
+from lifescape.evidence_store import initialize_evidence_store, record_fetch, save_observation
 from lifescape.models import (
     Confidence,
     LocalDatabaseConfig,
@@ -67,6 +67,7 @@ def test_stored_places_are_served_and_only_missing_places_are_fetched(tmp_path: 
     db = tmp_path / "evidence.db"
     initialize_evidence_store(db)
     save_observation(db, _observation("stored_nc"))
+    record_fetch(db, "stored_nc", ())
     remote = RecordingProvider(EvidenceFetchResult(observations=(_observation("new_nc"),)))
 
     result = DatabaseEvidenceProvider(db_path=db, remote_provider=remote).fetch(
@@ -115,3 +116,61 @@ def test_config_puts_the_database_in_front_only_when_enabled(tmp_path: Path) -> 
     )
     assert isinstance(enabled, DatabaseEvidenceProvider)
     assert enabled.remote_provider is remote
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = datetime(2025, 3, 1, tzinfo=UTC)
+
+    def __call__(self) -> datetime:
+        return self.now
+
+
+def test_a_partial_fetch_is_fetched_again_and_its_errors_kept(tmp_path: Path) -> None:
+    db = tmp_path / "evidence.db"
+    remote = RecordingProvider(
+        EvidenceFetchResult(
+            observations=(_observation("new_nc"),),
+            errors={"new_nc": ("noaa_gsoy: explicit source geography is not configured",)},
+        )
+    )
+    provider = DatabaseEvidenceProvider(db_path=db, remote_provider=remote)
+
+    provider.fetch(_packet("new_nc"))
+    again = provider.fetch(_packet("new_nc"))
+
+    assert remote.asked == [("new_nc",), ("new_nc",)]
+    assert again.errors == {"new_nc": ("noaa_gsoy: explicit source geography is not configured",)}
+
+
+def test_offline_a_partial_place_serves_what_is_stored_and_says_why(tmp_path: Path) -> None:
+    db = tmp_path / "evidence.db"
+    remote = RecordingProvider(
+        EvidenceFetchResult(
+            observations=(_observation("new_nc"),), errors={"new_nc": ("noaa_gsoy: down",)}
+        )
+    )
+    DatabaseEvidenceProvider(db_path=db, remote_provider=remote).fetch(_packet("new_nc"))
+
+    offline = DatabaseEvidenceProvider(db_path=db).fetch(_packet("new_nc"))
+
+    assert offline.observations == (_observation("new_nc"),)
+    assert offline.errors == {
+        "new_nc": ("local database: last fetch was incomplete: noaa_gsoy: down",)
+    }
+
+
+def test_a_place_older_than_the_limit_is_fetched_again(tmp_path: Path) -> None:
+    clock = Clock()
+    remote = RecordingProvider(EvidenceFetchResult(observations=(_observation("new_nc"),)))
+    provider = DatabaseEvidenceProvider(
+        db_path=tmp_path / "e.db", remote_provider=remote, max_age=timedelta(days=30), now=clock
+    )
+    provider.fetch(_packet("new_nc"))
+
+    clock.now += timedelta(days=29)
+    provider.fetch(_packet("new_nc"))
+    clock.now += timedelta(days=2)
+    provider.fetch(_packet("new_nc"))
+
+    assert remote.asked == [("new_nc",), ("new_nc",)]
