@@ -222,3 +222,18 @@ class RegionDefinition(StrictModel):
 
 class RegionsConfig(StrictModel):
     regions: tuple[RegionDefinition, ...]
+
+
+class LocalDatabaseConfig(StrictModel):
+    """Local SQLite store of fetched observations, in front of the remote connectors."""
+
+    enabled: bool = False
+    path: str = "local_evidence.db"
+    # A place fetched longer ago than this, or with errors, is fetched again.
+    max_age_days: int = Field(default=30, ge=1)
+
+
+class ExtendedSourcesConfig(SourcesConfig):
+    """Sources configuration with the optional local database."""
+
+    local_database: LocalDatabaseConfig = Field(default_factory=LocalDatabaseConfig)
