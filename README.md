@@ -1,5 +1,50 @@
 # Lifescape
 
+## Use Lifescape in Claude
+
+Lifescape runs as a local MCP server with eight tools and a skill that gives Claude the decision
+workflow: discover towns, build a shortlist, gather evidence, approve each value yourself, and
+compare finalists. The engines find, gate, and rank; Claude only explains the tool results. Your
+data and reports stay on your computer.
+
+Build the two packages once from a checkout (needs git and Node.js):
+
+```bash
+rm -rf dist/bundle && mkdir -p dist/bundle
+git archive HEAD | tar -x -C dist/bundle
+npx --yes @anthropic-ai/mcpb@2.1.2 pack dist/bundle dist/lifescape.mcpb
+(cd skills && zip -r ../dist/lifescape-skill.zip lifescape)
+```
+
+This writes `dist/lifescape.mcpb` (the desktop extension, packed from `manifest.json`) and
+`dist/lifescape-skill.zip` (the skill ZIP). `git archive` packs only tracked files, so the local
+`.venv` and `node_modules` stay out of the extension.
+
+- **Claude Desktop:** go to Settings > Desktop app, select "Manage" next to Extensions (older
+  layout: Settings > Extensions), open "Advanced settings", click "Install Extension…", and
+  select `dist/lifescape.mcpb`. The extension runs `lifescape mcp` (the Python stdio server) on
+  the `uv` runtime: Claude Desktop manages Python and installs the dependencies pinned in
+  `uv.lock`. Reports go to `~/Lifescape/mcp`.
+- **Skill:** in Claude, go to Customize > Skills, add a skill, choose "Upload a skill", and
+  upload `dist/lifescape-skill.zip`. In Claude Code, copy `skills/lifescape` to
+  `~/.claude/skills/lifescape` instead.
+- **Claude Code:** add the server straight from GitHub, with no checkout:
+
+  ```bash
+  claude mcp add --transport stdio --scope user lifescape \
+    -- uvx --from git+https://github.com/buildproven/lifescape lifescape mcp
+  ```
+
+The tools are `find_place`, `discover_towns`, `explain_town`, `inspect_evidence`,
+`fetch_live_evidence`, `approve_evidence`, `compare_finalists`, and `export_report`. Fetched
+values stay proposals until you approve each one by name in chat; the server refuses an AI or
+model name as the reviewer.
+
+The web UI is frozen: it gets fixes but no new features. It still runs as described in
+[Web app quick start](#web-app-quick-start).
+
+## What Lifescape does
+
 Lifescape helps a U.S. household find places where they might want to live. Start with one or two
 towns you like or supported qualities you want. Lifescape finds explainable town matches, helps
 you shape a shortlist, and then uses verified evidence to test the finalists against hard
@@ -19,7 +64,7 @@ truth. Product work must cite its goal, functional requirement, non-functional r
 acceptance criterion. The [delivery tasks](docs/prd/lifescape-place-discovery-tasks.md) define the
 current vertical implementation sequence.
 
-## Quick start
+## Web app quick start
 
 You need [uv](https://docs.astral.sh/uv/getting-started/installation/) (one command to install:
 `curl -LsSf https://astral.sh/uv/install.sh | sh`). Then run Lifescape straight from GitHub, with
