@@ -319,6 +319,18 @@ def app_command(
     serve(port=port, output_dir=output_dir, open_browser=not no_open)
 
 
+@app.command("mcp")
+def mcp_command(
+    output_dir: Annotated[Path, typer.Option()] = DEFAULT_APP_OUTPUT_DIR / "mcp",
+    config_dir: Annotated[Path | None, typer.Option(exists=True, file_okay=False)] = None,
+) -> None:
+    """Serve the Lifescape MCP tools over stdio (for Claude Desktop)."""
+    from lifescape.mcp_server import serve
+
+    _event("mcp_started", transport="stdio", output_dir=str(output_dir))
+    serve(output_dir=output_dir, config_dir=config_dir)
+
+
 @app.command("validate-sources")
 def validate_sources(
     tier: Annotated[SourceTier, typer.Option()],
