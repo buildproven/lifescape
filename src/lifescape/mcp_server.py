@@ -307,11 +307,12 @@ def create_server(*, output_dir: Path, config_dir: Path | None = None) -> MCPSer
                 }
             )
         report_dir = work_dir / "reports"
+        has_synthetic_evidence = any(item.source.synthetic for item in run.observations)
         return {
             "run_id": run.run_id,
             "evaluated_as_of": run.evaluated_as_of.isoformat(),
             "evidence_through": run.evidence_through.isoformat(),
-            "synthetic_evidence": any(item.source.synthetic for item in run.observations),
+            "synthetic_evidence": has_synthetic_evidence,
             "finalists": finalists,
             "ranking": [
                 {"rank": score.rank, "place_id": score.place_id, "total_score": score.total_score}
