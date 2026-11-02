@@ -1,0 +1,66 @@
+{
+  "manifest_version": "0.4",
+  "name": "lifescape",
+  "display_name": "Lifescape",
+  "version": "1.1.0",
+  "description": "Find U.S. towns like the ones you love, then compare finalists on reviewed evidence: gates eliminate, weights rank, evidence decides.",
+  "long_description": "Lifescape is a local-first place-discovery and retirement-town decision tool. Discovery finds towns from a packaged catalog of Census ACS and NOAA climate data; those results stay leads. Live-fetched evidence stays a proposal until the owner approves each value by name. The strict engine blocks any finalist with failed or unknown critical evidence and ranks only the rest. Reports are written to a Lifescape folder in your home directory. Lifescape never guesses a missing value and never gives a purchase recommendation.",
+  "author": {
+    "name": "BuildProven"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/buildproven/lifescape"
+  },
+  "homepage": "https://lifescape.buildproven.ai",
+  "license": "MIT",
+  "keywords": ["retirement", "relocation", "towns", "place-discovery", "evidence"],
+  "server": {
+    "type": "uv",
+    "entry_point": "src/lifescape/mcp_server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--frozen", "--no-dev", "--directory", "${__dirname}", "lifescape", "mcp"]
+    }
+  },
+  "tools": [
+    {
+      "name": "find_place",
+      "description": "Look up U.S. places by name and return their place IDs"
+    },
+    {
+      "name": "discover_towns",
+      "description": "Find towns like example towns or wanted qualities (discovery leads only)"
+    },
+    {
+      "name": "compare_finalists",
+      "description": "Gate, rank, and stress-test finalists on reviewed evidence"
+    },
+    {
+      "name": "explain_town",
+      "description": "Show where one town stands on the evidence and what is unresolved"
+    },
+    {
+      "name": "inspect_evidence",
+      "description": "Check an evidence CSV for validation errors and missing metrics"
+    },
+    {
+      "name": "fetch_live_evidence",
+      "description": "Fetch Census ACS and NOAA values as proposals for owner review"
+    },
+    {
+      "name": "approve_evidence",
+      "description": "Record one fetched value as approved by the named human owner"
+    },
+    {
+      "name": "export_report",
+      "description": "Return the report file paths of a comparison run"
+    }
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "python": ">=3.12"
+    }
+  }
+}
