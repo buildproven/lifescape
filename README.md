@@ -103,6 +103,34 @@ lifescape run \
 The app and CLI call the same `execute_run` authority. Tier C material cannot affect a gate or
 score. Failed and unknown critical gates stay visible and unranked.
 
+## Use it from Claude Desktop
+
+`lifescape mcp` serves the engine as a local MCP (Model Context Protocol) server over stdio. Add it
+to Claude Desktop's `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "lifescape": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/buildproven/lifescape", "lifescape", "mcp"]
+    }
+  }
+}
+```
+
+| Tool                | Does                                                                                         |
+| ------------------- | -------------------------------------------------------------------------------------------- |
+| `find_place`        | Looks up towns by name in the packaged catalog and returns their place IDs.                  |
+| `discover_towns`    | Finds towns like up to two example towns, with priorities, limits, and state filters.        |
+| `compare_finalists` | Runs two or more finalists from reviewed evidence through gates, ranking, and sensitivity.    |
+| `explain_town`      | Returns one town's research card: unresolved critical evidence and the next action for each. |
+
+Discovery results are leads, not evidence. `compare_finalists` and `explain_town` use the live
+research brief (`benchmark_only: false`), compare only the named place IDs, and write reports under
+`~/Lifescape/mcp` (`--output-dir` changes it). A finalist with failed or unknown critical evidence
+is returned as `blocked` and never ranked. Every input schema rejects unknown arguments.
+
 ## Verification
 
 ```bash
