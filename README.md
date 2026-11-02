@@ -119,17 +119,28 @@ to Claude Desktop's `claude_desktop_config.json`:
 }
 ```
 
-| Tool                | Does                                                                                         |
-| ------------------- | -------------------------------------------------------------------------------------------- |
-| `find_place`        | Looks up towns by name in the packaged catalog and returns their place IDs.                  |
-| `discover_towns`    | Finds towns like up to two example towns, with priorities, limits, and state filters.        |
-| `compare_finalists` | Runs two or more finalists from reviewed evidence through gates, ranking, and sensitivity.    |
-| `explain_town`      | Returns one town's research card: unresolved critical evidence and the next action for each. |
+| Tool                  | Does                                                                                         |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| `find_place`          | Looks up towns by name in the packaged catalog and returns their place IDs.                  |
+| `discover_towns`      | Finds towns like up to two example towns, with priorities, limits, and state filters.        |
+| `compare_finalists`   | Runs two or more finalists from reviewed evidence through gates, ranking, and sensitivity.   |
+| `explain_town`        | Returns one town's research card: unresolved critical evidence and the next action for each. |
+| `inspect_evidence`    | Checks an evidence CSV: validation errors, and each town's audit status per metric.          |
+| `fetch_live_evidence` | Fetches Census ACS and NOAA values for towns into a research packet, all unapproved.         |
+| `approve_evidence`    | Promotes one fetched value after the owner confirms it; the reviewer must be a named human.  |
+| `export_report`       | Returns the Markdown, CSV, and SQLite report paths of a `compare_finalists` run.             |
 
 Discovery results are leads, not evidence. `compare_finalists` and `explain_town` use the live
 research brief (`benchmark_only: false`), compare only the named place IDs, and write reports under
 `~/Lifescape/mcp` (`--output-dir` changes it). A finalist with failed or unknown critical evidence
 is returned as `blocked` and never ranked. Every input schema rejects unknown arguments.
+
+Evidence approval stays a human act. `fetch_live_evidence` returns proposals with their sources and
+stores them in a research packet under `research-workspace/`. `approve_evidence` is annotated as
+destructive, so Claude Desktop asks the owner before each call. It refuses an empty reviewer or one
+named `ai`, `claude`, `codex`, or `model`, and then promotes nothing. Census ACS geography comes
+from the place ID; NOAA needs a station, so the fetch lists snowfall as missing instead of choosing
+one. `export_report` refuses a run whose reports a later run overwrote.
 
 ## Verification
 

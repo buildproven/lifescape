@@ -25,7 +25,16 @@ EVIDENCE = FIXTURES / "finalists-evidence.csv"
 NEW_BERN_MANIFEST = FIXTURES / "new-bern-manifest.csv"
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
 LAKE_GENEVA, NEW_BERN, MARYVILLE = "5541450", "3746340", "4746380"
-TOOLS = {"find_place", "discover_towns", "compare_finalists", "explain_town"}
+TOOLS = {
+    "find_place",
+    "discover_towns",
+    "compare_finalists",
+    "explain_town",
+    "inspect_evidence",
+    "fetch_live_evidence",
+    "approve_evidence",
+    "export_report",
+}
 GATE_STATES = {"PASS", "FAIL", "UNKNOWN", "WAIVED"}
 CRITICAL_GATES = {
     "purchase_feasibility",
