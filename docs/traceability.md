@@ -59,3 +59,12 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
 | AC7 | uv run lifescape benchmark --output-dir outputs/benchmark produces | n/a | n/a | n/a | `tests/test_reports.py::test_benchmark_vertical_slice_is_reproducible` |
 | AC8 | npm run quality:check passes with zero Ruff, | n/a | n/a | n/a | `tests/test_quality_config.py::test_quality_automation_matches_project_contract` |
 | AC9 | npm run security:check reports zero production dependency | n/a | n/a | n/a | `tests/test_quality_config.py::test_gitleaks_runner_detects_secret_removed_from_worktree` |
+
+## Engineering requirements
+
+These come from Linear cards, not the PRD, so they sit outside the PRD table above.
+
+- REQ-DEPS-1 (BUI-1947): every resolved `package-lock.json` entry of fast-uri, js-yaml 4.x,
+  source-map-js, brace-expansion 5.x, postcss and postcss-selector-parser 7.x stays at or above its
+  advisory fix floor. Test:
+  `tests/test_npm_lock_advisories.py::test_req_deps_1_lockfile_resolves_every_advisory_package_at_or_above_its_floor`
