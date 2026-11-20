@@ -1,4 +1,4 @@
-"""Access packaged benchmark assets in wheels and editable checkouts."""
+"""Access packaged benchmark and configuration assets in wheels and editable checkouts."""
 
 from __future__ import annotations
 
@@ -27,3 +27,18 @@ def bundled_benchmark() -> Iterator[tuple[Path, Path]]:
     if not evidence.is_file() or not config.is_dir():
         raise FileNotFoundError("packaged benchmark resources are unavailable")
     yield evidence, config
+
+
+@contextmanager
+def bundled_config() -> Iterator[Path]:
+    """Yield the packaged configuration directory as a filesystem path."""
+    package_config = resources.files("lifescape").joinpath("resources", "config")
+    if package_config.is_dir():
+        with resources.as_file(package_config) as config:
+            yield config
+        return
+
+    config = Path(__file__).resolve().parents[2] / "config"
+    if not config.is_dir():
+        raise FileNotFoundError("packaged configuration resources are unavailable")
+    yield config
