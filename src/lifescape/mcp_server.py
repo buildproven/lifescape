@@ -70,6 +70,8 @@ from lifescape.store_db import DatabaseStore
 
 LIVE_RESEARCH_BRIEF = "research_brief.live.yaml"
 MAX_FINALISTS = 25
+# The report key of the Markdown comparison; every other stored report text is a CSV.
+MARKDOWN_REPORT = "markdown"
 MAX_DISCOVERY_LIMIT = 50
 FETCH_PROVIDER = "mcp:fetch_live_evidence"
 FETCH_BRIEF = SearchBrief(
@@ -331,6 +333,24 @@ def _database_has_run(database: Path, run_id: str) -> bool:
     return row is not None
 
 
+def _check_report_files(index: RunReportIndex) -> None:
+    """Fail unless the run's report files and SQLite run database are still the run's own."""
+    run_id = index.run_id
+    for key, raw in index.reports.items():
+        path = Path(raw)
+        if not path.is_file():
+            raise FileNotFoundError(f"{key} report of run {run_id} not found: {path}")
+        expected = index.sha256.get(key)
+        if expected is not None and _sha256(path) != expected:
+            raise ValueError(
+                f"{key} report of run {run_id} was overwritten by a later run; "
+                "call compare_finalists again"
+            )
+    database = Path(index.reports["database"])
+    if not _database_has_run(database, run_id):
+        raise ValueError(f"run {run_id} is not in its database {database}")
+
+
 def _gate_payload(run: RunResult, metric_by_gate: dict[str, str]) -> dict[str, list[Any]]:
     by_place: dict[str, list[Any]] = {place.place_id: [] for place in run.places}
     for gate in run.gate_results:
@@ -544,15 +564,19 @@ def create_server(
             )
         report_dir = work_dir / "reports"
         reports = {
-            "markdown": str(report_dir / "comparison.md"),
+            MARKDOWN_REPORT: str(report_dir / "comparison.md"),
             "ranking_csv": str(report_dir / "comparison.csv"),
             "sensitivity_csv": str(report_dir / "sensitivity.csv"),
             "database": str(work_dir / "run.sqlite"),
         }
+        written = {
+            key: Path(path).read_bytes() for key, path in reports.items() if key != "database"
+        }
         index = RunReportIndex(
             run_id=run.run_id,
             reports=reports,
-            sha256={key: _sha256(Path(path)) for key, path in reports.items() if key != "database"},
+            sha256={key: hashlib.sha256(data).hexdigest() for key, data in written.items()},
+            contents={key: data.decode("utf-8") for key, data in written.items()},
         )
         records.save_run_index(index)
         has_synthetic_evidence = any(item.source.synthetic for item in run.observations)
@@ -850,8 +874,10 @@ def create_server(
         }
 
     def export_report(run_id: RunId) -> dict[str, Any]:
-        """Return the paths of the Markdown, CSV, and SQLite reports of a compare_finalists
-        run. Fails when a later run overwrote the reports; compare the finalists again then."""
+        """Return the Markdown comparison and the CSV reports of a compare_finalists run as
+        text, read from the store, with the paths where the run wrote its report files. The
+        local server also checks those files and keeps the SQLite run database; it fails when
+        a later run overwrote them. Compare the finalists again then."""
         index = records.get_run_index(run_id)
         if index is None:
             raise ValueError(f"no reports for run {run_id}; call compare_finalists first")
@@ -860,20 +886,20 @@ def create_server(
                 f"report index of run {run_id} in the {records.label} names run "
                 f"{index.run_id}, not {run_id}"
             )
-        for key, raw in index.reports.items():
-            path = Path(raw)
-            if not path.is_file():
-                raise FileNotFoundError(f"{key} report of run {run_id} not found: {path}")
-            expected = index.sha256.get(key)
-            if expected is not None and _sha256(path) != expected:
-                raise ValueError(
-                    f"{key} report of run {run_id} was overwritten by a later run; "
-                    "call compare_finalists again"
-                )
-        database = Path(index.reports["database"])
-        if not _database_has_run(database, run_id):
-            raise ValueError(f"run {run_id} is not in its database {database}")
-        return {"run_id": run_id, "reports": dict(index.reports)}
+        contents = index.contents
+        if contents is None or MARKDOWN_REPORT not in contents:
+            raise ValueError(
+                f"the {records.label} has no report text for run {run_id}; it was saved "
+                "before report text was kept, so run compare_finalists again"
+            )
+        if not isinstance(records, DatabaseStore):
+            _check_report_files(index)
+        return {
+            "run_id": run_id,
+            "markdown": contents[MARKDOWN_REPORT],
+            "csv": {key: text for key, text in contents.items() if key != MARKDOWN_REPORT},
+            "reports": dict(index.reports),
+        }
 
     read_only = ToolAnnotations(read_only_hint=True, open_world_hint=False)
     tools: list[tuple[ToolFunction, ToolAnnotations | None]] = [
@@ -909,7 +935,7 @@ def create_server(
             "discover_towns to find towns that feel like the owner's examples (leads only), "
             "compare_finalists to rank finalists on reviewed evidence, explain_town for "
             "the research still needed, inspect_evidence to check evidence, and "
-            "export_report for a run's report files. fetch_live_evidence only proposes values: "
+            "export_report for a run's report text. fetch_live_evidence only proposes values: "
             "show each value and source to the owner and call approve_evidence with the "
             "owner's name only after the owner confirms it in chat; never approve as an AI. "
             "After approve_evidence, pass its packet_id (never a file path) to "

@@ -59,8 +59,9 @@ make up a value or a file.
 5. **Compare finalists.** After `approve_evidence`, use `compare_finalists` with the finalists'
    place IDs and the packet_id, never a file path. Report each ranked town with its score and
    rank stability, and each blocked town with the gate that blocks it and the evidence that is
-   missing. Use `export_report` to give the owner the Markdown, CSV, and SQLite reports of the
-   run.
+   missing. Use `export_report` with the run_id to get the run's Markdown comparison and CSV
+   reports as text, and give that text to the owner; the hosted server's file paths cannot be
+   opened. If `export_report` says the run has no report text, run `compare_finalists` again.
 
 ## Tools
 
@@ -72,7 +73,7 @@ make up a value or a file.
 - `fetch_live_evidence`: fetch public-source values as proposals into a research packet.
 - `approve_evidence`: record one value as approved by the named human owner.
 - `compare_finalists`: gate, rank, and stress-test finalists on reviewed evidence.
-- `export_report`: return the report files of a comparison run.
+- `export_report`: return the Markdown and CSV report text of a comparison run.
 
 ## When not to use
 

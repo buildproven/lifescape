@@ -217,7 +217,7 @@ to Claude Desktop's `claude_desktop_config.json`:
 | `inspect_evidence`    | Checks evidence: validation errors, and each town's audit status per metric.                 |
 | `fetch_live_evidence` | Fetches Census ACS and NOAA values for towns into a research packet, all unapproved.         |
 | `approve_evidence`    | Promotes one fetched value after the owner confirms it; the reviewer must be a named human.  |
-| `export_report`       | Returns the Markdown, CSV, and SQLite report paths of a `compare_finalists` run.             |
+| `export_report`       | Returns the Markdown and CSV report text of a `compare_finalists` run, and the report paths. |
 
 Discovery results are leads, not evidence. `compare_finalists` and `explain_town` use the live
 research brief (`benchmark_only: false`), compare only the named place IDs, and write reports under
@@ -229,7 +229,10 @@ stores them in a research packet under `research-workspace/`. `approve_evidence`
 destructive, so Claude Desktop asks the owner before each call. It refuses an empty reviewer or one
 named `ai`, `claude`, `codex`, or `model`, and then promotes nothing. Census ACS geography comes
 from the place ID; NOAA needs a station, so the fetch lists snowfall as missing instead of choosing
-one. `export_report` refuses a run whose reports a later run overwrote.
+one. `export_report` reads the report text from the store, so the hosted server returns it from any
+instance; the local server also checks the report files and the SQLite run database, and refuses a
+run whose reports a later run overwrote. A run saved before report text was kept must be compared
+again.
 
 `compare_finalists`, `explain_town`, and `inspect_evidence` take exactly one evidence input:
 `packet_id`, a research packet whose approved values they export with the web app's evidence

@@ -44,11 +44,16 @@ class StoreUnavailableError(StoreError):
 
 
 class RunReportIndex(StrictModel):
-    """The reports one ``compare_finalists`` run wrote, with digests to detect overwrites."""
+    """The reports one ``compare_finalists`` run wrote, with digests to detect overwrites.
+
+    ``contents`` holds the text of the Markdown and CSV reports, keyed like ``reports``, so a
+    server that does not have the run's files can still return them. An index saved before the
+    text was kept has no ``contents``; it still loads, and the run must be compared again."""
 
     run_id: str
     reports: dict[str, str]
     sha256: dict[str, str]
+    contents: dict[str, str] | None = None
 
 
 class Store(Protocol):
