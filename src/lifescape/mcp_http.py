@@ -13,19 +13,25 @@ the authorization server named by ``issuer_url``.
   for clients that check §3.3.
 - A token counts only when ``token_verifier`` accepts it and reports it was issued for that
   resource (``AccessToken.resource``, the RFC 8707 resource indicator).
+
+``create_owner_http_app`` is the hosted app: the same origin also serves the authorization
+server (``lifescape.oauth``) that signs the owner in through GitHub and issues those tokens.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import SplitResult, urlsplit
 
+import httpx2
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 
 from lifescape.mcp_server import create_server
+from lifescape.oauth import OAuthSettings, OwnerAuthorizationServer
 
 MCP_PATH = "/mcp"
 RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource"
@@ -119,3 +125,32 @@ def create_http_app(
             allowed_origins=[origin],
         ),
     )
+
+
+def create_owner_http_app(
+    *,
+    output_dir: Path,
+    base_url: str,
+    env: Mapping[str, str],
+    config_dir: Path | None = None,
+    github_transport: httpx2.AsyncBaseTransport | None = None,
+) -> Starlette:
+    """Build the hosted app: the MCP endpoint and its owner-only authorization server.
+
+    Reads the OAuth settings from ``env`` first, so a missing variable stops the server at
+    start (``OAuthConfigError`` names it). ``github_transport`` replaces the network for tests.
+    """
+    settings = OAuthSettings.from_env(env)
+    origin = public_origin(base_url)
+    authorization = OwnerAuthorizationServer(
+        settings, issuer=origin, resource=origin, github_transport=github_transport
+    )
+    app = create_http_app(
+        output_dir=output_dir,
+        base_url=origin,
+        issuer_url=origin,
+        token_verifier=authorization,
+        config_dir=config_dir,
+    )
+    app.router.routes.extend(authorization.routes())
+    return app
