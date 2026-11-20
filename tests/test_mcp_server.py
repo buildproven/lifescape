@@ -98,9 +98,13 @@ def test_req_mcp_1_lists_four_tools_with_strict_input_schemas(tmp_path: Path) ->
     for name, schema in schemas.items():
         assert schema["type"] == "object", name
         assert schema["additionalProperties"] is False, name
-        assert schema["required"], name
+        # inspect_evidence takes exactly one of evidence_path or packet_id, checked at call time
+        # (BUI-2018 REQ-PKT-1, REQ-PKT-2), so its schema has no required argument.
+        if name != "inspect_evidence":
+            assert schema["required"], name
+    assert "required" not in schemas["inspect_evidence"]
     assert schemas["compare_finalists"]["properties"]["place_ids"]["minItems"] == 2
-    assert set(schemas["compare_finalists"]["required"]) == {"place_ids", "evidence_path"}
+    assert set(schemas["compare_finalists"]["required"]) == {"place_ids"}
     assert schemas["find_place"]["properties"]["query"]["minLength"] == 1
     profile_ref = schemas["discover_towns"]["properties"]["profile"]["$ref"].rsplit("/", 1)[-1]
     assert schemas["discover_towns"]["$defs"][profile_ref]["additionalProperties"] is False

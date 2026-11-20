@@ -48,6 +48,15 @@ FIXTURES = Path(__file__).parent / "fixtures" / "mcp"
 EVIDENCE = FIXTURES / "finalists-evidence.csv"
 LAKE_GENEVA, NEW_BERN = "5541450", "3746340"
 BROADBAND, EDUCATION = "broadband_mbps_down", "education_attainment"
+CRITICAL_VALUES = {
+    "median_sale_price": 320000.0,
+    "er_drive_minutes": 10.0,
+    BROADBAND: 400.0,
+    "annual_snowfall": 2.0,
+    "flood_risk_score": 5.0,
+    "distress_index": 3.0,
+    "one_level_inventory_count": 40.0,
+}
 STUB_SOURCE_URL = "https://data.census.gov/stub/acs"
 BRIEF = SearchBrief(preferences="Synthetic store contract brief for BUI-1904 tests.")
 ADAPTERS = ("local", "database")
@@ -175,7 +184,7 @@ class StubCensus:
     """Stands in for census_acs so no test reaches the network."""
 
     name = "census_acs"
-    supported_metric_ids = (BROADBAND, EDUCATION)
+    supported_metric_ids = (*CRITICAL_VALUES, EDUCATION)
 
     def __init__(self, requests: list[DataRequest]) -> None:
         self.requests = requests
@@ -186,7 +195,10 @@ class StubCensus:
 
     def normalize(self, response: RawResponse) -> list[ObservationRecord]:
         del response
-        return [_stub_observation(BROADBAND, 250.0), _stub_observation(EDUCATION, 31.0)]
+        return [
+            *[_stub_observation(metric_id, value) for metric_id, value in CRITICAL_VALUES.items()],
+            _stub_observation(EDUCATION, 31.0),
+        ]
 
     def validate(self, observations: list[ObservationRecord]) -> ValidationResult:
         del observations
@@ -246,6 +258,27 @@ def _export_last(results: list[CallToolResult]) -> dict[str, Any]:
     return {"run_id": _ok(results[-1])["run_id"]}
 
 
+def _packet_arguments(results: list[CallToolResult]) -> dict[str, Any]:
+    return {
+        "place_ids": [LAKE_GENEVA, NEW_BERN],
+        "packet_id": _ok(results[0])["packet_id"],
+    }
+
+
+def _approve_packet_value(
+    place_id: str, metric_id: str
+) -> Callable[[list[CallToolResult]], dict[str, Any]]:
+    def arguments(results: list[CallToolResult]) -> dict[str, Any]:
+        return {
+            "packet_id": _ok(results[0])["packet_id"],
+            "place_id": place_id,
+            "metric_id": metric_id,
+            "reviewer": "Brett",
+        }
+
+    return arguments
+
+
 @pytest.fixture
 def database_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     url = _sqlite_url(tmp_path / "hosted.sqlite")
@@ -272,7 +305,28 @@ def test_req_store_1_server_keeps_run_indexes_in_the_database(
     tmp_path: Path, database_env: str
 ) -> None:
     output_dir = tmp_path / "output"
-    compared, exported = _calls(output_dir, [COMPARE, ("export_report", _export_last)])
+    fetch = (
+        "fetch_live_evidence",
+        {
+            "place_ids": [LAKE_GENEVA, NEW_BERN],
+            "metric_ids": list(CRITICAL_VALUES),
+        },
+    )
+    approvals = [
+        ("approve_evidence", _approve_packet_value(place_id, metric_id))
+        for place_id in (LAKE_GENEVA, NEW_BERN)
+        for metric_id in CRITICAL_VALUES
+    ]
+    results = _calls(
+        output_dir,
+        [
+            fetch,
+            *approvals,
+            ("compare_finalists", _packet_arguments),
+            ("export_report", _export_last),
+        ],
+    )
+    compared, exported = results[-2:]
 
     run_id = _ok(compared)["run_id"]
     assert _ok(exported)["reports"] == _ok(compared)["reports"]
