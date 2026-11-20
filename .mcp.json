@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "lifescape": {
+      "type": "http",
+      "url": "https://lifescape.buildproven.ai/api/mcp"
+    }
+  }
+}
