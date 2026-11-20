@@ -77,7 +77,12 @@ GitHub login in `OWNER_GITHUB_LOGIN` gets a token. The Vercel project needs thes
 | `DATABASE_URL`                         | the Postgres URL (the Neon integration sets it); psycopg 3 connects |
 
 If one is missing or unusable, `/api/mcp` answers 503 with the names to set or fix (never the
-values), and the landing and demo pages still serve.
+values), and the landing, demo, and privacy pages still serve.
+
+[`/privacy`](https://lifescape.buildproven.ai/privacy) states what the hosted server stores (the
+research packets and report indexes in the owner's database), that only the owner's GitHub
+account can sign in, and how to delete the data. The plugin manifest names it as
+`privacyPolicyUrl`.
 
 The web UI is frozen: it gets fixes but no new features. It still runs as described in
 [Web app quick start](#web-app-quick-start).

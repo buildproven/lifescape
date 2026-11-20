@@ -149,3 +149,11 @@ def test_req_plugin_3_skill_has_no_local_path_or_install_step(pattern: str) -> N
 
     match = re.search(pattern, text, flags=re.IGNORECASE)
     assert match is None, f"SKILL.md names a local path or install step: {match.group(0)!r}"
+
+
+def test_req_plugin_4_manifest_names_the_hosted_privacy_policy() -> None:
+    """BUI-2021: a remote plugin names its privacy policy (PRIVACY_URL_MISSING otherwise)."""
+    plugin = _json(PLUGIN)
+
+    assert plugin.get("privacyPolicyUrl") == f"{HOSTED_ORIGIN}/privacy"
+    assert plugin["privacyPolicyUrl"] == "https://lifescape.buildproven.ai/privacy"

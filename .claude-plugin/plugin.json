@@ -6,6 +6,7 @@
     "name": "BuildProven"
   },
   "homepage": "https://lifescape.buildproven.ai",
+  "privacyPolicyUrl": "https://lifescape.buildproven.ai/privacy",
   "repository": "https://github.com/buildproven/lifescape",
   "license": "MIT",
   "keywords": ["retirement", "relocation", "towns", "place-discovery", "evidence"]

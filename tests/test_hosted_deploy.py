@@ -368,3 +368,48 @@ def test_req_deploy_4_pyproject_declares_psycopg_3() -> None:
     assert "binary" in psycopg[0].extras
     assert psycopg[0].specifier.contains("3.3.0")
     assert not psycopg[0].specifier.contains("4.0.0")
+
+
+# ------------------------------------------------------------------ REQ-DEPLOY-5
+
+
+def _assert_privacy_policy(response: Any) -> None:
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    text = " ".join(response.text.split())
+    # What the hosted server stores, and where.
+    for stored in ("search profile", "evidence", "report"):
+        assert stored in text, stored
+    assert "owner's own database" in text
+    # Only the owner's GitHub account can sign in.
+    assert "GitHub" in text
+    assert "Only the owner's GitHub account can sign in" in text
+    # How to delete the data.
+    assert "Delete your data" in text
+    assert "research_packets" in text
+    assert "run_report_indexes" in text
+
+
+def test_req_deploy_5_privacy_policy_answers_200_on_the_hosted_site(
+    tmp_path: Path, client_for: Any
+) -> None:
+    """BUI-2021: the plugin manifest's privacyPolicyUrl is a page the hosted site serves."""
+    client = client_for(_env(tmp_path))
+
+    _assert_privacy_policy(client.get("/privacy"))
+    assert not (tmp_path / "hosted.sqlite").exists()
+
+
+def test_req_deploy_5_privacy_policy_serves_without_the_hosted_settings(
+    client_for: Any,
+) -> None:
+    """Like the landing and demo pages, the policy does not depend on the MCP settings."""
+    client = client_for({})
+
+    _assert_privacy_policy(client.get("/privacy"))
+
+
+def test_req_deploy_5_local_app_has_no_hosted_privacy_page(tmp_path: Path) -> None:
+    """The policy describes the hosted server; the local app keeps data on the computer."""
+    with TestClient(create_app(tmp_path), base_url="http://127.0.0.1") as client:
+        assert client.get("/privacy").status_code == 404
