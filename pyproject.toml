@@ -44,6 +44,11 @@ packages = ["src/lifescape"]
 "config" = "lifescape/resources/config"
 "data/benchmarks/evidence.csv" = "lifescape/resources/benchmark-evidence.csv"
 
+[tool.vercel]
+# The FastAPI preset loads this app and sends every path to it unchanged.
+# A vercel.json rewrite to /api/index would reach the app as that literal path.
+entrypoint = "api.index:app"
+
 [tool.pytest.ini_options]
 addopts = "--strict-markers --strict-config -q"
 testpaths = ["tests"]
