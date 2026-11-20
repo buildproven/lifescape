@@ -4,7 +4,8 @@ Agent-first surface (machine-setup ``docs/AGENT-FIRST.md``): the owner chats wit
 Claude Desktop. The tools call the same engines as the CLI and web app and keep their rules:
 preferences discover, gates eliminate, weights rank, evidence decides. Discovery results stay
 Tier C leads; only ``compare_finalists`` ranks, and only towns whose critical gates all pass.
-Live-fetched evidence stays a proposal until ``approve_evidence`` records a named human reviewer.
+Live-fetched evidence stays a proposal until ``approve_evidence`` records a named human reviewer;
+``reject_evidence`` records a named reviewer's rejection, and a rejected value cannot be approved.
 Research packets and run report indexes go through ``lifescape.store``; ``LIFESCAPE_STORE``
 picks local files or a hosted database. The evidence tools read either a local evidence CSV
 (``evidence_path``) or a stored packet's approved evidence (``packet_id``); the hosted database
@@ -49,8 +50,10 @@ from lifescape.models import GateState, ObservationRecord, PlaceRecord, RunResul
 from lifescape.pipeline import execute_run
 from lifescape.research import (
     MAX_DISCOVERY_LEADS,
+    MAX_REJECTION_REASON,
     DiscoveryLead,
     FetchedPromotionRequest,
+    RejectionRequest,
     ReviewDecision,
     ReviewRecord,
     SearchBrief,
@@ -60,6 +63,9 @@ from lifescape.research import (
     readiness_for,
     require_complete_packet_evidence,
     state_for,
+)
+from lifescape.research import (
+    reject_evidence as record_rejection,
 )
 from lifescape.research_report import build_research_cards, next_action_for
 from lifescape.research_sources import (
@@ -111,6 +117,16 @@ EvidencePacketId = Annotated[
         description=(
             "Research packet ID whose approved evidence (approve_evidence) to read. "
             "Give exactly one of evidence_path and packet_id."
+        ),
+    ),
+]
+Reviewer = Annotated[
+    str,
+    Field(
+        max_length=120,
+        description=(
+            "Name of the human owner who checked the source and confirmed in chat. "
+            "Never an AI or model name."
         ),
     ),
 ]
@@ -314,12 +330,17 @@ def _human_reviewer(
             packet_id=packet_id, place_id=place_id, metric_id=metric_id, reviewer=reviewer
         )
     except ValidationError as exc:
-        reasons = "; ".join(
-            f"{'.'.join(str(part) for part in error['loc'])}: "
-            f"{str(error['msg']).removeprefix('Value error, ')}"
-            for error in exc.errors()
-        )
-        raise ValueError(f"approval refused, nothing promoted: {reasons}") from exc
+        raise _refusal("approval refused, nothing promoted", exc) from exc
+
+
+def _refusal(action: str, exc: ValidationError) -> ValueError:
+    """Name each rule a review request broke, and that the review changed nothing."""
+    reasons = "; ".join(
+        f"{'.'.join(str(part) for part in error['loc']) or 'request'}: "
+        f"{str(error['msg']).removeprefix('Value error, ')}"
+        for error in exc.errors()
+    )
+    return ValueError(f"{action}: {reasons}")
 
 
 def _sha256(path: Path) -> str:
@@ -786,25 +807,10 @@ def create_server(
             "errors": {place_id: list(values) for place_id, values in result.errors.items()},
         }
 
-    def approve_evidence(
-        packet_id: PacketId,
-        place_id: PlaceId,
-        metric_id: MetricId,
-        reviewer: Annotated[
-            str,
-            Field(
-                max_length=120,
-                description=(
-                    "Name of the human owner who checked the source and confirmed in chat. "
-                    "Never an AI or model name."
-                ),
-            ),
-        ],
-    ) -> dict[str, Any]:
-        """Promote one fetched observation to approved evidence. Call this only after the owner
-        has seen the value and source and confirmed it in chat; reviewer is the owner's name.
-        An AI or model name, or an empty reviewer, is refused and nothing is promoted."""
-        request = _human_reviewer(packet_id, place_id, metric_id, reviewer)
+    def unreviewed_observation(
+        packet_id: str, place_id: str, metric_id: str
+    ) -> tuple[StoredResearchPacket, ObservationRecord]:
+        """The stored packet and its latest fetched value that no reviewer has decided yet."""
         stored = records.get_packet(packet_id)
         if stored is None:
             raise ValueError(f"research packet {packet_id} not found; call fetch_live_evidence")
@@ -831,6 +837,19 @@ def create_server(
             if item.decision is ReviewDecision.REJECTED
         }:
             raise ValueError("that observation has already been rejected for this packet")
+        return stored, observation
+
+    def approve_evidence(
+        packet_id: PacketId,
+        place_id: PlaceId,
+        metric_id: MetricId,
+        reviewer: Reviewer,
+    ) -> dict[str, Any]:
+        """Promote one fetched observation to approved evidence. Call this only after the owner
+        has seen the value and source and confirmed it in chat; reviewer is the owner's name.
+        An AI or model name, or an empty reviewer, is refused and nothing is promoted."""
+        request = _human_reviewer(packet_id, place_id, metric_id, reviewer)
+        stored, observation = unreviewed_observation(packet_id, place_id, metric_id)
         with configuration() as config:
             metrics = load_metrics(config)
             promotion = promote_fetched_evidence(
@@ -858,6 +877,54 @@ def create_server(
             "packet_id": packet_id,
             "reviewer": promotion.reviewer,
             "approved": _observation_payload(promotion.observation, approved=True),
+            "state": state_for(updated.packet, metrics, updated.promotions).value,
+            "critical_metrics_needed": {
+                place: list(needed)
+                for place, needed in readiness_for(
+                    updated.packet, metrics, updated.promotions
+                ).items()
+            },
+        }
+
+    def reject_evidence(
+        packet_id: PacketId,
+        place_id: PlaceId,
+        metric_id: MetricId,
+        reviewer: Reviewer,
+        reason: Annotated[
+            str,
+            Field(
+                max_length=MAX_REJECTION_REASON,
+                description="Why the owner rejects the value, in the owner's words.",
+            ),
+        ],
+    ) -> dict[str, Any]:
+        """Record that the owner rejected one fetched value, with the owner's name and reason.
+        Call this only after the owner has seen the value and source and rejected it in chat.
+        A rejected value is never evidence and approve_evidence refuses it; fetch again for a
+        new value. An AI or model name, an empty reviewer, or a reason under eight characters
+        is refused and nothing is recorded."""
+        stored, observation = unreviewed_observation(packet_id, place_id, metric_id)
+        try:
+            request = RejectionRequest(
+                packet_id=packet_id,
+                reviewer=reviewer,
+                place=observation.place,
+                metric_id=metric_id,
+                reason=reason,
+            )
+        except ValidationError as exc:
+            raise _refusal("rejection refused, nothing recorded", exc) from exc
+        with configuration() as config:
+            metrics = load_metrics(config)
+            review = record_rejection(request, packet=stored.packet, metrics=metrics)
+        updated = stored.model_copy(update={"reviews": (*stored.reviews, review)})
+        records.save_packet(updated)
+        return {
+            "packet_id": packet_id,
+            "reviewer": review.reviewer,
+            "reason": review.reason,
+            "rejected": _observation_payload(observation, approved=False),
             "state": state_for(updated.packet, metrics, updated.promotions).value,
             "critical_metrics_needed": {
                 place: list(needed)
@@ -920,6 +987,15 @@ def create_server(
                 open_world_hint=False,
             ),
         ),
+        (
+            reject_evidence,
+            ToolAnnotations(
+                read_only_hint=False,
+                destructive_hint=True,
+                idempotent_hint=False,
+                open_world_hint=False,
+            ),
+        ),
         (export_report, read_only),
     ]
     return MCPServer(
@@ -932,6 +1008,8 @@ def create_server(
             "export_report for a run's report text. fetch_live_evidence only proposes values: "
             "show each value and source to the owner and call approve_evidence with the "
             "owner's name only after the owner confirms it in chat; never approve as an AI. "
+            "When the owner rejects a value, call reject_evidence with the owner's name and "
+            "reason; a rejected value cannot be approved. "
             "After approve_evidence, pass its packet_id (never a file path) to "
             "compare_finalists, explain_town, and inspect_evidence. "
             "Never present a blocked town as ranked."

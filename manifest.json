@@ -53,6 +53,10 @@
       "description": "Record one fetched value as approved by the named human owner"
     },
     {
+      "name": "reject_evidence",
+      "description": "Record the named human owner's rejection of one fetched value, with a reason"
+    },
+    {
       "name": "export_report",
       "description": "Return the report file paths of a comparison run"
     }

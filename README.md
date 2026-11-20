@@ -57,9 +57,9 @@ This writes `dist/lifescape.mcpb` (the desktop extension, packed from `manifest.
   ```
 
 The tools are `find_place`, `discover_towns`, `explain_town`, `inspect_evidence`,
-`fetch_live_evidence`, `approve_evidence`, `compare_finalists`, and `export_report`. Fetched
-values stay proposals until you approve each one by name in chat; the server refuses an AI or
-model name as the reviewer.
+`fetch_live_evidence`, `approve_evidence`, `reject_evidence`, `compare_finalists`, and
+`export_report`. Fetched values stay proposals until you approve or reject each one by name in
+chat; the server refuses an AI or model name as the reviewer.
 
 ### Hosted MCP
 
@@ -217,6 +217,7 @@ to Claude Desktop's `claude_desktop_config.json`:
 | `inspect_evidence`    | Checks evidence: validation errors, and each town's audit status per metric.                 |
 | `fetch_live_evidence` | Fetches Census ACS and NOAA values for towns into a research packet, all unapproved.         |
 | `approve_evidence`    | Promotes one fetched value after the owner confirms it; the reviewer must be a named human.  |
+| `reject_evidence`     | Records the owner's rejection of one fetched value with a reason; approval is then refused.  |
 | `export_report`       | Returns the Markdown and CSV report text of a `compare_finalists` run, and the report paths. |
 
 Discovery results are leads, not evidence. `compare_finalists` and `explain_town` use the live
@@ -227,7 +228,10 @@ is returned as `blocked` and never ranked. Every input schema rejects unknown ar
 Evidence approval stays a human act. `fetch_live_evidence` returns proposals with their sources and
 stores them in a research packet under `research-workspace/`. `approve_evidence` is annotated as
 destructive, so Claude Desktop asks the owner before each call. It refuses an empty reviewer or one
-named `ai`, `claude`, `codex`, or `model`, and then promotes nothing. Census ACS geography comes
+named `ai`, `claude`, `codex`, or `model`, and then promotes nothing. `reject_evidence` is also
+annotated as destructive. It records the named owner's rejection and reason (at least eight
+characters) in the packet, refuses the same reviewers, and `approve_evidence` then refuses that
+value. Census ACS geography comes
 from the place ID; NOAA needs a station-year that the operator sets per place ID in
 `LIFESCAPE_RESEARCH_GEOGRAPHIES` (for example `{"3746340":{"noaa_gsoy":"USW00013754:2024"}}`).
 Without one the fetch lists snowfall as missing instead of choosing a station. `export_report` reads the report text from the store, so the hosted server returns it from any

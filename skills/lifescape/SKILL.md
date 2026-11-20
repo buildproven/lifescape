@@ -53,8 +53,9 @@ make up a value or a file.
    town still needs and to check the approved values.
 4. **The owner approves.** Show each proposed value with its source, observation date, and
    geography. Call `approve_evidence` with the packet_id for one value only after the owner
-   confirms it in this chat, with the owner's name as the reviewer. If the owner rejects a value
-   or does not answer, do not approve it. The tools read the packet only when every town in it
+   confirms it in this chat, with the owner's name as the reviewer. If the owner rejects a value,
+   call `reject_evidence` with the owner's name and the owner's reason; a rejected value cannot
+   be approved. If the owner does not answer, do not approve or reject it. The tools read the packet only when every town in it
    has approved critical evidence; until then they name the values still unapproved.
 5. **Compare finalists.** After `approve_evidence`, use `compare_finalists` with the finalists'
    place IDs and the packet_id, never a file path. Report each ranked town with its score and
@@ -72,6 +73,7 @@ make up a value or a file.
   metrics.
 - `fetch_live_evidence`: fetch public-source values as proposals into a research packet.
 - `approve_evidence`: record one value as approved by the named human owner.
+- `reject_evidence`: record the named human owner's rejection of one value, with a reason.
 - `compare_finalists`: gate, rank, and stress-test finalists on reviewed evidence.
 - `export_report`: return the Markdown and CSV report text of a comparison run.
 

@@ -58,6 +58,8 @@ class ResearchError(ValueError):
 MAX_DISCOVERY_RESPONSE_BYTES = 1_000_000
 MAX_DISCOVERY_LEADS = 15
 MIN_DISCOVERY_LEADS = 8
+MIN_REJECTION_REASON = 8
+MAX_REJECTION_REASON = 1_000
 # 15 leads at the 1,000-character rationale cap plus caveats and URLs need headroom.
 DISCOVERY_MAX_TOKENS = 8_000
 
@@ -161,13 +163,18 @@ class RejectionRequest(StrictModel):
     reviewer: str = Field(min_length=2, max_length=120)
     place: PlaceRecord
     metric_id: str
-    reason: str = Field(min_length=8, max_length=1_000)
+    reason: str = Field(min_length=MIN_REJECTION_REASON, max_length=MAX_REJECTION_REASON)
 
     @model_validator(mode="after")
     def human_reviewer_is_named(self) -> RejectionRequest:
         normalized = self.reviewer.strip().lower()
         if not normalized or normalized in {"ai", "claude", "codex", "model"}:
             raise ValueError("reviewer must identify the human who checked the source")
+        if len(self.reason.strip()) < MIN_REJECTION_REASON:
+            raise ValueError(
+                f"reason must state why the value is rejected in at least "
+                f"{MIN_REJECTION_REASON} characters"
+            )
         return self
 
 
