@@ -28,6 +28,15 @@
 
 ### Added
 
+- **Hospital provenance says how the hospital was located (BUI-1491).** Each place's
+  `hospital_source` now carries a location method: `census_geocoder` (street address matched by
+  the Census Geocoder) or `zcta_centroid` (ZIP Code Tabulation Area centroid), so a user can see
+  how precise the hospital distance is. Discovery results show it as
+  `hospital_source.location_method`, and discovery refuses to load a catalog whose
+  `hospital_source` has any other method or none. The catalog was rebuilt from the same pinned inputs as catalog
+  `us-places-acs2024-noaa1991-2020-character-hospital-v6`; no distance or other value changed
+  (26,862 places use a geocoded hospital, 5,179 a ZCTA centroid).
+
 - **Reject a fetched value from chat (BUI-2017).** The MCP `reject_evidence` tool records the
   named owner's rejection of one fetched value, with a reason, in its research packet.
   `approve_evidence` then refuses that value. A reason that is only spaces, or under eight
