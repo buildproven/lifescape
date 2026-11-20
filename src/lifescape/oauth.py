@@ -10,8 +10,10 @@ client registration at ``/register``, and the GitHub callback.
 The server keeps no database, so any replica can serve any request. The client ID, the
 sign-in state, the authorization code, the refresh token and the access token are each a JWT
 signed with ``LIFESCAPE_OAUTH_SIGNING_KEY`` under its own ``typ`` and ``aud``, so one kind never
-passes for another. Spent codes and refresh tokens are recorded in this process only (see
-``SpentGrants``).
+passes for another. The one state is the record of spent codes and refresh tokens (a
+``GrantLedger``): the hosted app keeps it in the database every replica shares
+(``lifescape.store_db.DatabaseStore.claim_grant``, BUI-2027); ``SpentGrants`` keeps it in one
+process, for a server that runs as one process.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ import secrets
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx2
@@ -168,17 +170,28 @@ class OAuthSettings:
         )
 
 
-class SpentGrants:
-    """Codes and refresh tokens already exchanged, in this process.
+class GrantLedger(Protocol):
+    """Records the codes and refresh tokens already exchanged.
 
-    A replica that did not see the first exchange accepts a replay until the grant expires
-    (60 seconds for a code); a store shared by every replica closes that gap.
+    ``claim_grant`` returns True on the first claim of ``grant_id`` only, and raises when the
+    record cannot be read or written, so a replay is never taken for a first use.
+    """
+
+    def claim_grant(self, grant_id: str, expires_at: float) -> bool: ...
+
+
+class SpentGrants:
+    """Codes and refresh tokens already exchanged, in this process only.
+
+    Right for a server that runs as one process. A hosted server runs as many replicas, and a
+    replica that did not see the first exchange would accept a replay until the grant expires;
+    it uses the database ledger every replica shares instead.
     """
 
     def __init__(self) -> None:
         self._spent: dict[str, float] = {}
 
-    def claim(self, grant_id: str, expires_at: float) -> bool:
+    def claim_grant(self, grant_id: str, expires_at: float) -> bool:
         """True on the first claim of ``grant_id`` only."""
         now = time.time()
         self._spent = {key: until for key, until in self._spent.items() if until > now}
@@ -334,7 +347,8 @@ class OwnerAuthorizationServer(
     """The authorization server and the token verifier for one owner.
 
     ``issuer`` is the origin serving the OAuth endpoints; ``resource`` is the MCP resource
-    identifier every access token is issued for (its ``aud``).
+    identifier every access token is issued for (its ``aud``). ``grants`` records spent codes
+    and refresh tokens; unset, they are recorded in this process (``SpentGrants``).
     """
 
     def __init__(
@@ -343,13 +357,14 @@ class OwnerAuthorizationServer(
         *,
         issuer: str,
         resource: str,
+        grants: GrantLedger | None = None,
         github_transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
         self._settings = settings
         self._issuer = issuer
         self._resource = resource
         self._github_transport = github_transport
-        self._spent = SpentGrants()
+        self._spent: GrantLedger = SpentGrants() if grants is None else grants
         self._callback_url = f"{issuer}{GITHUB_CALLBACK_PATH}"
         self._authorize_handler = AuthorizationHandler(self)
         self._token_handler = TokenHandler(self, ClientAuthenticator(self))
@@ -483,7 +498,7 @@ class OwnerAuthorizationServer(
         if claims is None or claims.cid != client.client_id:
             return None
         # Spent before the SDK checks the verifier, so a stolen code allows one guess.
-        if not self._spent.claim(f"code:{claims.jti}", claims.exp):
+        if not self._spent.claim_grant(f"code:{claims.jti}", claims.exp):
             return None
         return AuthorizationCode(
             code=authorization_code,
@@ -510,7 +525,7 @@ class OwnerAuthorizationServer(
         claims = self._open("refresh", refresh_token, _RefreshClaims)
         if claims is None or claims.cid != client.client_id:
             return None
-        if not self._spent.claim(f"refresh:{claims.jti}", claims.exp):
+        if not self._spent.claim_grant(f"refresh:{claims.jti}", claims.exp):
             return None
         return RefreshToken(
             token=refresh_token,
