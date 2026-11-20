@@ -1,6 +1,9 @@
 """Database adapter for ``lifescape.store``: the hosted server's records in SQL tables.
 
-Any SQLAlchemy URL whose driver is installed works; the tables hold each record as the same JSON
+Any SQLAlchemy URL whose driver is installed works. A ``postgres://`` or ``postgresql://`` URL
+(the form Neon's Vercel integration sets in ``DATABASE_URL``) connects through psycopg 3, the
+Postgres driver Lifescape declares; SQLAlchemy would otherwise pick psycopg2, and it does not
+accept ``postgres://`` at all. The tables hold each record as the same JSON
 document the local adapter writes, keyed by its ID, so both adapters give the same results. The
 tables are created on first use. A connection or driver failure raises
 ``StoreUnavailableError`` naming the store, with the password masked.
@@ -44,6 +47,10 @@ from lifescape.store import (
     check_run_id,
 )
 
+# Bare Postgres schemes, and the SQLAlchemy dialect+driver they connect through.
+POSTGRES_SCHEMES = frozenset({"postgres", "postgresql"})
+POSTGRES_DRIVER = "postgresql+psycopg"
+
 METADATA = MetaData()
 PACKETS = Table(
     "research_packets",
@@ -76,6 +83,8 @@ class DatabaseStore:
             raise StoreConfigError(
                 "database store URL cannot be parsed; check its scheme, host, and port"
             ) from exc
+        if parsed.drivername in POSTGRES_SCHEMES:
+            parsed = parsed.set(drivername=POSTGRES_DRIVER)
         masked = parsed.render_as_string(hide_password=True)
         try:
             engine = create_engine(parsed, pool_pre_ping=True)

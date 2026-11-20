@@ -1,7 +1,7 @@
-"""Vercel entry point for the static synthetic Lifescape demonstration."""
+"""Vercel entry point: the public Lifescape site and its hosted MCP at ``/api/mcp``."""
 
 from pathlib import Path
 
-from lifescape.web import create_app
+from lifescape.web import create_hosted_site
 
-app = create_app(Path("/tmp/lifescape"), hosted_demo=True)
+app = create_hosted_site(Path("/tmp/lifescape"))

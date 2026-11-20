@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import shutil
 import threading
 import time
 import webbrowser
 from collections import OrderedDict, deque
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import asynccontextmanager
 from math import ceil
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -26,7 +28,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from starlette.applications import Starlette
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.routing import Match
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from lifescape.config import load_metrics, load_sources
@@ -45,6 +49,7 @@ from lifescape.discovery import (
     load_catalog,
 )
 from lifescape.evidence import validate_unique_headers
+from lifescape.mcp_http import create_hosted_mcp_app
 from lifescape.models import GateState, RunResult
 from lifescape.pipeline import execute_run
 from lifescape.research import (
@@ -231,12 +236,25 @@ class BodyLimitMiddleware:
 
 
 class HostedStaticBoundaryMiddleware:
-    """Keep the public site outside the local application's API surface."""
+    """Keep the public site outside the local application's API surface.
 
-    def __init__(self, app: ASGIApp) -> None:
+    ``owner_app`` (the hosted MCP and its authorization server, ``lifescape.mcp_http``) gets
+    exactly the paths its own routes match; every other ``/api/`` path answers 404.
+    """
+
+    def __init__(self, app: ASGIApp, owner_app: Starlette | None = None) -> None:
         self.app = app
+        self.owner_app = owner_app
+
+    def _owned(self, scope: Scope) -> bool:
+        if self.owner_app is None:
+            return False
+        return any(route.matches(scope)[0] is not Match.NONE for route in self.owner_app.routes)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if self.owner_app is not None and scope["type"] == "http" and self._owned(scope):
+            await self.owner_app(scope, receive, send)
+            return
         if scope["type"] == "http" and (
             scope["path"].startswith("/api/") or scope["path"] == "/openapi.json"
         ):
@@ -564,24 +582,41 @@ def create_app(
     hosted_max_tracked_clients: int = HOSTED_MAX_TRACKED_CLIENTS,
     research_evidence_provider: ResearchEvidenceProvider | None = None,
     catalog_loader: Callable[[], PlaceCatalog] = load_catalog,
+    hosted_mcp: Starlette | None = None,
 ) -> FastAPI:
-    """Create the loopback-only browser application."""
+    """Create the loopback-only browser application.
+
+    ``hosted_mcp`` (public site only) serves the hosted MCP and its authorization server
+    beside the pages; its lifespan runs inside this app's.
+    """
+    if hosted_mcp is not None and not hosted_demo:
+        raise ValueError("hosted_mcp is served only by the hosted site (hosted_demo=True)")
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if hosted_mcp is None:
+            yield
+            return
+        async with hosted_mcp.router.lifespan_context(hosted_mcp):
+            yield
+
     app = FastAPI(
         title="Lifescape",
         docs_url=None,
         redoc_url=None,
         openapi_url=None if hosted_demo else "/openapi.json",
+        lifespan=lifespan,
     )
     app.add_middleware(BodyLimitMiddleware)
     allowed_hosts = ["127.0.0.1", "localhost", "[::1]"]
     if hosted_demo:
         allowed_hosts.extend(["lifescape.buildproven.ai", "*.vercel.app"])
+        # Inside the host check, so the owner app never answers a request for another host.
+        app.add_middleware(HostedStaticBoundaryMiddleware, owner_app=hosted_mcp)
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=allowed_hosts,
     )
-    if hosted_demo:
-        app.add_middleware(HostedStaticBoundaryMiddleware)
     package_dir = Path(__file__).resolve().parent
     template_environment = Environment(
         loader=FileSystemLoader(package_dir / "templates"),
@@ -1244,6 +1279,17 @@ def create_app(
         return FileResponse(path, filename=filename)
 
     return app
+
+
+def create_hosted_site(output_dir: Path, env: Mapping[str, str] | None = None) -> FastAPI:
+    """The public site: the landing and demo pages, and the hosted MCP at ``/api/mcp``.
+
+    ``env`` (default: the process environment) holds the OAuth and store settings
+    (``lifescape.mcp_http.create_hosted_mcp_app``); without them the pages still serve.
+    """
+    settings = os.environ if env is None else env
+    owner = create_hosted_mcp_app(output_dir=output_dir / "mcp", env=settings)
+    return create_app(output_dir, hosted_demo=True, hosted_mcp=owner)
 
 
 def serve(

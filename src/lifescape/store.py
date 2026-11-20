@@ -4,7 +4,7 @@ A hosted server has no Mac disk (machine-setup ``docs/AGENT-FIRST.md``), so rese
 (discovery leads, fetched proposals, reviews, promotions) and run report indexes go through
 ``Store``. ``LIFESCAPE_STORE`` picks the adapter: ``local`` (the default, for development and the
 stdio server) keeps JSON files under the output directory; ``database`` keeps them in the
-SQLAlchemy database named by ``LIFESCAPE_DATABASE_URL`` (``lifescape.store_db``). A database
+SQLAlchemy database named by ``DATABASE_URL`` (``lifescape.store_db``). A database
 that cannot be reached is an error naming the store; nothing falls back to local files.
 """
 
@@ -21,7 +21,8 @@ from lifescape.models import StrictModel
 from lifescape.research_workspace import ResearchWorkspace, StoredResearchPacket
 
 STORE_ENV = "LIFESCAPE_STORE"
-DATABASE_URL_ENV = "LIFESCAPE_DATABASE_URL"
+# The name the Vercel Neon integration sets.
+DATABASE_URL_ENV = "DATABASE_URL"
 LOCAL_STORE = "local"
 DATABASE_STORE = "database"
 RESEARCH_WORKSPACE = "research-workspace"
