@@ -214,7 +214,7 @@ to Claude Desktop's `claude_desktop_config.json`:
 | `discover_towns`      | Finds towns like up to two example towns, with priorities, limits, and state filters.        |
 | `compare_finalists`   | Runs two or more finalists from reviewed evidence through gates, ranking, and sensitivity.   |
 | `explain_town`        | Returns one town's research card: unresolved critical evidence and the next action for each. |
-| `inspect_evidence`    | Checks an evidence CSV: validation errors, and each town's audit status per metric.          |
+| `inspect_evidence`    | Checks evidence: validation errors, and each town's audit status per metric.                 |
 | `fetch_live_evidence` | Fetches Census ACS and NOAA values for towns into a research packet, all unapproved.         |
 | `approve_evidence`    | Promotes one fetched value after the owner confirms it; the reviewer must be a named human.  |
 | `export_report`       | Returns the Markdown, CSV, and SQLite report paths of a `compare_finalists` run.             |
@@ -230,6 +230,13 @@ destructive, so Claude Desktop asks the owner before each call. It refuses an em
 named `ai`, `claude`, `codex`, or `model`, and then promotes nothing. Census ACS geography comes
 from the place ID; NOAA needs a station, so the fetch lists snowfall as missing instead of choosing
 one. `export_report` refuses a run whose reports a later run overwrote.
+
+`compare_finalists`, `explain_town`, and `inspect_evidence` take exactly one evidence input:
+`packet_id`, a research packet whose approved values they export with the web app's evidence
+export (`require_complete_packet_evidence`, then `export_approved_evidence`), or `evidence_path`, a
+local evidence CSV. A packet is read only when every candidate has approved critical evidence. The
+hosted server (`LIFESCAPE_STORE=database`) has no owner files, so it refuses `evidence_path`; pass
+`packet_id` there. The local store accepts both.
 
 ## Verification
 

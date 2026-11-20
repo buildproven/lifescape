@@ -16,8 +16,10 @@ This skill uses the hosted Lifescape MCP server that the plugin connects: the
 approvals. If the Lifescape tools are not available, say that the connector is not connected and
 stop. Do not suggest or rank towns from your own knowledge instead.
 
-`explain_town`, `inspect_evidence`, and `compare_finalists` read an evidence CSV that the server
-can open. If a tool reports that the evidence file is not found, tell the owner and stop; do not
+`explain_town`, `inspect_evidence`, and `compare_finalists` read the approved values of a
+research packet: pass the `packet_id` that `fetch_live_evidence` returned and `approve_evidence`
+used, never a file path. The hosted server cannot open a file. If a tool reports that the packet
+is not found or that critical evidence remains unapproved, tell the owner what is missing; do not
 make up a value or a file.
 
 ## The rules
@@ -43,27 +45,30 @@ make up a value or a file.
    trade-off, and its unknowns, and say that matches are leads.
 2. **Shortlist.** Ask the owner to keep, drop, or mark each match unsure. Keep at least three
    towns. The owner can add any town by name; look it up with `find_place`.
-3. **Gather evidence.** For each shortlisted town, use `explain_town` with the owner's evidence
-   CSV to show the critical evidence still unresolved, and `inspect_evidence` to check the CSV
-   before it is used. Use `fetch_live_evidence` to fetch public-source values (Census ACS,
-   NOAA). Each fetched value is a proposal, not evidence. Fetch failures and missing source
-   geographies stay listed; do not fill them in.
+3. **Gather evidence.** Use `fetch_live_evidence` for the shortlisted towns to fetch
+   public-source values (Census ACS, NOAA) into one research packet, and keep its `packet_id`.
+   Each fetched value is a proposal, not evidence. Fetch failures and missing source
+   geographies stay listed; do not fill them in. After `approve_evidence`, use `explain_town`
+   and `inspect_evidence` with that `packet_id` (never a file path) to show the evidence each
+   town still needs and to check the approved values.
 4. **The owner approves.** Show each proposed value with its source, observation date, and
-   geography. Call `approve_evidence` for one value only after the owner confirms it in this
-   chat, with the owner's name as the reviewer. If the owner rejects a value or does not answer,
-   do not approve it.
-5. **Compare finalists.** When at least two finalists have reviewed evidence, use
-   `compare_finalists` with their place IDs and the reviewed evidence CSV. Report each ranked
-   town with its score and rank stability, and each blocked town with the gate that blocks it
-   and the evidence that is missing. Use `export_report` to give the owner the Markdown, CSV,
-   and SQLite reports of the run.
+   geography. Call `approve_evidence` with the `packet_id` for one value only after the owner
+   confirms it in this chat, with the owner's name as the reviewer. If the owner rejects a value
+   or does not answer, do not approve it. The tools read the packet only when every town in it
+   has approved critical evidence; until then they name the values still unapproved.
+5. **Compare finalists.** After `approve_evidence`, use `compare_finalists` with the finalists'
+   place IDs and the `packet_id`, never a file path. Report each ranked town with its score and
+   rank stability, and each blocked town with the gate that blocks it and the evidence that is
+   missing. Use `export_report` to give the owner the Markdown, CSV, and SQLite reports of the
+   run.
 
 ## Tools
 
 - `find_place`: look up place IDs by town name or "Name, ST".
 - `discover_towns`: find towns like the owner's examples and wanted qualities (leads only).
 - `explain_town`: show where one town stands on the evidence and what is still unresolved.
-- `inspect_evidence`: check an evidence CSV for validation errors and missing metrics.
+- `inspect_evidence`: check a packet's approved evidence for validation errors and missing
+  metrics.
 - `fetch_live_evidence`: fetch public-source values as proposals into a research packet.
 - `approve_evidence`: record one value as approved by the named human owner.
 - `compare_finalists`: gate, rank, and stress-test finalists on reviewed evidence.

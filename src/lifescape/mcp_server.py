@@ -6,7 +6,9 @@ preferences discover, gates eliminate, weights rank, evidence decides. Discovery
 Tier C leads; only ``compare_finalists`` ranks, and only towns whose critical gates all pass.
 Live-fetched evidence stays a proposal until ``approve_evidence`` records a named human reviewer.
 Research packets and run report indexes go through ``lifescape.store``; ``LIFESCAPE_STORE``
-picks local files or a hosted database.
+picks local files or a hosted database. The evidence tools read either a local evidence CSV
+(``evidence_path``) or a stored packet's approved evidence (``packet_id``); the hosted database
+store has no owner files, so there they take ``packet_id`` only.
 """
 
 from __future__ import annotations
@@ -16,9 +18,11 @@ import hashlib
 import sqlite3
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date
 from functools import cache, wraps
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Annotated, Any, cast
 
 from mcp.server.auth.provider import TokenVerifier
@@ -51,8 +55,10 @@ from lifescape.research import (
     ReviewRecord,
     SearchBrief,
     create_packet,
+    export_approved_evidence,
     promote_fetched_evidence,
     readiness_for,
+    require_complete_packet_evidence,
     state_for,
 )
 from lifescape.research_report import ResearchReportError, build_research_cards, next_action_for
@@ -60,6 +66,7 @@ from lifescape.research_sources import ConnectorEvidenceProvider, EvidenceFetchR
 from lifescape.research_workspace import ResearchWorkspace, StoredResearchPacket
 from lifescape.resources import bundled_config
 from lifescape.store import RunReportIndex, Store, StoreError, store_from_env
+from lifescape.store_db import DatabaseStore
 
 LIVE_RESEARCH_BRIEF = "research_brief.live.yaml"
 MAX_FINALISTS = 25
@@ -79,12 +86,26 @@ PacketId = Annotated[
 RunId = Annotated[
     str, Field(pattern=r"^[a-f0-9]{16}$", description="Run ID from compare_finalists.")
 ]
-FilePath = Annotated[
-    str,
+EvidencePath = Annotated[
+    str | None,
     Field(
         min_length=1,
         max_length=4096,
-        description="Path to a local wide evidence CSV (one row per town, one column per metric).",
+        description=(
+            "Path to a local wide evidence CSV (one row per town, one column per metric). "
+            "Local server only; pass packet_id instead on the hosted server. "
+            "Give exactly one of evidence_path and packet_id."
+        ),
+    ),
+]
+EvidencePacketId = Annotated[
+    str | None,
+    Field(
+        pattern=r"^[a-f0-9]{12}$",
+        description=(
+            "Research packet ID whose approved evidence (approve_evidence) to read. "
+            "Give exactly one of evidence_path and packet_id."
+        ),
     ),
 ]
 IsoDate = Annotated[
@@ -98,6 +119,14 @@ IsoDate = Annotated[
 
 class EvidenceSelectionError(ValueError):
     """Raised when the requested towns cannot be selected from an evidence CSV."""
+
+
+@dataclass(frozen=True)
+class _EvidenceInput:
+    """The evidence CSV the engines read, and the stable identity that names its work dir."""
+
+    path: Path
+    identity: str
 
 
 ToolFunction = Callable[..., dict[str, Any]]
@@ -173,10 +202,10 @@ def _select_evidence(evidence: Path, place_ids: tuple[str, ...], destination: Pa
     return destination
 
 
-def _work_dir(root: Path, kind: str, evidence: Path, place_ids: tuple[str, ...]) -> Path:
+def _work_dir(root: Path, kind: str, evidence: _EvidenceInput, place_ids: tuple[str, ...]) -> Path:
     digest = hashlib.sha256()
-    digest.update(str(evidence.resolve()).encode())
-    digest.update(evidence.read_bytes())
+    digest.update(evidence.identity.encode())
+    digest.update(evidence.path.read_bytes())
     digest.update("\0".join(sorted(place_ids)).encode())
     return root / f"{kind}-{digest.hexdigest()[:12]}"
 
@@ -315,6 +344,40 @@ def create_server(
         with bundled_config() as packaged_config:
             yield packaged_config
 
+    @contextmanager
+    def evidence_input(
+        evidence_path: str | None, packet_id: str | None
+    ) -> Iterator[_EvidenceInput]:
+        """Yield the evidence CSV a tool reads: the owner's local file, or the packet's approved
+        promotions exported as the web app's evidence CSV into a temporary file that is removed
+        when the tool returns. A packet must have approved critical evidence for every
+        candidate, as the web export requires."""
+        both_or_neither = "pass exactly one of evidence_path or packet_id"
+        if packet_id is None:
+            if evidence_path is None:
+                raise ValueError(f"{both_or_neither}, not neither")
+            if isinstance(records, DatabaseStore):
+                raise ValueError(
+                    "the hosted server cannot read evidence_path from a file; pass packet_id "
+                    "(a research packet approved with approve_evidence) on the hosted server"
+                )
+            evidence = _existing_file(evidence_path, "evidence CSV")
+            yield _EvidenceInput(path=evidence, identity=str(evidence.resolve()))
+            return
+        if evidence_path is not None:
+            raise ValueError(f"{both_or_neither}, not both")
+        stored = records.get_packet(packet_id)
+        if stored is None:
+            raise ValueError(f"research packet {packet_id} not found; call fetch_live_evidence")
+        with configuration() as config:
+            metrics = load_metrics(config)
+        require_complete_packet_evidence(stored.packet, metrics, stored.promotions)
+        csv_text = export_approved_evidence(stored.promotions, metrics)
+        with TemporaryDirectory(prefix="lifescape-packet-") as staging:
+            path = Path(staging) / f"{packet_id}-approved-evidence.csv"
+            path.write_text(csv_text, encoding="utf-8")
+            yield _EvidenceInput(path=path, identity=f"packet:{packet_id}")
+
     @cache
     def discovery() -> DiscoveryService:
         return DiscoveryService(load_place_catalog())
@@ -404,20 +467,21 @@ def create_server(
             list[PlaceId],
             Field(min_length=2, max_length=MAX_FINALISTS, description="Finalist place IDs."),
         ],
-        evidence_path: FilePath,
+        evidence_path: EvidencePath = None,
+        packet_id: EvidencePacketId = None,
         as_of: IsoDate = None,
     ) -> dict[str, Any]:
         """Compare finalists on reviewed evidence with the strict engine: critical gates
         eliminate (PASS, FAIL, UNKNOWN, WAIVED), weights rank the survivors, and a sensitivity
         check shows how stable the ranks are. A finalist with failed or unknown critical
-        evidence is blocked and never ranked. Writes Markdown and CSV reports."""
+        evidence is blocked and never ranked. Writes Markdown and CSV reports. Evidence is a
+        local evidence CSV (evidence_path) or a research packet's approved values (packet_id)."""
         ids = tuple(place_ids)
         if len(set(ids)) != len(ids):
             raise ValueError("place_ids must be distinct")
-        evidence = _existing_file(evidence_path, "evidence CSV")
-        work_dir = _work_dir(output_dir, "compare", evidence, ids)
-        with configuration() as config:
-            run = run_engine(config, evidence, ids, work_dir, _parse_date(as_of))
+        with evidence_input(evidence_path, packet_id) as evidence, configuration() as config:
+            work_dir = _work_dir(output_dir, "compare", evidence, ids)
+            run = run_engine(config, evidence.path, ids, work_dir, _parse_date(as_of))
             metric_ids = [metric.id for metric in load_metrics(config)]
             metric_by_gate = {gate.id: gate.metric_id for gate in load_gates(config).gates}
         gates_by_place = _gate_payload(run, metric_by_gate)
@@ -480,7 +544,8 @@ def create_server(
 
     def explain_town(
         place_id: PlaceId,
-        evidence_path: FilePath,
+        evidence_path: EvidencePath = None,
+        packet_id: EvidencePacketId = None,
         manifest_path: Annotated[
             str | None,
             Field(
@@ -493,15 +558,16 @@ def create_server(
     ) -> dict[str, Any]:
         """Explain where one town stands on the evidence: its research card (known reject,
         insufficient evidence, or decision ready), the critical evidence still unresolved, and
-        the next research action for each unresolved metric. This does not rank towns."""
-        evidence = _existing_file(evidence_path, "evidence CSV")
-        manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
+        the next research action for each unresolved metric. This does not rank towns. Evidence
+        is a local evidence CSV (evidence_path) or a research packet's approved values
+        (packet_id)."""
         evaluated_as_of = _parse_date(as_of)
-        work_dir = _work_dir(output_dir, "explain", evidence, (place_id,))
-        with configuration() as config:
-            run = run_engine(config, evidence, (place_id,), work_dir, evaluated_as_of)
+        with evidence_input(evidence_path, packet_id) as evidence, configuration() as config:
+            manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
+            work_dir = _work_dir(output_dir, "explain", evidence, (place_id,))
+            run = run_engine(config, evidence.path, (place_id,), work_dir, evaluated_as_of)
             audit = audit_manual_evidence(
-                evidence,
+                evidence.path,
                 load_metrics(config),
                 load_sources(config),
                 manifest_path=manifest,
@@ -541,7 +607,8 @@ def create_server(
         }
 
     def inspect_evidence(
-        evidence_path: FilePath,
+        evidence_path: EvidencePath = None,
+        packet_id: EvidencePacketId = None,
         manifest_path: Annotated[
             str | None,
             Field(
@@ -554,13 +621,15 @@ def create_server(
     ) -> dict[str, Any]:
         """Check an evidence CSV before using it: the strict loader's validation errors, and
         for each town and metric the audit status (ready, or action required and why) and the
-        metrics still missing. This reads the file only; it does not rank or change anything."""
-        evidence = _existing_file(evidence_path, "evidence CSV")
-        manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
+        metrics still missing. Evidence is a local evidence CSV (evidence_path) or a research
+        packet's approved values (packet_id). This reads only; it does not rank or change
+        anything."""
         evaluated_as_of = _parse_date(as_of)
         errors: list[str] = []
         audit: EvidenceAudit | None = None
-        with configuration() as config:
+        with evidence_input(evidence_path, packet_id) as source, configuration() as config:
+            evidence = source.path
+            manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
             loaded = load_configuration(config, None, config / LIVE_RESEARCH_BRIEF)
             try:
                 ingest_csv(
@@ -584,7 +653,8 @@ def create_server(
                 errors.append(str(exc))
         metric_ids = [metric.id for metric in loaded.metrics]
         return {
-            "evidence_path": str(evidence),
+            "evidence_path": None if packet_id is not None else str(evidence),
+            "packet_id": packet_id,
             "valid": not errors,
             "errors": errors,
             "as_of": None if audit is None else audit.as_of.isoformat(),
@@ -810,10 +880,12 @@ def create_server(
             "Lifescape helps choose a retirement town. Use find_place to get place IDs, "
             "discover_towns to find towns that feel like the owner's examples (leads only), "
             "compare_finalists to rank finalists on reviewed evidence, explain_town for "
-            "the research still needed, inspect_evidence to check an evidence CSV, and "
+            "the research still needed, inspect_evidence to check evidence, and "
             "export_report for a run's report files. fetch_live_evidence only proposes values: "
             "show each value and source to the owner and call approve_evidence with the "
             "owner's name only after the owner confirms it in chat; never approve as an AI. "
+            "After approve_evidence, pass its packet_id (never a file path) to "
+            "compare_finalists, explain_town, and inspect_evidence. "
             "Never present a blocked town as ranked."
         ),
         tools=[_register(tool, annotations) for tool, annotations in tools],
