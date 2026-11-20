@@ -26,7 +26,7 @@ The full machine-readable definitions are in `config/metrics.yaml`.
 
 ## Discovery catalog fields (advisory, never evidence)
 
-Catalog `us-places-acs2024-noaa1991-2020-character-hospital-v5`, normalization `discovery-winsorized-minmax-v1`, algorithm
+Catalog `us-places-acs2024-noaa1991-2020-character-hospital-v6`, normalization `discovery-winsorized-minmax-v1`, algorithm
 `place-discovery-v1`. Values are `null` when missing; any negative ACS value (including the
 `-666666666` and `-999999999` annotations) is stored as `null`. These fields are not
 `ObservationRecord` values and never enter `execute_run`. Bounds are the 5th and 95th percentiles
@@ -52,7 +52,11 @@ Catalog `us-places-acs2024-noaa1991-2020-character-hospital-v5`, normalization `
 
 Each place also carries a `climate_sources` provenance cell (station id, name, and miles for the
 temperature, precipitation, and snowfall joins) and a `hospital_source` cell (CMS facility id,
-facility name, and miles, matching `hospital_distance_mi`). The manifest records
+facility name, miles matching `hospital_distance_mi`, and location method: `census_geocoder` when
+the Census Geocoder matched the street address, `zcta_centroid` when the facility was placed at
+its ZIP Code Tabulation Area centroid). Discovery rejects the catalog when a `hospital_source` has
+any other location method or none. Discovery results show it as
+`hospital_source.location_method`. The manifest records
 `hospital_facilities`: emergency facilities read from the CMS file, how many were located, how
 many of those the Census Geocoder matched (`census_geocoder`) and how many fell back to a ZCTA
 centroid (`zcta_centroid`), and how many were left out because the geocoder had no match and

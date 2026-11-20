@@ -61,7 +61,7 @@
       "upper": 483.8
     }
   },
-  "catalog_version": "us-places-acs2024-noaa1991-2020-character-hospital-v5",
+  "catalog_version": "us-places-acs2024-noaa1991-2020-character-hospital-v6",
   "character_join": "Elevation, shoreline distance, and large-metro distance are measured from the Census place centroid. Elevation is the GNIS populated place of the same name in the same state within 5 miles; it is left missing when none reports one. Large metros are Census metropolitan areas with 1,000,000+ people (ACS B01003); their principal cities are the places named in the metro title.",
   "climate_join": "Each place uses the nearest NOAA station within 30 miles that reports the needed normals, measured from the Census place centroid. Station elevation is not compared; values are left missing when no station qualifies.",
   "coverage": {
@@ -228,7 +228,7 @@
     "unlocated": 23,
     "zcta_centroid": 725
   },
-  "hospital_join": "Each place uses the nearest hospital in the pinned CMS Hospital General Information file whose Emergency Services field is Yes, in straight-line (great-circle) miles from the Census place centroid. A facility is located at its street address by the Census Geocoder (Public_AR_Census2020 benchmark, Match rows only); one without a match is located at the centroid of its ZIP Code Tabulation Area, and one whose ZIP Code is not a ZCTA either is left out. There is no distance cap, drive time is not estimated, and the value is left missing only when no located facility exists. The facility id, name, and miles are kept per place.",
+  "hospital_join": "Each place uses the nearest hospital in the pinned CMS Hospital General Information file whose Emergency Services field is Yes, in straight-line (great-circle) miles from the Census place centroid. A facility is located at its street address by the Census Geocoder (Public_AR_Census2020 benchmark, Match rows only); one without a match is located at the centroid of its ZIP Code Tabulation Area, and one whose ZIP Code is not a ZCTA either is left out. There is no distance cap, drive time is not estimated, and the value is left missing only when no located facility exists. The facility id, name, miles, and location method (census_geocoder or zcta_centroid) are kept per place.",
   "inputs": {
     "b01001": {
       "sha256": "1637b18a96881b81e050df1cd3d5ac38a33208b9b69b40e1dbeb3c4e13718f0e",
@@ -303,9 +303,9 @@
   },
   "normalization_version": "discovery-winsorized-minmax-v1",
   "output_file": "place-catalog.csv.gz",
-  "output_sha256": "48ce6649f2f20a3a2c99d2cc4ed09708eafad1b9a34466e40fd9d4877edc45d2",
+  "output_sha256": "4b5a5f6acb3a692e6110fb1f55c1df99f984a49bf9a83837eb9c19a1d06e1993",
   "row_count": 32041,
   "sentinel_policy": "Every negative ACS estimate (including -666666666 and -999999999) becomes null.",
   "serving_universe": "places with known population >= 2500",
-  "uncompressed_sha256": "980db4fdf70f02e4046cb9b45fadd758d4994cc18ddd6c2e7d8ec8eeb754bbb9"
+  "uncompressed_sha256": "4213a97dd63682db1d196fd1302a680a4a0e8c54418f9656a2b43b2788b45313"
 }

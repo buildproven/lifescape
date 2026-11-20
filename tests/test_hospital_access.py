@@ -79,8 +79,8 @@ def test_only_located_emergency_hospitals_in_catalog_states_are_kept() -> None:
     hospitals, counts = build.read_cms_hospitals(data, CENTROIDS)
 
     assert hospitals == [
-        ("010001", "ONE, MEDICAL CENTER", 35.0, -80.0),
-        ("010005", "ANCHORAGE HOSPITAL", 61.2, -149.9),
+        ("010001", "ONE, MEDICAL CENTER", 35.0, -80.0, "zcta_centroid"),
+        ("010005", "ANCHORAGE HOSPITAL", 61.2, -149.9, "zcta_centroid"),
     ]
     assert counts == {"emergency_facilities": 3, "located": 2, "unlocated": 1}
 
@@ -97,7 +97,11 @@ def test_cms_file_with_a_repeated_facility_or_missing_column_stops_the_build() -
 
 def test_nearest_hospital_is_the_closest_and_ties_break_by_facility_id() -> None:
     index = build.HospitalIndex(
-        [("B", "Bravo", 35.1, -80.0), ("A", "Alpha", 34.9, -80.0), ("C", "Far", 36.0, -80.0)]
+        [
+            ("B", "Bravo", 35.1, -80.0, "zcta_centroid"),
+            ("A", "Alpha", 34.9, -80.0, "zcta_centroid"),
+            ("C", "Far", 36.0, -80.0, "zcta_centroid"),
+        ]
     )
 
     found = index.nearest(35.0, -80.0)
@@ -110,12 +114,18 @@ def test_nearest_hospital_is_the_closest_and_ties_break_by_facility_id() -> None
 def test_nearest_hospital_matches_brute_force_including_remote_and_antimeridian_places() -> None:
     generator = random.Random(1111)
     hospitals = [
-        (f"H{n:03d}", f"Hospital {n}", generator.uniform(25, 49), generator.uniform(-124, -70))
+        (
+            f"H{n:03d}",
+            f"Hospital {n}",
+            generator.uniform(25, 49),
+            generator.uniform(-124, -70),
+            "census_geocoder",
+        )
         for n in range(120)
     ] + [
-        ("AK1", "Anchorage", 61.2, -149.9),
-        ("AL1", "Adak", 51.88, 179.6),
-        ("HI1", "Honolulu", 21.3, -157.9),
+        ("AK1", "Anchorage", 61.2, -149.9, "census_geocoder"),
+        ("AL1", "Adak", 51.88, 179.6, "census_geocoder"),
+        ("HI1", "Honolulu", 21.3, -157.9, "census_geocoder"),
     ]
     index = build.HospitalIndex(hospitals)
     points = [(generator.uniform(25, 49), generator.uniform(-124, -70)) for _ in range(150)] + [
@@ -139,11 +149,13 @@ def test_no_hospital_in_the_source_leaves_the_distance_and_facility_blank() -> N
 
 
 def test_distance_cell_and_provenance_agree_and_keep_the_facility_name() -> None:
-    index = build.HospitalIndex([("010001", 'ST. "LUKE\'S" CAFÉ HOSPITAL', 35.2, -80.0)])
+    index = build.HospitalIndex(
+        [("010001", 'ST. "LUKE\'S" CAFÉ HOSPITAL', 35.2, -80.0, "census_geocoder")]
+    )
 
     cell, source = build.hospital_for(35.0, -80.0, index)
 
-    facility, name, miles = json.loads(source)
+    facility, name, miles, _method = json.loads(source)
     assert (facility, name) == ("010001", 'ST. "LUKE\'S" CAFÉ HOSPITAL')
     assert cell == f"{miles:.1f}" and float(cell) == miles
     assert miles == pytest.approx(13.8, abs=0.2)
@@ -162,13 +174,18 @@ def _gazetteer_place(geoid: str, lat: str, lon: str) -> dict[str, str]:
 
 def test_built_rows_record_the_hospital_and_leave_it_blank_without_an_index() -> None:
     places = [_gazetteer_place("3700001", "35.0", "-80.0")]
-    index = build.HospitalIndex([("010001", "ONE MEDICAL CENTER", 35.1, -80.0)])
+    index = build.HospitalIndex([("010001", "ONE MEDICAL CENTER", 35.1, -80.0, "zcta_centroid")])
 
     (with_hospital,) = build.build_rows(places, {}, [], None, index)
     (without,) = build.build_rows(places, {}, [])
 
     assert with_hospital["hospital_distance_mi"] == "6.9"
-    assert json.loads(with_hospital["hospital_source"]) == ["010001", "ONE MEDICAL CENTER", 6.9]
+    assert json.loads(with_hospital["hospital_source"]) == [
+        "010001",
+        "ONE MEDICAL CENTER",
+        6.9,
+        "zcta_centroid",
+    ]
     assert without["hospital_distance_mi"] == "" and without["hospital_source"] == ""
 
 
@@ -265,7 +282,7 @@ def test_recommendation_api_returns_the_hospital_facility_and_straight_line_labe
     assert response.status_code == 200
     for item in response.json()["recommendations"]:
         source = item["hospital_source"]
-        assert set(source) == {"facility", "name", "miles"} and source["name"]
+        assert set(source) == {"facility", "name", "miles", "location_method"} and source["name"]
         reason = next(r for r in item["reasons"] if r["field"] == "hospital_distance_mi")["text"]
         assert source["name"] in reason
 
@@ -283,11 +300,12 @@ BOUNDS = {field: {"lower": 0.0, "upper": 100.0} for field in SCORED_FIELDS}
 BOUNDS["population"]["upper"] = 10000.0
 BOUNDS["median_home_value"]["upper"] = 1000.0
 FACILITY = ("010001", "SOUTHEAST HEALTH MEDICAL CENTER")
+METHOD = "census_geocoder"
 NO_QUALITIES = (None,) * 8  # climate and place-character qualities
 
 
 def _source(miles: float) -> str:
-    return json.dumps([*FACILITY, miles])
+    return json.dumps([*FACILITY, miles, METHOD])
 
 
 def _row(name: str, miles: float | None) -> tuple[str, str, float | None, ...]:
@@ -330,7 +348,7 @@ def test_shipped_hospital_distance_names_its_facility_and_is_never_drive_time() 
         value = place.values["hospital_distance_mi"]
         assert (value is None) == (place.hospital_source is None), place.place_id
         if place.hospital_source is not None:
-            facility, name, miles = place.hospital_source
+            facility, name, miles, _method = place.hospital_source
             assert facility and name and miles == value
     traverse = real.lookup("Traverse City, MI")[0]
     assert traverse.hospital_source is not None
@@ -345,7 +363,7 @@ def test_a_place_with_no_hospital_in_the_source_is_null_not_imputed() -> None:
 
     assert catalog.places["NONE"].values["hospital_distance_mi"] is None
     assert catalog.places["NONE"].hospital_source is None
-    assert catalog.places["NEAR"].hospital_source == (*FACILITY, 8.3)
+    assert catalog.places["NEAR"].hospital_source == (*FACILITY, 8.3, METHOD)
     result = DiscoveryService(catalog).search(SearchProfile(exemplars=("NEAR",)))
     remote = next(item for item in result["recommendations"] if item["place_id"] == "NONE")
     assert "hospital_distance_mi" in remote["missing_fields"]
@@ -359,9 +377,9 @@ def test_a_place_with_no_hospital_in_the_source_is_null_not_imputed() -> None:
         ("", 8.3, "without a facility"),
         (_source(8.3), None, "does not match"),
         (_source(8.3), 9.0, "does not match"),
-        ('["010001","",8.3]', 8.3, "invalid hospital source"),
-        ('["010001","Name",-1]', 8.3, "invalid hospital source"),
-        ('["010001","Name",true]', 8.3, "invalid hospital source"),
+        ('["010001","",8.3,"census_geocoder"]', 8.3, "invalid hospital source"),
+        ('["010001","Name",-1,"census_geocoder"]', 8.3, "invalid hospital source"),
+        ('["010001","Name",true,"census_geocoder"]', 8.3, "invalid hospital source"),
         ('["010001","Name"]', 8.3, "invalid hospital source"),
         ('{"id":"x"}', 8.3, "invalid hospital source"),
         ("not json", 8.3, "could not be parsed"),
@@ -396,4 +414,9 @@ def test_match_card_hospital_reason_shows_the_facility_name_and_straight_line_mi
         "Nearest emergency hospital: 8.3 straight-line miles to SOUTHEAST HEALTH MEDICAL "
         "CENTER. Close to 10.0 straight-line miles in Example, NC."
     )
-    assert alpha["hospital_source"] == {"facility": FACILITY[0], "name": FACILITY[1], "miles": 8.3}
+    assert alpha["hospital_source"] == {
+        "facility": FACILITY[0],
+        "name": FACILITY[1],
+        "miles": 8.3,
+        "location_method": METHOD,
+    }

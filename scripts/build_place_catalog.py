@@ -46,6 +46,7 @@ from typing import Any, NamedTuple
 
 from lifescape.discovery import (
     CATALOG_COLUMNS,
+    HOSPITAL_LOCATION_METHODS,
     MINIMUM_SERVING_POPULATION,
     NORMALIZATION_VERSION,
     SCORED_FIELDS,
@@ -112,7 +113,7 @@ ELEVATION_RADIUS_MILES = 5.0
 EXACT_SHORE_MILES = 60.0  # nearer than this, distance is measured to the shoreline segments
 FAR_SHORE_SPACING_MILES = 4.0  # farther, to shoreline vertices thinned to this spacing
 SHORE_CELL_DEGREES = 0.5
-CATALOG_VERSION = "us-places-acs2024-noaa1991-2020-character-hospital-v5"
+CATALOG_VERSION = "us-places-acs2024-noaa1991-2020-character-hospital-v6"
 ACS_VINTAGE = "ACS 2020-2024 5-year estimates (released December 2025)"
 GAZETTEER_VINTAGE = "2024 Census Gazetteer"
 DATA_DATE = "2024-12-31"
@@ -607,7 +608,9 @@ def climate_for(
     return cells, json.dumps(sources, sort_keys=True, separators=(",", ":")) if sources else ""
 
 
-Hospital = tuple[str, str, float, float]  # CMS facility id, name, latitude, longitude
+# CMS facility id, name, latitude, longitude, and location method (HOSPITAL_LOCATION_METHODS)
+Hospital = tuple[str, str, float, float, str]
+CENSUS_GEOCODER, ZCTA_CENTROID = HOSPITAL_LOCATION_METHODS
 HOSPITAL_COLUMNS = ("Facility ID", "Facility Name", "State", "ZIP Code", "Emergency Services")
 ADDRESS_COLUMNS = ("Facility ID", "Address", "City/Town", "State", "ZIP Code")
 
@@ -798,7 +801,8 @@ def read_cms_hospitals(
     centroid of its ZIP Code Tabulation Area is the fallback. Returns the located hospitals and
     counts of emergency facilities read and left unlocated (no geocoder match and a ZIP Code that
     is not a ZCTA, such as a PO Box ZIP); with ``geocoded``, also how many each method located.
-    An unlocated facility is dropped, never placed by guesswork.
+    Each hospital records the method that located it. An unlocated facility is dropped, never
+    placed by guesswork.
     """
     reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig")))
     missing = [column for column in HOSPITAL_COLUMNS if column not in (reader.fieldnames or ())]
@@ -815,17 +819,21 @@ def read_cms_hospitals(
         if row["Emergency Services"].strip() != "Yes" or row["State"].strip() not in STATE_REGIONS:
             continue
         emergency += 1
-        where = (geocoded or {}).get(facility) or centroids.get(row["ZIP Code"].strip())
-        if where is not None:
-            hospitals.append((facility, row["Facility Name"].strip(), *where))
+        name = row["Facility Name"].strip()
+        address = (geocoded or {}).get(facility)
+        centroid = centroids.get(row["ZIP Code"].strip())
+        if address is not None:
+            hospitals.append((facility, name, *address, CENSUS_GEOCODER))
+        elif centroid is not None:
+            hospitals.append((facility, name, *centroid, ZCTA_CENTROID))
     counts = {
         "emergency_facilities": emergency,
         "located": len(hospitals),
         "unlocated": emergency - len(hospitals),
     }
     if geocoded is not None:
-        counts["census_geocoder"] = sum(hospital[0] in geocoded for hospital in hospitals)
-        counts["zcta_centroid"] = counts["located"] - counts["census_geocoder"]
+        for method in HOSPITAL_LOCATION_METHODS:
+            counts[method] = sum(hospital[4] == method for hospital in hospitals)
     return hospitals, counts
 
 
@@ -863,14 +871,17 @@ class HospitalIndex:
 
 
 def hospital_for(lat: float, lon: float, index: HospitalIndex | None) -> tuple[str, str]:
-    """Return the catalog distance cell and the provenance JSON; both blank without a hospital."""
+    """Return the catalog distance cell and the provenance JSON; both blank without a hospital.
+
+    The provenance is ``[facility id, facility name, miles, location method]``.
+    """
     found = None if index is None else index.nearest(lat, lon)
     if found is None:
         return "", ""
     hospital, miles = found
     miles = round(miles, 1)
     return number(miles, 1), json.dumps(
-        [hospital[0], hospital[1], miles], separators=(",", ":"), ensure_ascii=False
+        [hospital[0], hospital[1], miles, hospital[4]], separators=(",", ":"), ensure_ascii=False
     )
 
 
@@ -1234,7 +1245,8 @@ def build(refresh_geocoder: bool = False) -> tuple[bytes, dict[str, Any], bytes]
             "match is located at the centroid of its ZIP Code Tabulation Area, and one whose ZIP "
             "Code is not a ZCTA either is left out. There is "
             "no distance cap, drive time is not estimated, and the value is left missing only "
-            "when no located facility exists. The facility id, name, and miles are kept per place."
+            "when no located facility exists. The facility id, name, miles, and location method "
+            f"({' or '.join(HOSPITAL_LOCATION_METHODS)}) are kept per place."
         ),
         "hospital_facilities": hospital_counts,
         "sentinel_policy": SENTINEL_POLICY,

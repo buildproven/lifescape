@@ -85,6 +85,9 @@ CATALOG_COLUMNS: Final[tuple[str, ...]] = (
     "hospital_source",
 )
 REGIONS: Final = ("Northeast", "Midwest", "South", "West")
+# How the catalog builder located a hospital: its street address by the Census Geocoder, or the
+# centroid of its ZIP Code Tabulation Area when the geocoder had no match.
+HOSPITAL_LOCATION_METHODS: Final[tuple[str, ...]] = ("census_geocoder", "zcta_centroid")
 
 _REGION_STATES: Final[dict[str, str]] = {
     "Northeast": "CT ME MA NH RI VT NJ NY PA",
@@ -217,7 +220,7 @@ class Place:
     region: str
     values: dict[str, float | None]
     climate_sources: dict[str, tuple[str, str, float]] = dataclass_field(default_factory=dict)
-    hospital_source: tuple[str, str, float] | None = None
+    hospital_source: tuple[str, str, float, str] | None = None
 
     @property
     def population(self) -> float | None:
@@ -403,12 +406,14 @@ def _parse_climate_sources(
 
 def _parse_hospital_source(
     raw: str, place_id: str, values: dict[str, float | None]
-) -> tuple[str, str, float] | None:
-    """Nearest-hospital provenance as ``(facility id, facility name, miles)``; blank means none.
+) -> tuple[str, str, float, str] | None:
+    """Nearest-hospital provenance as ``(facility id, facility name, miles, location method)``;
+    blank means none.
 
     The distance and its facility travel together: a distance without a facility, a facility
     without a distance, or a facility whose miles differ from the distance makes the catalog
-    unusable rather than silently unattributed.
+    unusable rather than silently unattributed. The location method must be one of
+    ``HOSPITAL_LOCATION_METHODS``, so the precision of the distance is never unstated.
     """
     distance = values["hospital_distance_mi"]
     if not raw:
@@ -416,9 +421,9 @@ def _parse_hospital_source(
             raise ValueError(f"hospital distance without a facility for {place_id}")
         return None
     parsed = json.loads(raw)
-    if not (isinstance(parsed, list) and len(parsed) == 3):
+    if not (isinstance(parsed, list) and len(parsed) == 4):
         raise ValueError(f"invalid hospital source for {place_id}")
-    facility, name, miles = parsed
+    facility, name, miles, method = parsed
     if not (
         isinstance(facility, str)
         and isinstance(name, str)
@@ -427,11 +432,12 @@ def _parse_hospital_source(
         and not isinstance(miles, bool)
         and math.isfinite(miles)
         and miles >= 0
+        and method in HOSPITAL_LOCATION_METHODS
     ):
         raise ValueError(f"invalid hospital source for {place_id}")
     if distance is None or distance != miles:
         raise ValueError(f"hospital facility does not match the distance for {place_id}")
-    return (facility, name, float(miles))
+    return (facility, name, float(miles), method)
 
 
 def format_value(field_unit: str, value: float) -> str:
@@ -835,6 +841,7 @@ class DiscoveryService:
                 "facility": place.hospital_source[0],
                 "name": place.hospital_source[1],
                 "miles": place.hospital_source[2],
+                "location_method": place.hospital_source[3],
             },
             "catalog_version": self.catalog.catalog_version,
             "data_date": self.catalog.data_date,

@@ -108,9 +108,12 @@ def test_r1_geocoded_address_wins_and_the_zcta_centroid_is_only_a_fallback() -> 
     hospitals, counts = build.read_cms_hospitals(CMS, CENTROIDS, geocoded)
 
     assert hospitals == [
-        ("010001", "SOUTHEAST HEALTH MEDICAL CENTER", 31.2, -85.36),  # address, not centroid
-        ("010055", "FLOWERS HOSPITAL", 31.236, -85.4577),  # PO Box ZIP 36302 is not a ZCTA
-        ("340001", "ONE, MEDICAL CENTER", 35.0, -80.0),  # unmatched: ZCTA centroid fallback
+        # address, not centroid
+        ("010001", "SOUTHEAST HEALTH MEDICAL CENTER", 31.2, -85.36, "census_geocoder"),
+        # PO Box ZIP 36302 is not a ZCTA
+        ("010055", "FLOWERS HOSPITAL", 31.236, -85.4577, "census_geocoder"),
+        # unmatched: ZCTA centroid fallback
+        ("340001", "ONE, MEDICAL CENTER", 35.0, -80.0, "zcta_centroid"),
     ]
     assert counts == {
         "emergency_facilities": 4,
