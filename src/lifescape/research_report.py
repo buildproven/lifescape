@@ -102,10 +102,18 @@ def build_research_cards(
             )
             continue
         if not unresolved:
-            raise ResearchReportError(
-                f"{place_id!r} is decision-ready; either omit it from this research queue "
-                "or designate it as an investigation lead"
+            cards.append(
+                ResearchCard(
+                    place_id=place_id,
+                    town=f"{place.name}, {place.state}",
+                    bucket="Decision ready",
+                    reason="Every critical gate has validated evidence; compare it with others",
+                    unresolved_critical_metrics=(),
+                    next_action=None,
+                    source_url=None,
+                )
             )
+            continue
         cards.append(
             ResearchCard(
                 place_id=place_id,
@@ -130,7 +138,7 @@ def write_research_report(
 ) -> tuple[Path, Path, Path]:
     """Write deterministic Markdown and CSV research artifacts without score fields."""
     output_dir.mkdir(parents=True, exist_ok=True)
-    buckets = ("Investigate now", "Known reject", "Insufficient evidence")
+    buckets = ("Investigate now", "Decision ready", "Known reject", "Insufficient evidence")
     counts = {bucket: sum(card.bucket == bucket for card in cards) for bucket in buckets}
     markdown_lines = [
         "# Retirement research shortlist",

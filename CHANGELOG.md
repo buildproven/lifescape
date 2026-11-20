@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- **Research shortlist lists decision-ready towns (BUI-1995).** `lifescape research-report` no
+  longer stops with an error when a town has validated evidence for every critical gate. The
+  shortlist now puts that town in a "Decision ready" bucket and counts it in the field summary.
+
 - **Whole numbers round the same in the browser (BUI-1487).** Miles, days, inches, feet, and
   density now round exact .5 ties half to even in the browser, as the server does, so a match
   card reads the same before and after it is re-rendered (for example 2.5 miles reads "2 miles").

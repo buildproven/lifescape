@@ -61,7 +61,7 @@ from lifescape.research import (
     require_complete_packet_evidence,
     state_for,
 )
-from lifescape.research_report import ResearchReportError, build_research_cards, next_action_for
+from lifescape.research_report import build_research_cards, next_action_for
 from lifescape.research_sources import ConnectorEvidenceProvider, EvidenceFetchResult
 from lifescape.research_workspace import ResearchWorkspace, StoredResearchPacket
 from lifescape.resources import bundled_config
@@ -626,23 +626,8 @@ def create_server(
                 as_of=evaluated_as_of,
             )
             gates = load_gates(config).gates
-        place = run.places[0]
         synthetic = any(item.source.synthetic for item in run.observations)
-        try:
-            (card,) = build_research_cards(run, audit, gates)
-        except ResearchReportError:
-            # Raised only when every critical gate has ready, validated evidence.
-            return {
-                "place_id": place.place_id,
-                "town": f"{place.name}, {place.state}",
-                "bucket": "Decision ready",
-                "reason": "Every critical gate has validated evidence; compare it with others",
-                "unresolved_critical_metrics": [],
-                "next_action": None,
-                "next_actions": [],
-                "source_url": None,
-                "synthetic_evidence": synthetic,
-            }
+        (card,) = build_research_cards(run, audit, gates)
         return {
             "place_id": card.place_id,
             "town": card.town,
