@@ -355,19 +355,28 @@ def test_req_pkt_3_incomplete_packet_reports_the_completeness_message(
 
     result = _call(output, tool, {**_tool_arguments(tool), "packet_id": packet_id})
 
-    assert result.is_error
-    assert str(expected.value) in _text(result)
-    assert LAKE_GENEVA in _text(result)
+    # BUI-2031: inspection reports the open critical values; only comparison refuses.
+    if tool == "compare_finalists":
+        assert result.is_error
+        assert str(expected.value) in _text(result)
+        assert LAKE_GENEVA in _text(result)
+    elif tool == "inspect_evidence":
+        assert _ok(result)["critical_metrics_needed"] == {NEW_BERN: [], LAKE_GENEVA: list(CRITICAL)}
+    else:
+        assert _ok(result)["place_id"] == NEW_BERN
 
 
 def test_req_pkt_3_packet_without_approvals_is_incomplete(tmp_path: Path) -> None:
     output = tmp_path / "mcp"
     packet_id = _fetch(output)
 
+    # BUI-2031: inspect_evidence lists every critical metric as still needed.
     result = _call(output, "inspect_evidence", {"packet_id": packet_id})
 
-    assert result.is_error
-    assert "critical evidence remains unapproved" in _text(result)
+    assert _ok(result)["critical_metrics_needed"] == {
+        NEW_BERN: list(CRITICAL),
+        LAKE_GENEVA: list(CRITICAL),
+    }
 
 
 # REQ-PKT-4 ---------------------------------------------------------------------------------
