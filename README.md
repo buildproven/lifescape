@@ -28,18 +28,16 @@ the hosted server, and `skills/lifescape` is the skill. Check it with `claude pl
 ### Run Lifescape on your computer
 
 To keep your data and reports on your computer instead, run the same tools as a local stdio
-server. Build the two packages once from a checkout (needs git and Node.js):
+server. Build the two packages once from a checkout (needs Node.js and `zip`):
 
 ```bash
-rm -rf dist/bundle && mkdir -p dist/bundle
-git archive HEAD | tar -x -C dist/bundle
-npx --yes @anthropic-ai/mcpb@2.1.2 pack dist/bundle dist/lifescape.mcpb
-(cd skills && zip -r ../dist/lifescape-skill.zip lifescape)
+make mcpb
 ```
 
 This writes `dist/lifescape.mcpb` (the desktop extension, packed from `manifest.json`) and
-`dist/lifescape-skill.zip` (the skill ZIP). `git archive` packs only tracked files, so the local
-`.venv` and `node_modules` stay out of the extension.
+`dist/lifescape-skill.zip` (the skill ZIP), and replaces any earlier copies. `.mcpbignore` keeps
+the local `.venv`, `node_modules`, `outputs`, `.git`, and caches out of the extension, so you can
+pack from a working checkout.
 
 - **Claude Desktop:** go to Settings > Desktop app, select "Manage" next to Extensions (older
   layout: Settings > Extensions), open "Advanced settings", click "Install Extension…", and

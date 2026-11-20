@@ -1,0 +1,28 @@
+# Files `mcpb pack .` leaves out of lifescape.mcpb (gitignore syntax, on top of mcpb's own
+# defaults). Patterns carry no trailing slash: mcpb checks a directory by its bare path.
+
+# Local environments and installed packages
+.venv
+node_modules
+
+# Version control, generated output, and built packages
+.git
+outputs
+dist
+coverage
+.coverage
+.vercel
+
+# Caches and compiled Python
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.cache
+
+# Local data, secrets, and editor or agent state
+*.sqlite
+.env*
+.DS_Store
+.claude
