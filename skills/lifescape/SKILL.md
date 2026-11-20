@@ -17,7 +17,7 @@ approvals. If the Lifescape tools are not available, say that the connector is n
 stop. Do not suggest or rank towns from your own knowledge instead.
 
 `explain_town`, `inspect_evidence`, and `compare_finalists` read the approved values of a
-research packet: pass the `packet_id` that `fetch_live_evidence` returned and `approve_evidence`
+research packet: pass the packet_id that `fetch_live_evidence` returned and `approve_evidence`
 used, never a file path. The hosted server cannot open a file. If a tool reports that the packet
 is not found or that critical evidence remains unapproved, tell the owner what is missing; do not
 make up a value or a file.
@@ -46,18 +46,18 @@ make up a value or a file.
 2. **Shortlist.** Ask the owner to keep, drop, or mark each match unsure. Keep at least three
    towns. The owner can add any town by name; look it up with `find_place`.
 3. **Gather evidence.** Use `fetch_live_evidence` for the shortlisted towns to fetch
-   public-source values (Census ACS, NOAA) into one research packet, and keep its `packet_id`.
+   public-source values (Census ACS, NOAA) into one research packet, and keep its packet_id.
    Each fetched value is a proposal, not evidence. Fetch failures and missing source
    geographies stay listed; do not fill them in. After `approve_evidence`, use `explain_town`
-   and `inspect_evidence` with that `packet_id` (never a file path) to show the evidence each
+   and `inspect_evidence` with that packet_id (never a file path) to show the evidence each
    town still needs and to check the approved values.
 4. **The owner approves.** Show each proposed value with its source, observation date, and
-   geography. Call `approve_evidence` with the `packet_id` for one value only after the owner
+   geography. Call `approve_evidence` with the packet_id for one value only after the owner
    confirms it in this chat, with the owner's name as the reviewer. If the owner rejects a value
    or does not answer, do not approve it. The tools read the packet only when every town in it
    has approved critical evidence; until then they name the values still unapproved.
 5. **Compare finalists.** After `approve_evidence`, use `compare_finalists` with the finalists'
-   place IDs and the `packet_id`, never a file path. Report each ranked town with its score and
+   place IDs and the packet_id, never a file path. Report each ranked town with its score and
    rank stability, and each blocked town with the gate that blocks it and the evidence that is
    missing. Use `export_report` to give the owner the Markdown, CSV, and SQLite reports of the
    run.

@@ -253,6 +253,14 @@ def test_req_pkt_1_packet_calls_leave_no_evidence_file_and_change_no_packet(
     monkeypatch.setattr(tempfile, "tempdir", str(system_temp))
     before = ResearchWorkspace(output / "research-workspace").load()
     files_before = {path for path in output.rglob("*") if path.is_file()}
+    path_open = Path.open
+
+    def refuse_evidence_file(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path.suffix == ".csv" and "evidence" in path.name:
+            raise AssertionError(f"packet call opened an evidence file: {path}")
+        return path_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", refuse_evidence_file)
 
     _ok(_call(output, "inspect_evidence", {"packet_id": packet_id}))
     _ok(_call(output, "explain_town", {"place_id": NEW_BERN, "packet_id": packet_id}))

@@ -21,8 +21,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from functools import cache, wraps
+from io import StringIO
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Annotated, Any, cast
 
 from mcp.server.auth.provider import TokenVerifier
@@ -127,6 +127,29 @@ class _EvidenceInput:
 
     path: Path
     identity: str
+    in_memory: bool = False
+
+
+class _InMemoryEvidence:
+    """Path-shaped, read-only CSV input for approved packet evidence."""
+
+    def __init__(self, text: str, label: str) -> None:
+        self._text = text
+        self._label = label
+
+    def open(
+        self, mode: str = "r", *, encoding: str | None = None, newline: str | None = None
+    ) -> StringIO:
+        del encoding
+        if mode not in {"r", "rt"}:
+            raise OSError(f"{self._label} is read-only")
+        return StringIO(self._text, newline=newline)
+
+    def read_bytes(self) -> bytes:
+        return self._text.encode()
+
+    def __str__(self) -> str:
+        return self._label
 
 
 ToolFunction = Callable[..., dict[str, Any]]
@@ -181,7 +204,7 @@ def _parse_date(value: str | None) -> date | None:
     return None if value is None else date.fromisoformat(value)
 
 
-def _select_evidence(evidence: Path, place_ids: tuple[str, ...], destination: Path) -> Path:
+def _select_evidence(evidence: Path, place_ids: tuple[str, ...], destination: Path | None) -> Path:
     """Copy only the requested towns' rows, verbatim, so ranks compare finalists only."""
     with evidence.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -194,6 +217,12 @@ def _select_evidence(evidence: Path, place_ids: tuple[str, ...], destination: Pa
     missing = sorted(wanted - {row["place_id"] for row in rows})
     if missing:
         raise EvidenceSelectionError(f"evidence CSV has no rows for place IDs: {missing}")
+    if destination is None:
+        output = StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+        return cast(Path, _InMemoryEvidence(output.getvalue(), f"{evidence}:selected"))
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
@@ -373,10 +402,8 @@ def create_server(
             metrics = load_metrics(config)
         require_complete_packet_evidence(stored.packet, metrics, stored.promotions)
         csv_text = export_approved_evidence(stored.promotions, metrics)
-        with TemporaryDirectory(prefix="lifescape-packet-") as staging:
-            path = Path(staging) / f"{packet_id}-approved-evidence.csv"
-            path.write_text(csv_text, encoding="utf-8")
-            yield _EvidenceInput(path=path, identity=f"packet:{packet_id}")
+        path = cast(Path, _InMemoryEvidence(csv_text, f"packet:{packet_id}"))
+        yield _EvidenceInput(path=path, identity=f"packet:{packet_id}", in_memory=True)
 
     @cache
     def discovery() -> DiscoveryService:
@@ -384,7 +411,7 @@ def create_server(
 
     def run_engine(
         config: Path,
-        evidence: Path,
+        evidence: _EvidenceInput,
         place_ids: tuple[str, ...],
         work_dir: Path,
         as_of: date | None,
@@ -392,7 +419,8 @@ def create_server(
         brief = config / LIVE_RESEARCH_BRIEF
         if load_configuration(config, None, brief).research_brief.benchmark_only:
             raise ValueError(f"{brief} is benchmark-only; real comparisons need a live brief")
-        selected = _select_evidence(evidence, place_ids, work_dir / "selected-evidence.csv")
+        destination = None if evidence.in_memory else work_dir / "selected-evidence.csv"
+        selected = _select_evidence(evidence.path, place_ids, destination)
         return execute_run(
             evidence_path=selected,
             config_dir=config,
@@ -481,7 +509,7 @@ def create_server(
             raise ValueError("place_ids must be distinct")
         with evidence_input(evidence_path, packet_id) as evidence, configuration() as config:
             work_dir = _work_dir(output_dir, "compare", evidence, ids)
-            run = run_engine(config, evidence.path, ids, work_dir, _parse_date(as_of))
+            run = run_engine(config, evidence, ids, work_dir, _parse_date(as_of))
             metric_ids = [metric.id for metric in load_metrics(config)]
             metric_by_gate = {gate.id: gate.metric_id for gate in load_gates(config).gates}
         gates_by_place = _gate_payload(run, metric_by_gate)
@@ -565,7 +593,7 @@ def create_server(
         with evidence_input(evidence_path, packet_id) as evidence, configuration() as config:
             manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
             work_dir = _work_dir(output_dir, "explain", evidence, (place_id,))
-            run = run_engine(config, evidence.path, (place_id,), work_dir, evaluated_as_of)
+            run = run_engine(config, evidence, (place_id,), work_dir, evaluated_as_of)
             audit = audit_manual_evidence(
                 evidence.path,
                 load_metrics(config),
