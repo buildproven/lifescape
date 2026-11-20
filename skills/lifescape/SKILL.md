@@ -1,6 +1,6 @@
 ---
 name: lifescape
-description: Evidence-backed retirement town decisions through the Lifescape MCP tools. Finds U.S. towns that feel like the owner's example towns or wanted qualities, helps build a shortlist, fetches public-source evidence (Census ACS, NOAA) as proposals the owner approves, and compares finalists with the strict engine, where critical gates eliminate, weights rank the survivors, and a sensitivity check shows how stable the ranks are. Runs on the owner's computer with a packaged place catalog. Use when the owner wants to find places to retire or move to, compare finalist towns, or see what evidence a town still needs. Triggers include "where should we retire", "towns like Traverse City", "find walkable towns with mild winters", "compare these towns", "what do we still need to know about this town".
+description: Evidence-backed retirement town decisions through the Lifescape MCP tools. Finds U.S. towns that feel like the owner's example towns or wanted qualities, helps build a shortlist, fetches public-source evidence (Census ACS, NOAA) as proposals the owner approves, and compares finalists with the strict engine, where critical gates eliminate, weights rank the survivors, and a sensitivity check shows how stable the ranks are. Uses the hosted Lifescape server and its packaged place catalog. Use when the owner wants to find places to retire or move to, compare finalist towns, or see what evidence a town still needs. Triggers include "where should we retire", "towns like Traverse City", "find walkable towns with mild winters", "compare these towns", "what do we still need to know about this town".
 ---
 
 # lifescape
@@ -11,9 +11,14 @@ score a town, fill in a value, or rank towns yourself.
 
 ## Requirements
 
-The Lifescape MCP server must be connected (the desktop extension in Claude Desktop, or
-`claude mcp add` in Claude Code). If its tools are not available, say so and stop. Do not
-suggest or rank towns from your own knowledge instead.
+This skill uses the hosted Lifescape MCP server that the plugin connects: the
+`lifescape` connector, signed in as the owner. The server keeps the research packets and the
+approvals. If the Lifescape tools are not available, say that the connector is not connected and
+stop. Do not suggest or rank towns from your own knowledge instead.
+
+`explain_town`, `inspect_evidence`, and `compare_finalists` read an evidence CSV that the server
+can open. If a tool reports that the evidence file is not found, tell the owner and stop; do not
+make up a value or a file.
 
 ## The rules
 
@@ -51,7 +56,7 @@ suggest or rank towns from your own knowledge instead.
    `compare_finalists` with their place IDs and the reviewed evidence CSV. Report each ranked
    town with its score and rank stability, and each blocked town with the gate that blocks it
    and the evidence that is missing. Use `export_report` to give the owner the Markdown, CSV,
-   and SQLite report paths of the run.
+   and SQLite reports of the run.
 
 ## Tools
 
@@ -62,7 +67,7 @@ suggest or rank towns from your own knowledge instead.
 - `fetch_live_evidence`: fetch public-source values as proposals into a research packet.
 - `approve_evidence`: record one value as approved by the named human owner.
 - `compare_finalists`: gate, rank, and stress-test finalists on reviewed evidence.
-- `export_report`: return the report file paths of a comparison run.
+- `export_report`: return the report files of a comparison run.
 
 ## When not to use
 

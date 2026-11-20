@@ -2,12 +2,33 @@
 
 ## Use Lifescape in Claude
 
-Lifescape runs as a local MCP server with eight tools and a skill that gives Claude the decision
-workflow: discover towns, build a shortlist, gather evidence, approve each value yourself, and
-compare finalists. The engines find, gate, and rank; Claude only explains the tool results. Your
-data and reports stay on your computer.
+Lifescape is a Claude plugin: a skill that gives Claude the decision workflow (discover towns,
+build a shortlist, gather evidence, approve each value yourself, and compare finalists) and a
+hosted MCP server with eight tools at `https://lifescape.buildproven.ai/api/mcp`. The engines
+find, gate, and rank; Claude only explains the tool results.
 
-Build the two packages once from a checkout (needs git and Node.js):
+Install it once on your claude.ai account; it then works in claude.ai on the web, the desktop
+app, the mobile apps, and Claude Code:
+
+1. In claude.ai, go to Customize > Plugins > Add > Add marketplace and enter
+   `buildproven/claude-plugins` (connect GitHub when asked). Turn on **Sync automatically**.
+2. Add the `lifescape` plugin.
+3. On the plugin's **Connectors** tab, connect the `lifescape` connector and sign in with the
+   owner's GitHub account. Only that account gets a token (see [Hosted MCP](#hosted-mcp)).
+
+In Claude Code you can also install it from the same marketplace:
+
+```text
+/plugin install lifescape --marketplace buildproven/claude-plugins
+```
+
+The repository root is the plugin: `.claude-plugin/plugin.json` names it, `.mcp.json` points at
+the hosted server, and `skills/lifescape` is the skill. Check it with `claude plugin validate .`.
+
+### Run Lifescape on your computer
+
+To keep your data and reports on your computer instead, run the same tools as a local stdio
+server. Build the two packages once from a checkout (needs git and Node.js):
 
 ```bash
 rm -rf dist/bundle && mkdir -p dist/bundle
