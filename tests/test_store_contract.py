@@ -513,3 +513,18 @@ def test_req_store_3_database_refusals_name_the_store(tmp_path: Path) -> None:
 
     assert not isinstance(caught.value, StoreUnavailableError)
     assert store.load_packets() == ()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgresql://owner:s3cret-value@db.example:notaport/lifescape",
+        "postgresql://owner:s3cret-value@[::1/lifescape",
+        "owner:s3cret-value@db.example/lifescape",
+    ],
+)
+def test_req_store_1_unparseable_database_url_names_the_store(tmp_path: Path, url: str) -> None:
+    with pytest.raises(StoreConfigError, match="database store URL cannot be parsed") as caught:
+        store_from_env(tmp_path, {STORE_ENV: "database", DATABASE_URL_ENV: url})
+
+    assert "s3cret-value" not in str(caught.value)

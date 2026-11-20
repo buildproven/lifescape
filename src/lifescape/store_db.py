@@ -71,8 +71,11 @@ class DatabaseStore:
         """Build the adapter without connecting; the first call connects."""
         try:
             parsed = make_url(url)
-        except ArgumentError as exc:
-            raise StoreConfigError(f"database store URL cannot be parsed: {exc}") from exc
+        except (ArgumentError, ValueError) as exc:
+            # The parser's text can quote parts of the URL, such as a password; leave it out.
+            raise StoreConfigError(
+                "database store URL cannot be parsed; check its scheme, host, and port"
+            ) from exc
         masked = parsed.render_as_string(hide_password=True)
         try:
             engine = create_engine(parsed, pool_pre_ping=True)
