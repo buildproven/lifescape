@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import Annotated, Any, cast
 from uuid import uuid4
 
+from mcp.server.auth.provider import TokenVerifier
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.tools import Tool
@@ -311,9 +313,13 @@ def create_server(
     output_dir: Path,
     config_dir: Path | None = None,
     live_connectors: ConnectorFactory = _default_connectors,
+    auth: AuthSettings | None = None,
+    token_verifier: TokenVerifier | None = None,
 ) -> MCPServer:
     """Build the Lifescape MCP server. ``config_dir`` defaults to the packaged config;
-    ``live_connectors`` builds the public-data connectors each ``fetch_live_evidence`` uses."""
+    ``live_connectors`` builds the public-data connectors each ``fetch_live_evidence`` uses.
+    ``auth`` and ``token_verifier`` make the hosted HTTP app an OAuth resource server
+    (``lifescape.mcp_http``); the stdio server leaves both unset."""
     workspace = ResearchWorkspace(output_dir / RESEARCH_WORKSPACE)
 
     @contextmanager
@@ -829,6 +835,8 @@ def create_server(
             "Never present a blocked town as ranked."
         ),
         tools=[_register(tool, annotations) for tool, annotations in tools],
+        auth=auth,
+        token_verifier=token_verifier,
     )
 
 
