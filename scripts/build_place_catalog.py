@@ -12,11 +12,14 @@ Inputs (all keyless, public, pinned by SHA-256 in the manifest):
 - CMS Hospital General Information (emergency-capable hospitals) located by street address with
   the pinned Public_AR_Census2020 Census Geocoder benchmark, or by the 2024 Census Gazetteer ZIP
   Code Tabulation Area centroid when the geocoder finds no match: straight-line miles to the
-  nearest one, with its name.
+  nearest one, with its name. The geocoder can match the same batch differently from one request
+  to the next, so its response is committed (data/place-catalog/census-geocoder-response.csv)
+  and a build reads it; only --refresh-geocoder sends the addresses to Census again.
 
 Usage:
     uv run python scripts/build_place_catalog.py            # build and write catalog + manifest
     uv run python scripts/build_place_catalog.py --verify   # rebuild; fail if output differs
+    uv run python scripts/build_place_catalog.py --refresh-geocoder  # geocode again; pin it
 
 Traceability: docs/decisions/ADR-place-discovery-contract.md, PRD FR4, FR5.
 """
@@ -117,6 +120,7 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 CATALOG_PATH = REPOSITORY / "src/lifescape/data/place-catalog.csv.gz"
 MANIFEST_PATH = REPOSITORY / "src/lifescape/data/place-catalog.manifest.json"
 CACHE = REPOSITORY / ".cache/place-catalog"
+GEOCODER_RESPONSE_PATH = REPOSITORY / "data/place-catalog/census-geocoder-response.csv"
 
 CAR_LIGHT_VARIABLES = ("B08301_E010", "B08301_E018", "B08301_E019", "B08301_E021")
 COLLEGE_VARIABLES = ("B15003_E022", "B15003_E023", "B15003_E024", "B15003_E025")
@@ -684,6 +688,47 @@ def census_geocode(
     return response
 
 
+def read_pinned_geocoder_response() -> bytes:
+    if not GEOCODER_RESPONSE_PATH.exists():
+        raise SystemExit(
+            f"no pinned Census Geocoder response at {GEOCODER_RESPONSE_PATH}; "
+            "run with --refresh-geocoder to geocode the CMS hospitals and pin one"
+        )
+    return GEOCODER_RESPONSE_PATH.read_bytes()
+
+
+def pinned_geocoder_response(addresses: list[list[str]], refresh: bool) -> bytes:
+    """The Census Geocoder response the catalog is built from.
+
+    Without ``refresh``, the committed ``GEOCODER_RESPONSE_PATH`` is read and nothing is sent
+    to Census; it must answer exactly the requested facilities. With ``refresh``, the addresses
+    are geocoded (a copy cached in ``CACHE`` for this exact request is reused, so a build that
+    fails after the POST does not send it again) and the caller rewrites the committed file.
+    """
+    if refresh:
+        return census_geocode(addresses, CACHE, post_geocoder_batch)
+    response = read_pinned_geocoder_response()
+    try:
+        read_geocoder_matches(response, (address[0] for address in addresses))
+    except SystemExit as exc:
+        raise SystemExit(
+            f"pinned {GEOCODER_RESPONSE_PATH} does not answer the CMS hospital file: {exc.code}; "
+            "run with --refresh-geocoder to pin a response for it"
+        ) from exc
+    return response
+
+
+def check_pinned_geocoder_digest(manifest: dict[str, Any]) -> None:
+    """Stop when the committed geocoder response is not the one the manifest records."""
+    recorded = manifest["inputs"]["census_geocoder"]["sha256"]
+    actual = sha256_bytes(read_pinned_geocoder_response())
+    if actual != recorded:
+        raise SystemExit(
+            f"pinned Census Geocoder response {GEOCODER_RESPONSE_PATH} has SHA-256 {actual}, "
+            f"but the manifest records {recorded}"
+        )
+
+
 def read_geocoder_matches(data: bytes, requested: Iterable[str]) -> dict[str, tuple[float, float]]:
     """Return ``{facility id: (latitude, longitude)}`` for each geocoder ``Match`` row.
 
@@ -1083,7 +1128,8 @@ def coverage_and_bounds(rows: list[dict[str, str]]) -> tuple[dict[str, Any], dic
     return coverage, bounds
 
 
-def build() -> tuple[bytes, bytes, dict[str, Any]]:
+def build(refresh_geocoder: bool = False) -> tuple[bytes, dict[str, Any], bytes]:
+    """Return the compressed catalog, its manifest, and the geocoder response used."""
     inputs: dict[str, dict[str, str]] = {}
     gazetteer_bytes = fetch(GAZETTEER_URL, CACHE / "2024_Gaz_place_national.zip")
     inputs["gazetteer"] = {
@@ -1133,7 +1179,7 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
         read_large_metros(downloaded["cbsa_gazetteer"], metro_population),
     )
     addresses = geocoder_addresses(downloaded["cms_hospitals"])
-    geocoder_response = census_geocode(addresses, CACHE)
+    geocoder_response = pinned_geocoder_response(addresses, refresh_geocoder)
     inputs["census_geocoder"] = {
         "url": f"{GEOCODER_URL}?benchmark={GEOCODER_BENCHMARK}",
         "vintage": GEOCODER_VINTAGE,
@@ -1197,28 +1243,48 @@ def build() -> tuple[bytes, bytes, dict[str, Any]]:
         "output_sha256": sha256_bytes(compressed),
         "uncompressed_sha256": sha256_bytes(raw),
     }
-    return raw, compressed, manifest
+    return compressed, manifest, geocoder_response
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true", help="fail if a rebuild differs")
-    args = parser.parse_args()
-    _, compressed, manifest = build()
-    text = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--verify",
+        action="store_true",
+        help="rebuild offline from the pinned geocoder response; fail unless the catalog and "
+        "manifest match the committed files byte for byte",
+    )
+    mode.add_argument(
+        "--refresh-geocoder",
+        action="store_true",
+        help="send the CMS hospital addresses to the Census Geocoder and rewrite the pinned "
+        "response, data/place-catalog/census-geocoder-response.csv",
+    )
+    args = parser.parse_args(argv)
+    if args.verify:  # before any download, so a wrong pin fails fast
+        check_pinned_geocoder_digest(json.loads(MANIFEST_PATH.read_text(encoding="utf-8")))
+    compressed, manifest, geocoder_response = build(refresh_geocoder=args.refresh_geocoder)
+    text = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
     if args.verify:
-        shipped = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-        if (
-            shipped["uncompressed_sha256"] != manifest["uncompressed_sha256"]
-            or shipped["inputs"] != manifest["inputs"]
-        ):
-            print("catalog rebuild does not match the shipped manifest", file=sys.stderr)
+        differs = [
+            path.name
+            for path, rebuilt in ((CATALOG_PATH, compressed), (MANIFEST_PATH, text))
+            if not path.exists() or path.read_bytes() != rebuilt
+        ]
+        if differs:
+            print(
+                f"catalog rebuild differs from the committed {', '.join(differs)}", file=sys.stderr
+            )
             return 1
-        print("catalog rebuild matches the shipped manifest")
+        print("catalog rebuild matches the committed catalog and manifest byte for byte")
         return 0
+    if args.refresh_geocoder:
+        GEOCODER_RESPONSE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        GEOCODER_RESPONSE_PATH.write_bytes(geocoder_response)
     CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     CATALOG_PATH.write_bytes(compressed)
-    MANIFEST_PATH.write_text(text, encoding="utf-8")
+    MANIFEST_PATH.write_bytes(text)
     print(f"wrote {manifest['row_count']} places; {CATALOG_PATH}")
     return 0
 
