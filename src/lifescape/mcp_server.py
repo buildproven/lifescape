@@ -9,7 +9,9 @@ Live-fetched evidence stays a proposal until ``approve_evidence`` records a name
 Research packets and run report indexes go through ``lifescape.store``; ``LIFESCAPE_STORE``
 picks local files or a hosted database. The evidence tools read either a local evidence CSV
 (``evidence_path``) or a stored packet's approved evidence (``packet_id``); the hosted database
-store has no owner files, so there they take ``packet_id`` only.
+store has no owner files, so there they take ``packet_id`` only. ``inspect_evidence`` and
+``explain_town`` report the critical values a packet still lacks; ``compare_finalists`` refuses a
+packet until every town has approved critical evidence.
 """
 
 from __future__ import annotations
@@ -46,7 +48,13 @@ from lifescape.discovery import (
 from lifescape.discovery import load_catalog as load_place_catalog
 from lifescape.evidence import EvidenceError, ingest_csv, validate_unique_headers
 from lifescape.evidence_audit import EvidenceAudit, audit_manual_evidence
-from lifescape.models import GateState, ObservationRecord, PlaceRecord, RunResult
+from lifescape.models import (
+    GateDefinition,
+    GateState,
+    ObservationRecord,
+    PlaceRecord,
+    RunResult,
+)
 from lifescape.pipeline import execute_run
 from lifescape.research import (
     MAX_DISCOVERY_LEADS,
@@ -67,7 +75,7 @@ from lifescape.research import (
 from lifescape.research import (
     reject_evidence as record_rejection,
 )
-from lifescape.research_report import build_research_cards, next_action_for
+from lifescape.research_report import ResearchCard, build_research_cards, next_action_for
 from lifescape.research_sources import (
     ConnectorEvidenceProvider,
     EvidenceFetchResult,
@@ -150,6 +158,7 @@ class _EvidenceInput:
     path: Path
     identity: str
     in_memory: bool = False
+    packet: StoredResearchPacket | None = None
 
 
 class _InMemoryEvidence:
@@ -321,6 +330,53 @@ def _audit_summary(audit: EvidenceAudit, metric_ids: Sequence[str]) -> list[dict
     return summary
 
 
+def _unapproved_lead(evidence: _EvidenceInput, place_id: str) -> PlaceRecord | None:
+    """The packet's lead for ``place_id`` when the packet has no approved value for it.
+
+    Such a town has no evidence row for the engine to read; every critical gate is unknown.
+    """
+    stored = evidence.packet
+    if stored is None:
+        return None
+    if any(item.observation.place.place_id == place_id for item in stored.promotions):
+        return None
+    return next(
+        (lead.place for lead in stored.packet.leads if lead.place.place_id == place_id), None
+    )
+
+
+def _unknown_gates_card(place: PlaceRecord, gates: tuple[GateDefinition, ...]) -> ResearchCard:
+    """The research card of a packet town with no approved evidence: every critical gate is
+    unknown, so the town is blocked and each gated metric is unresolved."""
+    unresolved = tuple(gate.metric_id for gate in gates)
+    return ResearchCard(
+        place_id=place.place_id,
+        town=f"{place.name}, {place.state}",
+        bucket="Insufficient evidence",
+        reason="No approved evidence in this packet; every critical gate is unknown",
+        unresolved_critical_metrics=unresolved,
+        next_action=next_action_for(unresolved[0] if unresolved else None),
+        source_url=None,
+    )
+
+
+def _card_payload(card: ResearchCard, *, synthetic: bool) -> dict[str, Any]:
+    return {
+        "place_id": card.place_id,
+        "town": card.town,
+        "bucket": card.bucket,
+        "reason": card.reason,
+        "unresolved_critical_metrics": list(card.unresolved_critical_metrics),
+        "next_action": card.next_action,
+        "next_actions": [
+            {"metric_id": metric_id, "action": next_action_for(metric_id)}
+            for metric_id in card.unresolved_critical_metrics
+        ],
+        "source_url": card.source_url,
+        "synthetic_evidence": synthetic,
+    }
+
+
 def _human_reviewer(
     packet_id: str, place_id: str, metric_id: str, reviewer: str
 ) -> FetchedPromotionRequest:
@@ -423,12 +479,12 @@ def create_server(
 
     @contextmanager
     def evidence_input(
-        evidence_path: str | None, packet_id: str | None
+        evidence_path: str | None, packet_id: str | None, *, require_complete: bool
     ) -> Iterator[_EvidenceInput]:
         """Yield the evidence CSV a tool reads: the owner's local file, or the packet's approved
-        promotions exported as the web app's evidence CSV into a temporary file that is removed
-        when the tool returns. A packet must have approved critical evidence for every
-        candidate, as the web export requires."""
+        promotions exported in memory as the web app's evidence CSV. With ``require_complete``
+        (comparison), a packet must have approved critical evidence for every candidate, as
+        the web export requires; without it (inspection), the packet's gaps stay readable."""
         both_or_neither = "pass exactly one of evidence_path or packet_id"
         if packet_id is None:
             if evidence_path is None:
@@ -448,10 +504,13 @@ def create_server(
             raise ValueError(f"research packet {packet_id} not found; call fetch_live_evidence")
         with configuration() as config:
             metrics = load_metrics(config)
-        require_complete_packet_evidence(stored.packet, metrics, stored.promotions)
+        if require_complete:
+            require_complete_packet_evidence(stored.packet, metrics, stored.promotions)
         csv_text = export_approved_evidence(stored.promotions, metrics)
         path = cast(Path, _InMemoryEvidence(csv_text, f"packet:{packet_id}"))
-        yield _EvidenceInput(path=path, identity=f"packet:{packet_id}", in_memory=True)
+        yield _EvidenceInput(
+            path=path, identity=f"packet:{packet_id}", in_memory=True, packet=stored
+        )
 
     @cache
     def discovery() -> DiscoveryService:
@@ -555,7 +614,10 @@ def create_server(
         ids = tuple(place_ids)
         if len(set(ids)) != len(ids):
             raise ValueError("place_ids must be distinct")
-        with evidence_input(evidence_path, packet_id) as evidence, configuration() as config:
+        with (
+            evidence_input(evidence_path, packet_id, require_complete=True) as evidence,
+            configuration() as config,
+        ):
             work_dir = _work_dir(output_dir, "compare", evidence, ids)
             run = run_engine(config, evidence, ids, work_dir, _parse_date(as_of))
             metric_ids = [metric.id for metric in load_metrics(config)]
@@ -640,10 +702,19 @@ def create_server(
         insufficient evidence, or decision ready), the critical evidence still unresolved, and
         the next research action for each unresolved metric. This does not rank towns. Evidence
         is a local evidence CSV (evidence_path) or a research packet's approved values
-        (packet_id)."""
+        (packet_id). A packet may still lack values: each critical metric without an approved
+        value is unknown, which blocks the town, and is listed as unresolved."""
         evaluated_as_of = _parse_date(as_of)
-        with evidence_input(evidence_path, packet_id) as evidence, configuration() as config:
+        with (
+            evidence_input(evidence_path, packet_id, require_complete=False) as evidence,
+            configuration() as config,
+        ):
             manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
+            unapproved = _unapproved_lead(evidence, place_id)
+            if unapproved is not None:
+                return _card_payload(
+                    _unknown_gates_card(unapproved, load_gates(config).gates), synthetic=False
+                )
             work_dir = _work_dir(output_dir, "explain", evidence, (place_id,))
             run = run_engine(config, evidence, (place_id,), work_dir, evaluated_as_of)
             audit = audit_manual_evidence(
@@ -656,20 +727,7 @@ def create_server(
             gates = load_gates(config).gates
         synthetic = any(item.source.synthetic for item in run.observations)
         (card,) = build_research_cards(run, audit, gates)
-        return {
-            "place_id": card.place_id,
-            "town": card.town,
-            "bucket": card.bucket,
-            "reason": card.reason,
-            "unresolved_critical_metrics": list(card.unresolved_critical_metrics),
-            "next_action": card.next_action,
-            "next_actions": [
-                {"metric_id": metric_id, "action": next_action_for(metric_id)}
-                for metric_id in card.unresolved_critical_metrics
-            ],
-            "source_url": card.source_url,
-            "synthetic_evidence": synthetic,
-        }
+        return _card_payload(card, synthetic=synthetic)
 
     def inspect_evidence(
         evidence_path: EvidencePath = None,
@@ -687,12 +745,17 @@ def create_server(
         """Check an evidence CSV before using it: the strict loader's validation errors, and
         for each town and metric the audit status (ready, or action required and why) and the
         metrics still missing. Evidence is a local evidence CSV (evidence_path) or a research
-        packet's approved values (packet_id). This reads only; it does not rank or change
+        packet's approved values (packet_id). For a packet, critical_metrics_needed lists each
+        town's critical metrics that still have no approved value (empty when the packet is
+        complete); it is null for an evidence_path. This reads only; it does not rank or change
         anything."""
         evaluated_as_of = _parse_date(as_of)
         errors: list[str] = []
         audit: EvidenceAudit | None = None
-        with evidence_input(evidence_path, packet_id) as source, configuration() as config:
+        with (
+            evidence_input(evidence_path, packet_id, require_complete=False) as source,
+            configuration() as config,
+        ):
             evidence = source.path
             manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
             loaded = load_configuration(config, None, config / LIVE_RESEARCH_BRIEF)
@@ -717,9 +780,21 @@ def create_server(
             except EvidenceError as exc:
                 errors.append(str(exc))
         metric_ids = [metric.id for metric in loaded.metrics]
+        packet = source.packet
+        needed = (
+            None
+            if packet is None
+            else {
+                place: list(metrics)
+                for place, metrics in readiness_for(
+                    packet.packet, loaded.metrics, packet.promotions
+                ).items()
+            }
+        )
         return {
             "evidence_path": None if packet_id is not None else str(evidence),
             "packet_id": packet_id,
+            "critical_metrics_needed": needed,
             "valid": not errors,
             "errors": errors,
             "as_of": None if audit is None else audit.as_of.isoformat(),
