@@ -18,6 +18,11 @@
 
 ### Added
 
+- **Reject a fetched value from chat (BUI-2017).** The MCP `reject_evidence` tool records the
+  named owner's rejection of one fetched value, with a reason, in its research packet.
+  `approve_evidence` then refuses that value. A reason that is only spaces, or under eight
+  characters after spaces are removed, is now refused.
+
 - **Product tour video.** The public landing page shows a 40-second recorded walkthrough of the
   local app (`static/tour.mp4`), with a poster and a text list of the steps.
 

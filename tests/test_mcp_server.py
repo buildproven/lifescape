@@ -33,6 +33,7 @@ TOOLS = {
     "inspect_evidence",
     "fetch_live_evidence",
     "approve_evidence",
+    "reject_evidence",
     "export_report",
 }
 GATE_STATES = {"PASS", "FAIL", "UNKNOWN", "WAIVED"}
