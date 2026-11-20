@@ -81,7 +81,7 @@ from lifescape.research_sources import (
     ResearchEvidenceProvider,
 )
 from lifescape.research_workspace import FetchSnapshot, ResearchWorkspace, StoredResearchPacket
-from lifescape.resources import bundled_benchmark
+from lifescape.resources import bundled_benchmark, bundled_config
 
 MAX_EVIDENCE_BYTES = 5_000_000
 MAX_RECOMMENDATION_BYTES = 65_536
@@ -806,7 +806,7 @@ def create_app(
             if not raw_evidence:
                 raise ValueError("evidence CSV is empty")
             csv_text = raw_evidence.decode("utf-8")
-            with bundled_benchmark() as (_, config_dir):
+            with bundled_config() as config_dir:
                 metric_ids = tuple(metric.id for metric in load_metrics(config_dir))
             _, rows = _read_evidence(csv_text, metric_ids)
             evidence_token = uuid4().hex[:12]
@@ -823,7 +823,7 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     def research_response(packet: ResearchPacket) -> dict[str, object]:
-        with bundled_benchmark() as (_, config_dir):
+        with bundled_config() as config_dir:
             metrics = load_metrics(config_dir)
         promotions = tuple(promoted_evidence.get(packet.id, ()))
         reviews = tuple(research_reviews.get(packet.id, ()))
@@ -995,7 +995,7 @@ def create_app(
             ) from exc
         try:
             before = stored_research_packet(packet)
-            with bundled_benchmark() as (_, config_dir):
+            with bundled_config() as config_dir:
                 existing = {
                     (item.observation.place.place_id, item.observation.metric_id)
                     for item in promoted_evidence.get(packet.id, ())
@@ -1063,7 +1063,7 @@ def create_app(
             )
         try:
             before = stored_research_packet(packet)
-            with bundled_benchmark() as (_, config_dir):
+            with bundled_config() as config_dir:
                 existing = {
                     (item.observation.place.place_id, item.observation.metric_id)
                     for item in promoted_evidence.get(packet.id, ())
@@ -1129,7 +1129,7 @@ def create_app(
             }
             if (payload.place.place_id, payload.metric_id) in approved:
                 raise ResearchError("that observation has already been approved for this packet")
-            with bundled_benchmark() as (_, config_dir):
+            with bundled_config() as config_dir:
                 result = reject_evidence(payload, packet=packet, metrics=load_metrics(config_dir))
             research_reviews.setdefault(packet.id, []).append(result)
             save_research_packet(packet, before)
@@ -1147,7 +1147,7 @@ def create_app(
             raise HTTPException(
                 status_code=404, detail="research packet is not available in this session"
             ) from exc
-        with bundled_benchmark() as (_, config_dir):
+        with bundled_config() as config_dir:
             metrics = load_metrics(config_dir)
             promotions = tuple(promoted_evidence.get(packet.id, ()))
             try:

@@ -58,7 +58,7 @@ from lifescape.research import (
 from lifescape.research_report import ResearchReportError, build_research_cards, next_action_for
 from lifescape.research_sources import ConnectorEvidenceProvider, EvidenceFetchResult
 from lifescape.research_workspace import ResearchWorkspace, StoredResearchPacket
-from lifescape.resources import bundled_benchmark
+from lifescape.resources import bundled_config
 from lifescape.store import RunReportIndex, Store, StoreError, store_from_env
 
 LIVE_RESEARCH_BRIEF = "research_brief.live.yaml"
@@ -312,7 +312,7 @@ def create_server(
         if config_dir is not None:
             yield config_dir
             return
-        with bundled_benchmark() as (_, packaged_config):
+        with bundled_config() as packaged_config:
             yield packaged_config
 
     @cache
