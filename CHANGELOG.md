@@ -35,6 +35,12 @@
 
 ### Added
 
+- **Match bands and feel summaries (BUI-1397).** Match cards and the comparison show a coarse
+  band instead of a percentage: **Strong** when the total match is 0.85 or more, **Good**
+  from 0.70 to below 0.85, and **Possible** below 0.70. Each match card also opens with a one-line
+  summary of the town built only from its known catalog values; a missing value is not
+  mentioned and is never imputed. Shortlists saved before bands existed get their band from the
+  saved total match.
 - **Hospital-access quality (BUI-1111).** Discovery now also matches on straight-line miles to the
   nearest emergency-capable hospital in the pinned CMS Hospital General Information file. Each
   town keeps the facility name as provenance and the match card names the facility and the miles.
@@ -54,7 +60,8 @@
   styles, **Mild winters** and **Four seasons**. Catalog is now `us-places-acs2024-noaa1991-2020-v2`.
 
 - **Side-by-side comparison.** With two or more kept towns, the shortlist shows a table of all six
-  Census qualities and the match percentage. Unknown values read "Unknown", never imputed. Climate rows appear with the Census rows.
+  Census qualities and the discovery match band. Unknown values read "Unknown", never imputed.
+  Climate rows appear with the Census rows.
 - **Print or save as PDF** for the shortlist.
 - **Official-source links** in the research checklist (Census profile, Medicare Care Compare, FCC
   broadband map, FEMA flood map, NOAA climate normals) for each finalist.
