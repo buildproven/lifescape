@@ -210,6 +210,20 @@ This PRD corrects a gap between the original implementation milestone and the in
 - FR16: The read-only hosted example uses static, clearly synthetic content to illustrate the
   discovery-to-shortlist-to-verification sequence. It does not execute discovery, accept personal
   input, or add hosted API routes until a separate hosted-product PRD is approved.
+- FR17: The `lifescape mcp` stdio server exposes every tool with a strict input schema. A call
+  with an argument outside the schema, a missing required argument, or fewer than two finalists is
+  refused with a tool error that names the problem (REQ-MCP-1).
+- FR18: The `find_place` and `discover_towns` tools run the same catalog lookup and discovery
+  engine as the local app. Every discovery result is labeled "discovery leads; not verified
+  evidence", carries reasons, trade-offs, and unknowns, and cannot affect a gate or score. An
+  invalid search profile returns a tool error and no recommendations (REQ-MCP-2).
+- FR19: The `compare_finalists` tool runs the strict gate and scoring engine with a sensitivity
+  check on reviewed evidence only. A finalist with failed or unknown critical evidence is
+  reported as blocked and is never ranked. A repeated comparison returns the same run, and an
+  unusable request returns a tool error (REQ-MCP-3).
+- FR20: The `explain_town` tool reports a town's research card bucket and one next action for each
+  unresolved critical metric. A town with all critical evidence reports no next action. A missing
+  manifest returns a tool error (REQ-MCP-4).
 
 ## 6. Non-functional requirements
 

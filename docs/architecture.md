@@ -53,6 +53,20 @@ The supported version-one interface ends at the reviewed CSV boundary. The conne
 under `src/lifescape/connectors`, ACS/NOAA adapters, and research-packet workflow are experimental;
 their fetched observations remain review-pending until a human approves them.
 
+## MCP agent surface
+
+`lifescape mcp` serves the discovery and evidence engines to an agent over stdio
+(`src/lifescape/mcp_server.py::create_server`). The tools call the same engines as the local app
+and keep their rules: preferences discover, gates eliminate, weights rank, evidence decides.
+
+- Every tool takes a strict input schema; an unknown or missing argument is a tool error (PRD FR17).
+- `find_place` and `discover_towns` return Tier C discovery leads and never affect a gate or score
+  (PRD FR18).
+- `compare_finalists` is the only ranking tool. A finalist with failed or unknown critical evidence
+  is blocked and unranked (PRD FR19).
+- `explain_town` returns the research card bucket and the next action for each unresolved critical
+  metric (PRD FR20).
+
 ## Experimental AI-assisted discovery boundary
 
 The retained experimental API may send a `SearchBrief` to an opt-in discovery provider and
