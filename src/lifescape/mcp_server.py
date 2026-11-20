@@ -55,7 +55,7 @@ from lifescape.research import (
     readiness_for,
     state_for,
 )
-from lifescape.research_report import ResearchReportError, _next_action, build_research_cards
+from lifescape.research_report import ResearchReportError, build_research_cards, next_action_for
 from lifescape.research_sources import ConnectorEvidenceProvider, EvidenceFetchResult
 from lifescape.research_workspace import ResearchWorkspace, StoredResearchPacket
 from lifescape.resources import bundled_benchmark
@@ -533,7 +533,7 @@ def create_server(
             "unresolved_critical_metrics": list(card.unresolved_critical_metrics),
             "next_action": card.next_action,
             "next_actions": [
-                {"metric_id": metric_id, "action": _next_action(metric_id)}
+                {"metric_id": metric_id, "action": next_action_for(metric_id)}
                 for metric_id in card.unresolved_critical_metrics
             ],
             "source_url": card.source_url,

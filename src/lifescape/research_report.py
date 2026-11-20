@@ -96,7 +96,7 @@ def build_research_cards(
                     bucket="Investigate now",
                     reason="User-designated discovery lead; not decision-ready",
                     unresolved_critical_metrics=unresolved,
-                    next_action=_next_action(next_metric),
+                    next_action=next_action_for(next_metric),
                     source_url=None,
                 )
             )
@@ -113,7 +113,7 @@ def build_research_cards(
                 bucket="Insufficient evidence",
                 reason="No validated rejection, but critical evidence is unresolved",
                 unresolved_critical_metrics=unresolved,
-                next_action=_next_action(next_metric),
+                next_action=next_action_for(next_metric),
                 source_url=None,
             )
         )
@@ -207,7 +207,7 @@ def write_research_report(
     return markdown_path, csv_path, audit_path
 
 
-def _next_action(metric_id: str | None) -> str | None:
+def next_action_for(metric_id: str | None) -> str | None:
     if metric_id is None:
         return None
     actions = {
