@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f3efe3" />
+    <meta
+      name="description"
+      content="What the hosted Lifescape server stores, who can sign in, and how to delete the data."
+    />
+    <title>Privacy policy — Lifescape</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%226%22 fill=%22%23f3efe3%22/><path d=%22M15 14v36h34%22 fill=%22none%22 stroke=%22%23172c22%22 stroke-width=%226%22/><circle cx=%2246%22 cy=%2218%22 r=%226%22 fill=%22%23bd5f3b%22/></svg>"
+    />
+    <link rel="stylesheet" href="/static/landing.css" />
+    <style>
+      .policy {
+        max-width: 44rem;
+        margin: 0 auto;
+        padding: 3rem 1.5rem 4rem;
+        line-height: 1.6;
+      }
+      .policy h1 {
+        margin-bottom: 0.5rem;
+      }
+      .policy h2 {
+        margin-top: 2.25rem;
+      }
+      .policy code {
+        font-size: 0.95em;
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <a class="wordmark" href="/" aria-label="Lifescape home">Lifescape</a>
+      <p class="header-note">Privacy policy</p>
+      <nav aria-label="Primary navigation">
+        <a href="/">Home</a>
+        <a class="nav-cta" href="/demo">Open decision 01 <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main id="main" class="policy">
+      <p class="kicker">Hosted Lifescape server</p>
+      <h1>Privacy policy</h1>
+      <p>Last updated: November 20, 2026</p>
+
+      <h2>The short version</h2>
+      <p>
+        The Lifescape Claude plugin connects to the hosted server at
+        <code>https://lifescape.buildproven.ai/api/mcp</code>. Each deployment serves one owner. The
+        server keeps that owner's research in the owner's own database and nowhere else. It does not
+        sell, share, or analyze the data. It sets one short-lived cookie during sign-in, to tie the
+        GitHub sign-in to the browser that started it, and no tracking cookies.
+      </p>
+
+      <h2>What the hosted server stores</h2>
+      <p>The server writes these records to the owner's own database (Postgres, such as Neon):</p>
+      <ul>
+        <li>
+          <strong>Research packets</strong> (table <code>research_packets</code>): the search
+          profile and research brief you give, the candidate towns, the evidence values fetched for
+          them with their sources and observation dates, and your approvals and rejections.
+        </li>
+        <li>
+          <strong>Comparison report indexes</strong> (table <code>run_report_indexes</code>): for
+          each comparison run, the names of the report files it wrote and their SHA-256 digests.
+        </li>
+      </ul>
+      <p>
+        The comparison report files themselves are written to the server's temporary working
+        directory, which the hosting platform clears; they are not kept elsewhere. The server does
+        not store your GitHub password or your GitHub access token.
+      </p>
+      <p>
+        The landing page and the demo store nothing. The demo uses invented evidence and runs no
+        account.
+      </p>
+
+      <h2>Who can sign in</h2>
+      <p>
+        Only the owner's GitHub account can sign in. Claude signs in through GitHub, and the server
+        gives a token only to the GitHub login set as the deployment's owner. Every other GitHub
+        account is refused, and the tools answer 401 without a valid token.
+      </p>
+
+      <h2>Services that handle the data</h2>
+      <ul>
+        <li>GitHub confirms the signed-in login.</li>
+        <li>Vercel runs the server.</li>
+        <li>The owner's database provider (such as Neon) holds the records above.</li>
+        <li>
+          Public data sources (the U.S. Census Bureau and NOAA) get the place you ask about when you
+          fetch live evidence. They do not get your profile.
+        </li>
+      </ul>
+      <p>Each service handles data under its own privacy policy.</p>
+
+      <h2>Delete your data</h2>
+      <p>The data is in the owner's database, so the owner controls its deletion:</p>
+      <ol>
+        <li>
+          To delete all records, run
+          <code>DROP TABLE research_packets, run_report_indexes;</code> in the database, or delete
+          the database (in Neon: the project's settings, then Delete project).
+        </li>
+        <li>
+          To delete one research packet, delete its row:
+          <code>DELETE FROM research_packets WHERE packet_id = '&lt;id&gt;';</code>
+        </li>
+        <li>
+          To stop all access, remove the Lifescape connector in Claude and revoke the Lifescape
+          OAuth app in GitHub (Settings, then Applications).
+        </li>
+      </ol>
+
+      <h2>Questions</h2>
+      <p>
+        Open an issue at
+        <a href="https://github.com/buildproven/lifescape" rel="noreferrer"
+          >github.com/buildproven/lifescape</a
+        >.
+      </p>
+    </main>
+
+    <footer class="site-footer">
+      <a class="wordmark" href="/">Lifescape</a>
+      <p>Gates eliminate. Weights rank. Evidence decides. Uncertainty stays visible.</p>
+      <a href="https://github.com/buildproven/lifescape" rel="noreferrer">GitHub ↗</a>
+    </footer>
+  </body>
+</html>

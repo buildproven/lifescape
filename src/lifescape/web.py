@@ -625,6 +625,7 @@ def create_app(
     landing_template = template_environment.get_template("landing.html")
     demo_template = template_environment.get_template("demo.html")
     app_template = template_environment.get_template("app.html")
+    privacy_template = template_environment.get_template("privacy.html")
     app.mount("/static", StaticFiles(directory=package_dir / "static"), name="static")
     root_output = (output_dir or Path("outputs/app")).resolve()
     run_directories: dict[str, Path] = {}
@@ -723,6 +724,13 @@ def create_app(
         if not hosted_demo:
             return RedirectResponse("/")
         return HTMLResponse(demo_template.render())
+
+    @app.get("/privacy", include_in_schema=False)
+    def privacy_policy() -> HTMLResponse:
+        """The hosted server's privacy policy, which the plugin manifest names (BUI-2021)."""
+        if not hosted_demo:
+            raise HTTPException(status_code=404, detail="the local app has no hosted privacy page")
+        return HTMLResponse(privacy_template.render())
 
     @app.get("/api/bootstrap")
     def bootstrap() -> dict[str, object]:
