@@ -159,7 +159,10 @@ place-character qualities (elevation, distance to an ocean or Great Lake, distan
 metro, large-metro suburb), and straight-line miles to the nearest CMS emergency-capable hospital
 (not drive time). It
 recommends from the 10,215 places with 2,500 or more people. `scripts/build_place_catalog.py`
-rebuilds the catalog from pinned official files and a manifest of hashes. Nature and
+rebuilds the catalog from pinned official files and a manifest of hashes. The Census Geocoder
+response that locates the hospitals is committed in `data/place-catalog/`, because the geocoder
+can match the same addresses differently on another day; only `--refresh-geocoder` asks Census
+again. Nature and
 walkability are not claimed, and hospital distance never decides a gate. See [known limitations](docs/limitations.md).
 
 ## Traceability
@@ -252,6 +255,10 @@ npm run quality:check
 npm run security:check
 uv run python scripts/build_place_catalog.py --verify   # rebuild the catalog from Census files
 ```
+
+`--verify` sends nothing to the Census Geocoder: it reads the committed response, fails when that
+file's SHA-256 is not the one the manifest records, and fails unless the rebuilt catalog and
+manifest match the committed files byte for byte.
 
 The benchmark covers ten synthetic towns and must produce repeatable artifacts. Quality includes
 Python tests and coverage, Ruff, mypy, browser journeys, package construction, frontend linting,

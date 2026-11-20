@@ -57,7 +57,12 @@ facility name, and miles, matching `hospital_distance_mi`). The manifest records
 many of those the Census Geocoder matched (`census_geocoder`) and how many fell back to a ZCTA
 centroid (`zcta_centroid`), and how many were left out because the geocoder had no match and
 their ZIP Code is not a ZCTA. The input `census_geocoder` pins the benchmark and the SHA-256 of
-the geocoder response, sorted by facility id.
+the geocoder response, sorted by facility id. That response is committed as
+`data/place-catalog/census-geocoder-response.csv` (one geocoder output row per emergency
+facility: id, input address, `Match`/`No_Match`/`Tie`, and for a match the matched address and
+`longitude,latitude`). The geocoder can return a different match for the same address on another
+request, so a rebuild reads this file and never calls Census; `--refresh-geocoder` geocodes again
+and rewrites it.
 
 Identity: `place_id` (7-digit state+place FIPS), `name`, `state`, `region` (Census region), plus
 `land_area_sqmi`, `latitude`, `longitude`. The manifest `src/lifescape/data/place-catalog.manifest.json`

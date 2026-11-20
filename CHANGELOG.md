@@ -4,6 +4,16 @@
 
 ### Fixed
 
+- **Catalog rebuild reads a committed Census geocoder response (BUI-1722).**
+  `scripts/build_place_catalog.py` now reads the hospital geocoder results from
+  `data/place-catalog/census-geocoder-response.csv` and calls Census only with
+  `--refresh-geocoder`. `--verify` runs offline, fails when the committed response's SHA-256 is
+  not the one in the manifest (naming both), and requires the rebuilt catalog and manifest to
+  match byte for byte. The earlier response was not kept, so the catalog was rebuilt once from a
+  fresh one. This time Census re-matched every address the same way: the response has the same
+  SHA-256 as before (`0c9cd6ab…e5f6`), and no hospital-distance value changed. A later
+  `--refresh-geocoder` can shift some hospital-distance values if Census re-matches addresses.
+
 - **Research shortlist lists decision-ready towns (BUI-1995).** `lifescape research-report` no
   longer stops with an error when a town has validated evidence for every critical gate. The
   shortlist now puts that town in a "Decision ready" bucket and counts it in the field summary.
