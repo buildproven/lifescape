@@ -19,6 +19,38 @@ from lifescape.connectors.orchestrate import PlaceRequest, fetch_live_observatio
 from lifescape.models import ObservationRecord, StrictModel
 from lifescape.research import ResearchPacket
 
+GEOGRAPHIES_ENV = "LIFESCAPE_RESEARCH_GEOGRAPHIES"
+
+
+def research_geographies_from_environment() -> dict[str, dict[str, str]]:
+    """Load optional system geography configuration from one JSON variable.
+
+    The value maps place IDs to per-connector source geographies, such as a NOAA
+    station-year.  It is configuration only and never contains metric observations.
+    Example: ``{"asheville_nc":{"census_acs":"37:0210400",
+    "noaa_gsoy":"USW00003812:2024"}}``.  Unset or empty means no configured geography;
+    a malformed value raises ``ValueError`` rather than being ignored.
+    """
+    raw = os.environ.get(GEOGRAPHIES_ENV, "")
+    if not raw:
+        return {}
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{GEOGRAPHIES_ENV} must be valid JSON") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError(f"{GEOGRAPHIES_ENV} must be an object")
+    geographies: dict[str, dict[str, str]] = {}
+    for place_id, values in decoded.items():
+        if not isinstance(place_id, str) or not isinstance(values, dict):
+            raise ValueError("research geography entries must map place IDs to objects")
+        if not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in values.items()
+        ):
+            raise ValueError("research geography connector values must be strings")
+        geographies[place_id] = dict(values)
+    return geographies
+
 
 class EvidenceFetchResult(StrictModel):
     """Fetched observations plus explicit per-place/connector failures."""
@@ -54,32 +86,12 @@ class ConnectorEvidenceProvider:
         }
 
     @classmethod
-    def from_environment(cls) -> ConnectorEvidenceProvider:
-        """Load optional system geography configuration from one JSON variable.
-
-        The value is intentionally configuration-only and never contains metric
-        observations.  Example: ``{"asheville_nc":{"census_acs":"37:0210400",
-        "noaa_gsoy":"USW00003812:2024"}}``.
-        """
-        raw = os.environ.get("LIFESCAPE_RESEARCH_GEOGRAPHIES", "")
-        if not raw:
-            return cls()
-        try:
-            decoded = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ValueError("LIFESCAPE_RESEARCH_GEOGRAPHIES must be valid JSON") from exc
-        if not isinstance(decoded, dict):
-            raise ValueError("LIFESCAPE_RESEARCH_GEOGRAPHIES must be an object")
-        geographies: dict[str, dict[str, str]] = {}
-        for place_id, values in decoded.items():
-            if not isinstance(place_id, str) or not isinstance(values, dict):
-                raise ValueError("research geography entries must map place IDs to objects")
-            if not all(
-                isinstance(key, str) and isinstance(value, str) for key, value in values.items()
-            ):
-                raise ValueError("research geography connector values must be strings")
-            geographies[place_id] = dict(values)
-        return cls(geographies=geographies)
+    def from_environment(
+        cls, *, connectors: tuple[Connector, ...] | None = None
+    ) -> ConnectorEvidenceProvider:
+        """Build a provider over ``connectors`` (default: the public-data connectors) with
+        the system geography configuration from ``LIFESCAPE_RESEARCH_GEOGRAPHIES``."""
+        return cls(connectors=connectors, geographies=research_geographies_from_environment())
 
     def fetch(self, packet: ResearchPacket) -> EvidenceFetchResult:
         errors: dict[str, list[str]] = {}

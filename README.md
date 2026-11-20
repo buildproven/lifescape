@@ -228,8 +228,9 @@ Evidence approval stays a human act. `fetch_live_evidence` returns proposals wit
 stores them in a research packet under `research-workspace/`. `approve_evidence` is annotated as
 destructive, so Claude Desktop asks the owner before each call. It refuses an empty reviewer or one
 named `ai`, `claude`, `codex`, or `model`, and then promotes nothing. Census ACS geography comes
-from the place ID; NOAA needs a station, so the fetch lists snowfall as missing instead of choosing
-one. `export_report` reads the report text from the store, so the hosted server returns it from any
+from the place ID; NOAA needs a station-year that the operator sets per place ID in
+`LIFESCAPE_RESEARCH_GEOGRAPHIES` (for example `{"3746340":{"noaa_gsoy":"USW00013754:2024"}}`).
+Without one the fetch lists snowfall as missing instead of choosing a station. `export_report` reads the report text from the store, so the hosted server returns it from any
 instance; the local server also checks the report files and the SQLite run database, and refuses a
 run whose reports a later run overwrote. A run saved before report text was kept must be compared
 again.

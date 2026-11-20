@@ -62,7 +62,11 @@ from lifescape.research import (
     state_for,
 )
 from lifescape.research_report import build_research_cards, next_action_for
-from lifescape.research_sources import ConnectorEvidenceProvider, EvidenceFetchResult
+from lifescape.research_sources import (
+    ConnectorEvidenceProvider,
+    EvidenceFetchResult,
+    research_geographies_from_environment,
+)
 from lifescape.research_workspace import ResearchWorkspace, StoredResearchPacket
 from lifescape.resources import bundled_config
 from lifescape.store import RunReportIndex, Store, StoreError, store_from_env
@@ -250,7 +254,7 @@ def _census_geographies(place_id: str) -> dict[str, str]:
     """A catalog place ID is its 7-digit Census place GEOID: 2-digit state + 5-digit place.
 
     NOAA geography is never derived here: a station is a source choice for a human, so a fetch
-    without one reports the geography as missing.
+    without one configured in ``LIFESCAPE_RESEARCH_GEOGRAPHIES`` reports the geography as missing.
     """
     if len(place_id) == 7 and place_id.isdigit():
         return {CensusAcsConnector.name: f"{place_id[:2]}:{place_id[2:]}"}
@@ -382,8 +386,11 @@ def create_server(
     ``auth`` and ``token_verifier`` make the hosted HTTP app an OAuth resource server
     (``lifescape.mcp_http``); the stdio server leaves both unset. ``store`` keeps research
     packets and run report indexes; unset, ``LIFESCAPE_STORE`` picks it (``store_from_env``)
-    and a bad setting fails here, before any tool runs."""
+    and a bad setting fails here, before any tool runs. ``LIFESCAPE_RESEARCH_GEOGRAPHIES``
+    supplies configured source geographies (such as NOAA station-years) for
+    ``fetch_live_evidence``; a malformed value also fails here."""
     records = store_from_env(output_dir) if store is None else store
+    configured_geographies = research_geographies_from_environment()
 
     @contextmanager
     def configuration() -> Iterator[Path]:
@@ -756,7 +763,9 @@ def create_server(
             for place_id in ids
         )
         packet = create_packet(FETCH_BRIEF, leads, discovery_provider=FETCH_PROVIDER)
-        fetched = ConnectorEvidenceProvider(connectors=connectors).fetch(packet)
+        fetched = ConnectorEvidenceProvider(
+            connectors=connectors, geographies=configured_geographies
+        ).fetch(packet)
         proposed = tuple(item for item in fetched.observations if item.metric_id in wanted)
         result = EvidenceFetchResult(observations=proposed, errors=fetched.errors)
         records.save_packet(
