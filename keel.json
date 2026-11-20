@@ -8,5 +8,6 @@
   "testFilesCommand": "uv run pytest {files}",
   "linearProject": "lifescape",
   "install": "uv sync --frozen --extra dev && npm ci",
-  "review": true
+  "review": true,
+  "smoke": "curl -fsS -o /dev/null --max-time 30 \"$KEEL_DEPLOY_URL\""
 }
