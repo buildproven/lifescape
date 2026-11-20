@@ -1,7 +1,7 @@
 """OAuth 2.1 authorization server for the hosted Lifescape MCP endpoint (BUI-1903).
 
 Claude's OAuth client signs the owner in here; sign-in is delegated to GitHub, and only the
-GitHub login in ``LIFESCAPE_OWNER_GITHUB`` gets a token. Port of retire-runway BUI-1857.
+GitHub login in ``OWNER_GITHUB_LOGIN`` gets a token. Port of retire-runway BUI-1857.
 
 The MCP SDK handlers serve ``/authorize`` and ``/token`` (they check PKCE S256, the client, the
 redirect, and the code's client and expiry). This module adds the server metadata, dynamic
@@ -65,9 +65,10 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-OWNER_ENV = "LIFESCAPE_OWNER_GITHUB"
-GITHUB_CLIENT_ID_ENV = "LIFESCAPE_GITHUB_CLIENT_ID"
-GITHUB_CLIENT_SECRET_ENV = "LIFESCAPE_GITHUB_CLIENT_SECRET"
+# The names the fleet sets on Vercel (machine-setup ``plugin-connect``), each read under one name.
+OWNER_ENV = "OWNER_GITHUB_LOGIN"
+GITHUB_CLIENT_ID_ENV = "LIFESCAPE_GITHUB_OAUTH_CLIENT_ID"
+GITHUB_CLIENT_SECRET_ENV = "LIFESCAPE_GITHUB_OAUTH_CLIENT_SECRET"
 SIGNING_KEY_ENV = "LIFESCAPE_OAUTH_SIGNING_KEY"
 REQUIRED_ENV = (OWNER_ENV, GITHUB_CLIENT_ID_ENV, GITHUB_CLIENT_SECRET_ENV, SIGNING_KEY_ENV)
 MIN_SIGNING_KEY_LENGTH = 32
@@ -115,7 +116,17 @@ TYP: dict[Kind, str] = {
 
 
 class OAuthConfigError(ValueError):
-    """A required OAuth setting is missing or unusable; the server must not start."""
+    """A required OAuth setting is missing or unusable; the server must not start.
+
+    ``missing`` and ``invalid`` name the variables (never their values).
+    """
+
+    def __init__(
+        self, message: str, *, missing: tuple[str, ...] = (), invalid: tuple[str, ...] = ()
+    ) -> None:
+        super().__init__(message)
+        self.missing = missing
+        self.invalid = invalid
 
 
 class GitHubSignInError(Exception):
@@ -136,18 +147,19 @@ class OAuthSettings:
         missing = [name for name, value in values.items() if not value]
         if missing:
             raise OAuthConfigError(
-                f"Lifescape OAuth needs {', '.join(missing)}; set it and restart"
+                f"Lifescape OAuth needs {', '.join(missing)}; set it and restart",
+                missing=tuple(missing),
             )
-        problems = []
+        problems: dict[str, str] = {}
         if not GITHUB_LOGIN_PATTERN.match(values[OWNER_ENV]):
-            problems.append(f"{OWNER_ENV} is not a GitHub login: {values[OWNER_ENV]!r}")
+            problems[OWNER_ENV] = f"{OWNER_ENV} is not a GitHub login: {values[OWNER_ENV]!r}"
         if len(values[SIGNING_KEY_ENV]) < MIN_SIGNING_KEY_LENGTH:
-            problems.append(
+            problems[SIGNING_KEY_ENV] = (
                 f"{SIGNING_KEY_ENV} must be at least {MIN_SIGNING_KEY_LENGTH} characters "
                 "(for example the output of `openssl rand -base64 48`)"
             )
         if problems:
-            raise OAuthConfigError("; ".join(problems))
+            raise OAuthConfigError("; ".join(problems.values()), invalid=tuple(problems))
         return cls(
             owner_login=values[OWNER_ENV],
             github_client_id=values[GITHUB_CLIENT_ID_ENV],

@@ -40,6 +40,24 @@ The tools are `find_place`, `discover_towns`, `explain_town`, `inspect_evidence`
 values stay proposals until you approve each one by name in chat; the server refuses an AI or
 model name as the reviewer.
 
+### Hosted MCP
+
+`https://lifescape.buildproven.ai/api/mcp` serves the same tools over Streamable HTTP for Claude
+on the web and mobile. Only the owner can use it: Claude signs in through GitHub, and only the
+GitHub login in `OWNER_GITHUB_LOGIN` gets a token. The Vercel project needs these variables:
+
+| Variable                               | Holds                                                               |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| `OWNER_GITHUB_LOGIN`                   | the owner's GitHub login                                            |
+| `LIFESCAPE_GITHUB_OAUTH_CLIENT_ID`     | the GitHub OAuth app (callback `<origin>/oauth/github/callback`)    |
+| `LIFESCAPE_GITHUB_OAUTH_CLIENT_SECRET` | that app's client secret                                            |
+| `LIFESCAPE_OAUTH_SIGNING_KEY`          | at least 32 characters, such as `openssl rand -base64 48`           |
+| `LIFESCAPE_STORE`                      | `database`                                                          |
+| `DATABASE_URL`                         | the Postgres URL (the Neon integration sets it); psycopg 3 connects |
+
+If one is missing or unusable, `/api/mcp` answers 503 with the names to set or fix (never the
+values), and the landing and demo pages still serve.
+
 The web UI is frozen: it gets fixes but no new features. It still runs as described in
 [Web app quick start](#web-app-quick-start).
 

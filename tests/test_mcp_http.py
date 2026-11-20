@@ -103,7 +103,7 @@ def _run[T](app: Starlette, body: Callable[[httpx2.AsyncClient], Awaitable[T]], 
 
 
 def _post_initialize(client: httpx2.AsyncClient) -> Awaitable[httpx2.Response]:
-    return client.post("/mcp", json=INITIALIZE, headers=JSON_HEADERS)
+    return client.post("/api/mcp", json=INITIALIZE, headers=JSON_HEADERS)
 
 
 def _assert_challenge(response: httpx2.Response) -> None:
@@ -135,7 +135,7 @@ def test_req_http_1_invalid_credentials_get_the_same_challenge(
 ) -> None:
     async def body(client: httpx2.AsyncClient) -> httpx2.Response:
         return await client.post(
-            "/mcp", json=INITIALIZE, headers={**JSON_HEADERS, "Authorization": authorization}
+            "/api/mcp", json=INITIALIZE, headers={**JSON_HEADERS, "Authorization": authorization}
         )
 
     _assert_challenge(_run(_app(tmp_path), body))
@@ -143,7 +143,7 @@ def test_req_http_1_invalid_credentials_get_the_same_challenge(
 
 def test_req_http_1_get_and_delete_without_token_are_challenged(tmp_path: Path) -> None:
     async def body(client: httpx2.AsyncClient) -> list[httpx2.Response]:
-        return [await client.get("/mcp"), await client.delete("/mcp")]
+        return [await client.get("/api/mcp"), await client.delete("/api/mcp")]
 
     for response in _run(_app(tmp_path), body):
         _assert_challenge(response)
@@ -179,7 +179,7 @@ def test_req_http_2_metadata_needs_no_token(tmp_path: Path) -> None:
     [
         ("http://lifescape.example", ISSUER),
         (BASE, "http://auth.lifescape.example"),
-        (f"{BASE}/mcp", ISSUER),
+        (f"{BASE}/api/mcp", ISSUER),
         (f"{BASE}?x=1", ISSUER),
         (f"{BASE}#top", ISSUER),
         ("https://user:pw@lifescape.example", ISSUER),
@@ -219,7 +219,7 @@ def test_req_http_3_valid_token_serves_the_stdio_tools(tmp_path: Path) -> None:
     async def over_http() -> tuple[set[str], Any]:
         app = _app(tmp_path / "http")
         async with _http(app, token=GOOD_BEARER) as http_client:
-            transport = streamable_http_client(f"{BASE}/mcp", http_client=http_client)
+            transport = streamable_http_client(f"{BASE}/api/mcp", http_client=http_client)
             async with Client(transport) as client:
                 tools = {tool.name for tool in (await client.list_tools()).tools}
                 found = await client.call_tool("find_place", {"query": "New Bern, NC"})

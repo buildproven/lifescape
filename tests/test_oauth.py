@@ -202,7 +202,7 @@ async def _exchange(
 
 def _initialize(client: httpx2.AsyncClient, token: str) -> Awaitable[httpx2.Response]:
     return client.post(
-        "/mcp", json=INITIALIZE, headers={**JSON_HEADERS, "Authorization": f"Bearer {token}"}
+        "/api/mcp", json=INITIALIZE, headers={**JSON_HEADERS, "Authorization": f"Bearer {token}"}
     )
 
 
@@ -684,7 +684,7 @@ def test_req_oauth_3_a_refresh_token_for_another_client_is_refused(tmp_path: Pat
 
 
 def test_req_oauth_3_a_new_owner_voids_grants_issued_to_the_old_one(tmp_path: Path) -> None:
-    """Changing LIFESCAPE_OWNER_GITHUB stops the old owner's codes and refresh tokens."""
+    """Changing OWNER_GITHUB_LOGIN stops the old owner's codes and refresh tokens."""
 
     async def body(client: httpx2.AsyncClient) -> dict[str, Any]:
         registered, callback = await _sign_in(client)
@@ -813,9 +813,9 @@ def test_req_oauth_4_every_missing_env_var_is_named(tmp_path: Path) -> None:
 
 def test_req_oauth_4_required_env_names_the_four_settings() -> None:
     assert set(REQUIRED_ENV) == {
-        "LIFESCAPE_OWNER_GITHUB",
-        "LIFESCAPE_GITHUB_CLIENT_ID",
-        "LIFESCAPE_GITHUB_CLIENT_SECRET",
+        "OWNER_GITHUB_LOGIN",
+        "LIFESCAPE_GITHUB_OAUTH_CLIENT_ID",
+        "LIFESCAPE_GITHUB_OAUTH_CLIENT_SECRET",
         "LIFESCAPE_OAUTH_SIGNING_KEY",
     }
 
