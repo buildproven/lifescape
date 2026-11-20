@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 from datetime import date
 
 import pytest
@@ -13,32 +12,6 @@ from lifescape.models import (
     SourcesConfig,
     SourceTier,
 )
-
-
-def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
-    """Name each test file a distributed run ran (BUI-1490, BUI-1804).
-
-    Serial progress output names every file; pytest-xdist prints only dots at verbosity 0,
-    and Keel reads test file names from the suite output.
-    """
-    if terminalreporter.verbosity > 0:
-        return
-    if not terminalreporter.config.pluginmanager.has_plugin("dsession"):
-        return
-    outcomes: dict[str, Counter[str]] = {}
-    for reports in terminalreporter.stats.values():
-        for report in reports:
-            if isinstance(report, pytest.TestReport) and (
-                report.when == "call" or not report.passed
-            ):
-                path = report.nodeid.split("::", 1)[0]
-                outcomes.setdefault(path, Counter())[report.outcome] += 1
-    if not outcomes:
-        return
-    terminalreporter.write_sep("-", "test files")
-    for path in sorted(outcomes):
-        counts = ", ".join(f"{n} {outcome}" for outcome, n in sorted(outcomes[path].items()))
-        terminalreporter.write_line(f"{path} {counts}")
 
 
 @pytest.fixture

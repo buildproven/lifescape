@@ -11,13 +11,10 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
 UV_LOCK = ROOT / "uv.lock"
 TARGET = "tests/test_missing_data.py"
-SECTION = " test files "
 
 
 def _pyproject() -> dict[str, Any]:
@@ -48,31 +45,14 @@ def test_req_test_1_addopts_run_tests_across_available_cpus() -> None:
     assert args[args.index("-n") + 1] == "auto", args
 
 
-def _run(*args: str) -> str:
+def test_req_test_1_distributed_verbose_run_names_each_test_file() -> None:
+    """xdist prints only dots at net verbosity 0; Keel's `-v` must name every test (BUI-1490)."""
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", *args, TARGET],
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-n", "2", "-v", TARGET],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    return result.stdout
-
-
-def test_req_test_1_distributed_quiet_run_names_each_test_file() -> None:
-    output = _run("-n", "2")
-    assert SECTION in output
-    section = output.split(SECTION, 1)[1]
-    assert f"{TARGET} " in section
-    assert " passed" in section
-
-
-# addopts carry -q, so one -v is net verbosity 0 and -vv is net 1.
-@pytest.mark.parametrize("args", [("-n", "0", "-v"), ("-n", "2", "-vv")])
-def test_req_test_1_file_summary_only_when_progress_omits_file_names(
-    args: tuple[str, ...],
-) -> None:
-    output = _run(*args)
-    assert SECTION not in output
-    assert TARGET in output
+    assert f"PASSED {TARGET}::" in result.stdout

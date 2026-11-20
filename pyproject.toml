@@ -51,7 +51,7 @@ packages = ["src/lifescape"]
 entrypoint = "api.index:app"
 
 [tool.pytest.ini_options]
-addopts = "--strict-markers --strict-config -q -n auto"
+addopts = "--strict-markers --strict-config -n auto"
 testpaths = ["tests"]
 
 [tool.ruff]
