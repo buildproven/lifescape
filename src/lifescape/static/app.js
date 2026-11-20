@@ -87,16 +87,13 @@ const escapeHtml = (value) =>
     (character) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]
   );
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
 // Matches Python's f"{value:,.0f}": grouped, no decimals, ties rounded half to even.
 const whole = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
   roundingMode: "halfEven",
 });
+// Matches Python's f"${value:,.0f}": ties rounded half to even, negatives read "$-2".
+const money = { format: (value) => `$${whole.format(value)}` };
 // Matches Python's f"{value:,.1f}": grouped, one decimal, ties rounded half to even.
 // A distance of -0 (JSON "-0.0") reads "0.0", as toFixed wrote it.
 const tenths = new Intl.NumberFormat("en-US", {
