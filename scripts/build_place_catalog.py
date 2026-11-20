@@ -661,7 +661,11 @@ def csv_bytes(rows: list[list[str]]) -> bytes:
 
 
 def census_geocode(
-    addresses: list[list[str]], cache: Path, post: Callable[[bytes], bytes] = post_geocoder_batch
+    addresses: list[list[str]],
+    cache: Path,
+    post: Callable[[bytes], bytes] = post_geocoder_batch,
+    *,
+    use_cache: bool = True,
 ) -> bytes:
     """Geocode in batches of at most ``GEOCODER_BATCH_LIMIT``; return rows sorted by id.
 
@@ -675,7 +679,7 @@ def census_geocode(
     ]
     key = hashlib.sha256(csv_bytes(addresses)).hexdigest()[:16]
     destination = cache / f"census-geocoder-{GEOCODER_BENCHMARK}-{key}.csv"
-    if destination.exists():
+    if use_cache and destination.exists():
         return destination.read_bytes()
     rows: list[list[str]] = []
     for batch in batches:
@@ -702,11 +706,11 @@ def pinned_geocoder_response(addresses: list[list[str]], refresh: bool) -> bytes
 
     Without ``refresh``, the committed ``GEOCODER_RESPONSE_PATH`` is read and nothing is sent
     to Census; it must answer exactly the requested facilities. With ``refresh``, the addresses
-    are geocoded (a copy cached in ``CACHE`` for this exact request is reused, so a build that
-    fails after the POST does not send it again) and the caller rewrites the committed file.
+    are geocoded again even when a scratch-cache response exists, and the caller rewrites the
+    committed file.
     """
     if refresh:
-        return census_geocode(addresses, CACHE, post_geocoder_batch)
+        return census_geocode(addresses, CACHE, post_geocoder_batch, use_cache=False)
     response = read_pinned_geocoder_response()
     try:
         read_geocoder_matches(response, (address[0] for address in addresses))

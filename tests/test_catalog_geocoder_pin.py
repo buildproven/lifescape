@@ -219,6 +219,20 @@ def test_req_cat_1_refresh_rewrites_an_existing_pinned_response(pinned: Reposito
     assert pinned.recorded_digest() == hashlib.sha256(_pinned(pinned.answer)).hexdigest()
 
 
+def test_req_cat_1_refresh_posts_even_when_a_scratch_cache_response_exists(
+    repo: Repository,
+) -> None:
+    assert build.main(["--refresh-geocoder"]) == 0
+    first_response = repo.response.read_bytes()
+    repo.answer = MATCHED + b'"340002","2 ELM ST, TESTVILLE, NC, 28001","Tie"\n'
+
+    assert build.main(["--refresh-geocoder"]) == 0
+
+    assert len(repo.posts) == 2
+    assert repo.response.read_bytes() == _pinned(repo.answer)
+    assert repo.response.read_bytes() != first_response
+
+
 def test_req_cat_1_build_reads_the_committed_response_and_never_posts(pinned: Repository) -> None:
     catalog, manifest = pinned.catalog.read_bytes(), pinned.manifest.read_bytes()
     pinned.catalog.unlink()
