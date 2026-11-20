@@ -5,13 +5,14 @@ Claude Desktop. The tools call the same engines as the CLI and web app and keep 
 preferences discover, gates eliminate, weights rank, evidence decides. Discovery results stay
 Tier C leads; only ``compare_finalists`` ranks, and only towns whose critical gates all pass.
 Live-fetched evidence stays a proposal until ``approve_evidence`` records a named human reviewer.
+Research packets and run report indexes go through ``lifescape.store``; ``LIFESCAPE_STORE``
+picks local files or a hosted database.
 """
 
 from __future__ import annotations
 
 import csv
 import hashlib
-import os
 import sqlite3
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
@@ -19,7 +20,6 @@ from datetime import date
 from functools import cache, wraps
 from pathlib import Path
 from typing import Annotated, Any, cast
-from uuid import uuid4
 
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
@@ -41,7 +41,7 @@ from lifescape.discovery import (
 from lifescape.discovery import load_catalog as load_place_catalog
 from lifescape.evidence import EvidenceError, ingest_csv, validate_unique_headers
 from lifescape.evidence_audit import EvidenceAudit, audit_manual_evidence
-from lifescape.models import GateState, ObservationRecord, PlaceRecord, RunResult, StrictModel
+from lifescape.models import GateState, ObservationRecord, PlaceRecord, RunResult
 from lifescape.pipeline import execute_run
 from lifescape.research import (
     MAX_DISCOVERY_LEADS,
@@ -59,12 +59,11 @@ from lifescape.research_report import ResearchReportError, _next_action, build_r
 from lifescape.research_sources import ConnectorEvidenceProvider, EvidenceFetchResult
 from lifescape.research_workspace import ResearchWorkspace, StoredResearchPacket
 from lifescape.resources import bundled_benchmark
+from lifescape.store import RunReportIndex, Store, StoreError, store_from_env
 
 LIVE_RESEARCH_BRIEF = "research_brief.live.yaml"
 MAX_FINALISTS = 25
 MAX_DISCOVERY_LIMIT = 50
-RESEARCH_WORKSPACE = "research-workspace"
-RUN_INDEX = "runs"
 FETCH_PROVIDER = "mcp:fetch_live_evidence"
 FETCH_BRIEF = SearchBrief(
     preferences="Live public-source evidence the owner requested through the Lifescape MCP server."
@@ -101,14 +100,6 @@ class EvidenceSelectionError(ValueError):
     """Raised when the requested towns cannot be selected from an evidence CSV."""
 
 
-class RunReportIndex(StrictModel):
-    """The reports one ``compare_finalists`` run wrote, with digests to detect overwrites."""
-
-    run_id: str
-    reports: dict[str, str]
-    sha256: dict[str, str]
-
-
 ToolFunction = Callable[..., dict[str, Any]]
 ConnectorFactory = Callable[[], Sequence[Connector]]
 
@@ -117,15 +108,16 @@ def _reporting(fn: ToolFunction) -> ToolFunction:
     """Show the agent why a request failed.
 
     The engines raise ``ValueError`` subclasses for bad profiles, evidence, and configuration,
-    and ``OSError`` for unreadable files; the MCP SDK hides any non-``ToolError`` message from
-    the client, so these become ``ToolError``. Other exceptions stay crashes.
+    ``OSError`` for unreadable files, and ``StoreError`` naming the store when it cannot serve a
+    record; the MCP SDK hides any non-``ToolError`` message from the client, so these become
+    ``ToolError``. Other exceptions stay crashes.
     """
 
     @wraps(fn)
     def run(*args: Any, **kwargs: Any) -> dict[str, Any]:
         try:
             return fn(*args, **kwargs)
-        except (ValueError, OSError, CatalogUnavailableError) as exc:
+        except (ValueError, OSError, CatalogUnavailableError, StoreError) as exc:
             raise ToolError(str(exc)) from exc
 
     return run
@@ -270,16 +262,6 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _write_atomic(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
-    try:
-        temporary.write_text(text, encoding="utf-8")
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
 def _database_has_run(database: Path, run_id: str) -> bool:
     try:
         with sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True) as connection:
@@ -315,12 +297,15 @@ def create_server(
     live_connectors: ConnectorFactory = _default_connectors,
     auth: AuthSettings | None = None,
     token_verifier: TokenVerifier | None = None,
+    store: Store | None = None,
 ) -> MCPServer:
     """Build the Lifescape MCP server. ``config_dir`` defaults to the packaged config;
     ``live_connectors`` builds the public-data connectors each ``fetch_live_evidence`` uses.
     ``auth`` and ``token_verifier`` make the hosted HTTP app an OAuth resource server
-    (``lifescape.mcp_http``); the stdio server leaves both unset."""
-    workspace = ResearchWorkspace(output_dir / RESEARCH_WORKSPACE)
+    (``lifescape.mcp_http``); the stdio server leaves both unset. ``store`` keeps research
+    packets and run report indexes; unset, ``LIFESCAPE_STORE`` picks it (``store_from_env``)
+    and a bad setting fails here, before any tool runs."""
+    records = store_from_env(output_dir) if store is None else store
 
     @contextmanager
     def configuration() -> Iterator[Path]:
@@ -477,9 +462,7 @@ def create_server(
             reports=reports,
             sha256={key: _sha256(Path(path)) for key, path in reports.items() if key != "database"},
         )
-        _write_atomic(
-            output_dir / RUN_INDEX / f"{run.run_id}.json", index.model_dump_json(indent=2) + "\n"
-        )
+        records.save_run_index(index)
         has_synthetic_evidence = any(item.source.synthetic for item in run.observations)
         return {
             "run_id": run.run_id,
@@ -669,8 +652,8 @@ def create_server(
         fetched = ConnectorEvidenceProvider(connectors=connectors).fetch(packet)
         proposed = tuple(item for item in fetched.observations if item.metric_id in wanted)
         result = EvidenceFetchResult(observations=proposed, errors=fetched.errors)
-        workspace.save(
-            StoredResearchPacket(packet=packet, fetch_history=(workspace.snapshot(result),))
+        records.save_packet(
+            StoredResearchPacket(packet=packet, fetch_history=(ResearchWorkspace.snapshot(result),))
         )
         found = {(item.place.place_id, item.metric_id) for item in proposed}
         return {
@@ -706,10 +689,7 @@ def create_server(
         has seen the value and source and confirmed it in chat; reviewer is the owner's name.
         An AI or model name, or an empty reviewer, is refused and nothing is promoted."""
         request = _human_reviewer(packet_id, place_id, metric_id, reviewer)
-        stored = next(
-            (item for item in workspace.load() if item.packet.id == packet_id),
-            None,
-        )
+        stored = records.get_packet(packet_id)
         if stored is None:
             raise ValueError(f"research packet {packet_id} not found; call fetch_live_evidence")
         latest = stored.fetch_history[-1].result if stored.fetch_history else None
@@ -757,7 +737,7 @@ def create_server(
                 "reviews": (*stored.reviews, review),
             }
         )
-        workspace.save(updated)
+        records.save_packet(updated)
         return {
             "packet_id": packet_id,
             "reviewer": promotion.reviewer,
@@ -774,12 +754,14 @@ def create_server(
     def export_report(run_id: RunId) -> dict[str, Any]:
         """Return the paths of the Markdown, CSV, and SQLite reports of a compare_finalists
         run. Fails when a later run overwrote the reports; compare the finalists again then."""
-        index_path = output_dir / RUN_INDEX / f"{run_id}.json"
-        if not index_path.is_file():
+        index = records.get_run_index(run_id)
+        if index is None:
             raise ValueError(f"no reports for run {run_id}; call compare_finalists first")
-        index = RunReportIndex.model_validate_json(index_path.read_text(encoding="utf-8"))
         if index.run_id != run_id:
-            raise ValueError(f"report index {index_path} names run {index.run_id}, not {run_id}")
+            raise ValueError(
+                f"report index of run {run_id} in the {records.label} names run "
+                f"{index.run_id}, not {run_id}"
+            )
         for key, raw in index.reports.items():
             path = Path(raw)
             if not path.is_file():
