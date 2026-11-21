@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "lifescape",
   "display_name": "Lifescape",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Find U.S. towns like the ones you love, then compare finalists on reviewed evidence: gates eliminate, weights rank, evidence decides.",
   "long_description": "Lifescape is a local-first place-discovery and retirement-town decision tool. Discovery finds towns from a packaged catalog of Census ACS and NOAA climate data; those results stay leads. Live-fetched evidence stays a proposal until the owner approves each value by name. The strict engine blocks any finalist with failed or unknown critical evidence and ranks only the rest. Reports are written to a Lifescape folder in your home directory. Lifescape never guesses a missing value and never gives a purchase recommendation.",
   "author": {

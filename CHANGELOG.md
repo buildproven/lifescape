@@ -1,6 +1,59 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 — 2026-11-21
+
+Lifescape is finished and free for everyone under the MIT License, with no paid tier. The README
+now leads with the free local install: download `lifescape.mcpb` and `lifescape-skill.zip` from the
+latest GitHub release and install them in Claude Desktop, or run the local web app and CLI with
+`uvx` (BUI-2072).
+
+### Added
+
+- **Local MCP server (BUI-1779).** `lifescape mcp` serves the discovery and evidence tools over
+  stdio, and `make mcpb` builds the Claude Desktop extension and skill ZIP from a checkout with a
+  pinned `@anthropic-ai/mcpb` (BUI-2019, BUI-2020).
+
+- **Hosted MCP at `/api/mcp` (BUI-1901, BUI-1903, BUI-1904, BUI-2010, BUI-2027).**
+  `lifescape.buildproven.ai/api/mcp` serves the same tools over Streamable HTTP. Claude signs in
+  through GitHub OAuth, and only the GitHub login in `OWNER_GITHUB_LOGIN` gets a token. Discovery
+  and evidence are stored in Postgres, and spent OAuth codes and refresh tokens are shared across
+  instances. It is the author's own instance; the README's deploy section says how to run your
+  own.
+
+- **Claude plugin (BUI-1905).** The repository root is a Claude plugin: `.claude-plugin/plugin.json`
+  names it, `.mcp.json` points at the hosted server, and `skills/lifescape` is the skill.
+
+- **Evidence from a research packet (BUI-2018, BUI-2031).** `compare_finalists`, `explain_town`,
+  and `inspect_evidence` take `packet_id`, a research packet whose approved values they export, as
+  the one evidence input in place of `evidence_path`. The hosted server accepts only `packet_id`.
+  `inspect_evidence` shows a packet's open critical values.
+
+- **Report text export (BUI-2022).** `export_report` returns the Markdown and CSV report text kept
+  in the store, so the hosted server returns it from any instance.
+
+- **NOAA station geographies (BUI-2016).** `fetch_live_evidence` reads the NOAA station-year for
+  each place ID from `LIFESCAPE_RESEARCH_GEOGRAPHIES`.
+
+- **Privacy page (BUI-2021).** The hosted site serves `/privacy`, which states what the hosted
+  server stores, who can sign in, and how to delete the data. The plugin manifest names it as
+  `privacyPolicyUrl`.
+
+- **Hospital provenance says how the hospital was located (BUI-1491).** Each place's
+  `hospital_source` now carries a location method: `census_geocoder` (street address matched by
+  the Census Geocoder) or `zcta_centroid` (ZIP Code Tabulation Area centroid), so a user can see
+  how precise the hospital distance is. Discovery results show it as
+  `hospital_source.location_method`, and discovery refuses to load a catalog whose
+  `hospital_source` has any other method or none. The catalog was rebuilt from the same pinned inputs as catalog
+  `us-places-acs2024-noaa1991-2020-character-hospital-v6`; no distance or other value changed
+  (26,862 places use a geocoded hospital, 5,179 a ZCTA centroid).
+
+- **Reject a fetched value from chat (BUI-2017).** The MCP `reject_evidence` tool records the
+  named owner's rejection of one fetched value, with a reason, in its research packet.
+  `approve_evidence` then refuses that value. A reason that is only spaces, or under eight
+  characters after spaces are removed, is now refused.
+
+- **Product tour video.** The public landing page shows a 40-second recorded walkthrough of the
+  local app (`static/tour.mp4`), with a poster and a text list of the steps.
 
 ### Fixed
 
@@ -25,25 +78,6 @@
 - **Match list and checklist name every source (BUI-1488).** The match-list notice and the
   research checklist intro now name Census, NOAA climate normals, place character (USGS and
   Natural Earth), and CMS hospital data, instead of saying the matches come from Census data.
-
-### Added
-
-- **Hospital provenance says how the hospital was located (BUI-1491).** Each place's
-  `hospital_source` now carries a location method: `census_geocoder` (street address matched by
-  the Census Geocoder) or `zcta_centroid` (ZIP Code Tabulation Area centroid), so a user can see
-  how precise the hospital distance is. Discovery results show it as
-  `hospital_source.location_method`, and discovery refuses to load a catalog whose
-  `hospital_source` has any other method or none. The catalog was rebuilt from the same pinned inputs as catalog
-  `us-places-acs2024-noaa1991-2020-character-hospital-v6`; no distance or other value changed
-  (26,862 places use a geocoded hospital, 5,179 a ZCTA centroid).
-
-- **Reject a fetched value from chat (BUI-2017).** The MCP `reject_evidence` tool records the
-  named owner's rejection of one fetched value, with a reason, in its research packet.
-  `approve_evidence` then refuses that value. A reason that is only spaces, or under eight
-  characters after spaces are removed, is now refused.
-
-- **Product tour video.** The public landing page shows a 40-second recorded walkthrough of the
-  local app (`static/tour.mp4`), with a poster and a text list of the steps.
 
 ## 1.1.0 — 2026-10-20
 

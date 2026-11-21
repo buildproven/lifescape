@@ -15,6 +15,14 @@ A browser tab opens at `http://127.0.0.1:8765`. Use `--no-open` to skip the tab,
 the port, and `--output-dir` to choose where reports are saved (default: a `Lifescape` folder in
 your home directory).
 
+To use Lifescape in Claude Desktop instead, download
+[`lifescape.mcpb`](https://github.com/buildproven/lifescape/releases/latest/download/lifescape.mcpb)
+and
+[`lifescape-skill.zip`](https://github.com/buildproven/lifescape/releases/latest/download/lifescape-skill.zip)
+from the latest release and install them as the
+[README](../README.md#install-in-claude-desktop) describes. Lifescape is free under the MIT
+License; you need only your own Claude account.
+
 ## Five minutes to a shortlist
 
 1. **Start.** The fastest way: tap **Try it with Traverse City, MI**. Otherwise type a town you
