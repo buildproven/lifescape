@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
 import zipfile
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MCPB_PACKAGE = "@anthropic-ai/mcpb"
@@ -54,7 +57,9 @@ def test_req_bui_2020_3_mcpb_script_packs_the_extension() -> None:
 
 def test_req_bui_2020_4_make_target_uses_the_pinned_dependency() -> None:
     makefile = (ROOT / "Makefile").read_text("utf-8")
-    target = makefile.split("\nmcpb:\n", 1)[1].split("\n\n", 1)[0]
+    match = re.search(r"^mcpb:[^\n]*\n((?:\t[^\n]*\n)+)", makefile, re.MULTILINE)
+    assert match is not None, "Makefile must define an mcpb target"
+    target = match.group(1)
     assert "npm run" in target and "mcpb" in target
     assert "npx" not in target, "make mcpb must not fetch an unpinned or inline-pinned mcpb"
     assert "@anthropic-ai/mcpb@" not in makefile
@@ -101,3 +106,118 @@ def test_req_bui_2020_7_npm_run_mcpb_builds_an_extension(tmp_path: Path) -> None
             shutil.copy(backup, out)
         else:
             out.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize(
+    ("dependency_state", "install_expected"),
+    (
+        ("missing", True),
+        ("package-json-newer", True),
+        ("package-lock-newer", True),
+        ("current", False),
+    ),
+)
+def test_req_bui_2020_8_make_mcpb_installs_pinned_dependency_when_missing_or_stale(
+    tmp_path: Path,
+    dependency_state: str,
+    install_expected: bool,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    for name in ("Makefile", "package.json", "package-lock.json"):
+        shutil.copy2(ROOT / name, checkout / name)
+    skill = checkout / "skills" / "lifescape"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# Lifescape\n", encoding="utf-8")
+
+    binary = checkout / "node_modules" / ".bin" / "mcpb"
+    if dependency_state != "missing":
+        binary.parent.mkdir(parents=True)
+        binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        binary.chmod(0o755)
+        baseline = 1_700_000_000
+        os.utime(binary, (baseline, baseline))
+        os.utime(checkout / "package.json", (baseline, baseline))
+        os.utime(checkout / "package-lock.json", (baseline, baseline))
+        if dependency_state == "package-json-newer":
+            os.utime(checkout / "package.json", (baseline + 1, baseline + 1))
+        elif dependency_state == "package-lock-newer":
+            os.utime(checkout / "package-lock.json", (baseline + 1, baseline + 1))
+        else:
+            os.utime(binary, (baseline + 1, baseline + 1))
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "npm-calls"
+    npm = bin_dir / "npm"
+    npm.write_text(
+        "#!/bin/sh\n"
+        f"printf '%s\\n' \"$*\" >> '{calls}'\n"
+        'if [ "$1" = ci ]; then\n'
+        "  mkdir -p node_modules/.bin\n"
+        "  touch node_modules/.bin/mcpb\n"
+        "  exit 0\n"
+        "fi\n"
+        "if [ -x node_modules/.bin/mcpb ] || [ -f node_modules/.bin/mcpb ]; then\n"
+        "  touch dist/lifescape.mcpb\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 127\n",
+        encoding="utf-8",
+    )
+    npm.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+
+    completed = subprocess.run(
+        ["make", "mcpb"],
+        cwd=checkout,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    expected_calls = ["run --silent mcpb"]
+    if install_expected:
+        expected_calls.insert(0, "ci --ignore-scripts --no-audit --no-fund")
+    assert calls.read_text("utf-8").splitlines() == expected_calls
+    assert (checkout / "dist" / "lifescape.mcpb").exists()
+    assert (checkout / "dist" / "lifescape-skill.zip").exists()
+
+
+def test_req_bui_2020_9_make_mcpb_removes_stale_outputs_before_install_failure(
+    tmp_path: Path,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    for name in ("Makefile", "package.json", "package-lock.json"):
+        shutil.copy2(ROOT / name, checkout / name)
+    dist = checkout / "dist"
+    dist.mkdir()
+    stale_outputs = (dist / "lifescape.mcpb", dist / "lifescape-skill.zip")
+    for output in stale_outputs:
+        output.write_text("stale\n", encoding="utf-8")
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    npm = bin_dir / "npm"
+    npm.write_text("#!/bin/sh\nexit 42\n", encoding="utf-8")
+    npm.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+
+    completed = subprocess.run(
+        ["make", "mcpb"],
+        cwd=checkout,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        timeout=30,
+    )
+
+    assert completed.returncode != 0
+    assert not [output for output in stale_outputs if output.exists()]
