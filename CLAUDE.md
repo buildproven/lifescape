@@ -15,7 +15,12 @@ discover; gates eliminate; weights rank; evidence decides; uncertainty remains v
 Python 3.12 with `uv` (`make install` runs `uv sync`, installs Playwright Chromium, and `npm ci`).
 A plain `.venv/bin/...` also works (`.venv/bin/pip install -e ".[dev]"`).
 
-- Test: `.venv/bin/pytest` (single test: `.venv/bin/pytest tests/test_gates.py::test_name`)
+- Test: `.venv/bin/pytest`. The suite runs in parallel: pytest-xdist gets `-n auto` from
+  `addopts` in `pyproject.toml`. Release-budget tests (`test_release_budget*`) skip the workers
+  and run serially afterwards (`tests/conftest.py`).
+- Single test: `.venv/bin/pytest -n 0 tests/test_gates.py::test_name` (`-n 0` skips worker
+  start-up). Do not use `-p no:xdist`: it fails with `unrecognized arguments: -n`, because
+  `addopts` pass `-n`.
 - Lint / types: `.venv/bin/ruff check .`, `.venv/bin/mypy src` (strict)
 - Benchmark: `.venv/bin/lifescape benchmark --output-dir outputs/benchmark`
 - Run the app: `lifescape app` (FastAPI, default port 8765)
