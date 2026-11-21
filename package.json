@@ -40,6 +40,9 @@
     "stylelint": "^16.8.0",
     "stylelint-config-standard": "^37.0.0"
   },
+  "overrides": {
+    "tmp": "^0.2.6"
+  },
   "lint-staged": {
     "**/*.py": [
       "uv run ruff format --check",
