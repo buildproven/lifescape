@@ -9,8 +9,6 @@ import subprocess
 import zipfile
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 MCPB_PACKAGE = "@anthropic-ai/mcpb"
 EXACT_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
@@ -75,11 +73,10 @@ def test_req_bui_2020_6_mcpbignore_keeps_local_files_out() -> None:
         assert required in patterns
 
 
-@pytest.mark.skipif(
-    not (ROOT / "node_modules" / ".bin" / "mcpb").exists() or shutil.which("npm") is None,
-    reason="mcpb is not installed (run npm ci)",
-)
 def test_req_bui_2020_7_npm_run_mcpb_builds_an_extension(tmp_path: Path) -> None:
+    npm = shutil.which("npm")
+    assert npm is not None, "npm must be on PATH to build the extension"
+    assert (ROOT / "node_modules" / ".bin" / "mcpb").exists(), "run npm ci to install mcpb"
     out = ROOT / "dist" / "lifescape.mcpb"
     existed = out.exists()
     backup = tmp_path / "lifescape.mcpb"
@@ -87,7 +84,7 @@ def test_req_bui_2020_7_npm_run_mcpb_builds_an_extension(tmp_path: Path) -> None
         shutil.copy(out, backup)
     try:
         completed = subprocess.run(
-            ["npm", "run", "--silent", "mcpb"],
+            [npm, "run", "--silent", "mcpb"],
             cwd=ROOT,
             capture_output=True,
             text=True,
