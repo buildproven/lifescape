@@ -28,5 +28,27 @@ boundary.
 | `GET /api/bootstrap` | Evidence benchmark, metric details, discovery summary | |
 | `POST /api/evidence/inspect`, `POST /api/run`, `GET /api/downloads/...` | Evidence import and the strict comparison | 5 MB import limit |
 
-All routes return 404 when `hosted_demo=True`.
+When `hosted_demo=True`, every route above answers 404 (`the hosted site has no application API`),
+as do `/openapi.json` and every other `/api/` path that the owner app does not serve.
+
+## Hosted site routes
+
+The public site (`create_hosted_site` in `src/lifescape/web.py`) serves the landing, demo, and
+privacy pages, and hands exactly these owner paths (`OWNER_PATHS` in
+`src/lifescape/mcp_http.py`) to the owner app: the hosted MCP and its owner-only OAuth
+authorization server (BUI-2010).
+
+| Route | Purpose | Notes |
+|---|---|---|
+| `/api/mcp` | MCP Streamable HTTP endpoint (stateless, JSON responses) | Bearer access token required; 401 with a `resource_metadata` challenge without one |
+| `GET /.well-known/oauth-protected-resource` | Protected-resource metadata | Names the authorization server |
+| `GET /.well-known/oauth-authorization-server` | Authorization-server metadata | CORS open |
+| `GET, POST /authorize` | Authorization request; starts the GitHub sign-in | Body size limit |
+| `POST /token` | Code and refresh-token exchange | CORS open; body size limit |
+| `POST /register` | Dynamic client registration | Redirect URIs: `https://claude.ai/api/mcp/auth_callback` or loopback `/callback`; CORS open; body size limit |
+| `GET /oauth/github/callback` | GitHub OAuth callback | Issues a code only to the `OWNER_GITHUB_LOGIN` account |
+
+When an OAuth or store variable is missing or unusable, every owner path answers 503
+`not_configured` and names the variables to set or fix (names, never values); the pages still
+serve. `.env.example` lists the variables.
 
