@@ -25,9 +25,10 @@ benchmark:
 app:
 	uv run lifescape app
 
-# Pack the Claude Desktop extension and the skill ZIP; .mcpbignore keeps local files out.
+# Pack the Claude Desktop extension (the mcpb devDependency, pinned in package.json) and the
+# skill ZIP; .mcpbignore keeps local files out. Run `make install` first.
 mcpb:
 	mkdir -p dist
 	rm -f dist/lifescape.mcpb dist/lifescape-skill.zip
-	npx --yes @anthropic-ai/mcpb@2.1.2 pack . dist/lifescape.mcpb
+	npm run --silent mcpb
 	cd skills && zip -qr ../dist/lifescape-skill.zip lifescape -x '*/__pycache__/*' '*/.DS_Store'

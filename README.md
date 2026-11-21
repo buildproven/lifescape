@@ -28,7 +28,9 @@ the hosted server, and `skills/lifescape` is the skill. Check it with `claude pl
 ### Run Lifescape on your computer
 
 To keep your data and reports on your computer instead, run the same tools as a local stdio
-server. Build the two packages once from a checkout (needs Node.js and `zip`):
+server. Build the two packages once from a checkout (needs Node.js and `zip`; `make install` or `npm ci`
+fetches the `@anthropic-ai/mcpb` version pinned in `package.json`, and `npm run mcpb` builds just the
+extension):
 
 ```bash
 make mcpb
