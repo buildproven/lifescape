@@ -2,74 +2,89 @@
 
 ## Use Lifescape in Claude
 
-Lifescape is a Claude plugin: a skill that gives Claude the decision workflow (discover towns,
-build a shortlist, gather evidence, approve each value yourself, and compare finalists) and a
-hosted MCP server with eight tools at `https://lifescape.buildproven.ai/api/mcp`. The engines
-find, gate, and rank; Claude only explains the tool results.
+Lifescape is free for everyone under the [MIT License](LICENSE), with no paid tier. It runs on
+your computer: you need only your own Claude account, and your searches, evidence, and reports stay
+on your machine. Claude gets a skill with the decision workflow (discover towns, build a shortlist,
+gather evidence, approve each value yourself, and compare finalists) and a local MCP server with the
+Lifescape tools. The engines find, gate, and rank; Claude only explains the tool results.
 
-Install it once on your claude.ai account; it then works in claude.ai on the web, the desktop
-app, the mobile apps, and Claude Code:
+### Install in Claude Desktop
 
-1. In claude.ai, go to Customize > Plugins > Add > Add marketplace and enter
-   `buildproven/claude-plugins` (connect GitHub when asked). Turn on **Sync automatically**.
-2. Add the `lifescape` plugin.
-3. On the plugin's **Connectors** tab, connect the `lifescape` connector and sign in with the
-   owner's GitHub account. Only that account gets a token (see [Hosted MCP](#hosted-mcp)).
+1. Download the two files from the latest GitHub release:
+   - the desktop extension,
+     [`lifescape.mcpb`](https://github.com/buildproven/lifescape/releases/latest/download/lifescape.mcpb)
+   - the skill ZIP,
+     [`lifescape-skill.zip`](https://github.com/buildproven/lifescape/releases/latest/download/lifescape-skill.zip)
+2. **Extension:** in Claude Desktop, go to Settings > Desktop app, select "Manage" next to
+   Extensions (older layout: Settings > Extensions), open "Advanced settings", click "Install
+   Extension…", and select `lifescape.mcpb`. The extension runs `lifescape mcp` (the Python stdio
+   server) on the `uv` runtime: Claude Desktop manages Python and installs the dependencies pinned
+   in `uv.lock`. Reports go to `~/Lifescape/mcp`.
+3. **Skill:** in Claude, go to Customize > Skills, add a skill, choose "Upload a skill", and upload
+   `lifescape-skill.zip`.
 
-In Claude Code you can also install it from the same marketplace:
-
-```text
-/plugin install lifescape --marketplace buildproven/claude-plugins
-```
-
-The repository root is the plugin: `.claude-plugin/plugin.json` names it, `.mcp.json` points at
-the hosted server, and `skills/lifescape` is the skill. Check it with `claude plugin validate .`.
-
-### Run Lifescape on your computer
-
-To keep your data and reports on your computer instead, run the same tools as a local stdio
-server. Build the two packages once from a checkout (needs Node.js and `zip`). The command installs
-the `@anthropic-ai/mcpb` version pinned in `package.json` when needed; `npm run mcpb` builds just the
-extension when the dependencies are already installed:
+**Claude Code:** add the server straight from GitHub, and unzip `lifescape-skill.zip` into
+`~/.claude/skills` (it holds one `lifescape` folder):
 
 ```bash
-make mcpb
+claude mcp add --transport stdio --scope user lifescape \
+  -- uvx --from git+https://github.com/buildproven/lifescape lifescape mcp
 ```
-
-This writes `dist/lifescape.mcpb` (the desktop extension, packed from `manifest.json`) and
-`dist/lifescape-skill.zip` (the skill ZIP), and replaces any earlier copies. `.mcpbignore` keeps
-the local `.venv`, `node_modules`, `outputs`, `.git`, and caches out of the extension, so you can
-pack from a working checkout.
-
-- **Claude Desktop:** go to Settings > Desktop app, select "Manage" next to Extensions (older
-  layout: Settings > Extensions), open "Advanced settings", click "Install Extension…", and
-  select `dist/lifescape.mcpb`. The extension runs `lifescape mcp` (the Python stdio server) on
-  the `uv` runtime: Claude Desktop manages Python and installs the dependencies pinned in
-  `uv.lock`. Reports go to `~/Lifescape/mcp`.
-- **Skill:** in Claude, go to Customize > Skills, add a skill, choose "Upload a skill", and
-  upload `dist/lifescape-skill.zip`. In Claude Code, copy `skills/lifescape` to
-  `~/.claude/skills/lifescape` instead.
-- **Claude Code:** add the server straight from GitHub, with no checkout:
-
-  ```bash
-  claude mcp add --transport stdio --scope user lifescape \
-    -- uvx --from git+https://github.com/buildproven/lifescape lifescape mcp
-  ```
 
 The tools are `find_place`, `discover_towns`, `explain_town`, `inspect_evidence`,
 `fetch_live_evidence`, `approve_evidence`, `reject_evidence`, `compare_finalists`, and
 `export_report`. Fetched values stay proposals until you approve or reject each one by name in
 chat; the server refuses an AI or model name as the reviewer.
 
-### Hosted MCP
+### Local web app
 
-`https://lifescape.buildproven.ai/api/mcp` serves the same tools over Streamable HTTP for Claude
-on the web and mobile. Only the owner can use it: Claude signs in through GitHub, and only the
-GitHub login in `OWNER_GITHUB_LOGIN` gets a token. The Vercel project needs these variables:
+With [uv](https://docs.astral.sh/uv/getting-started/installation/) installed, open the guided
+browser workspace at `http://127.0.0.1:8765`, with no clone or build:
+
+```bash
+uvx --from git+https://github.com/buildproven/lifescape lifescape app
+```
+
+See [Web app quick start](#web-app-quick-start) for the journey. The web UI is frozen: it gets
+fixes but no new features.
+
+### Command line
+
+The same package gives the `lifescape` CLI. Run the synthetic ten-town benchmark, or compare your
+own reviewed evidence with `lifescape run` (see [Evidence contract](#evidence-contract)):
+
+```bash
+uvx --from git+https://github.com/buildproven/lifescape lifescape benchmark --output-dir benchmark
+uvx --from git+https://github.com/buildproven/lifescape lifescape run --help
+```
+
+## Hosted server (the author's instance)
+
+`https://lifescape.buildproven.ai/api/mcp` is the author's own instance. It serves the same tools
+over Streamable HTTP for Claude on the web and mobile, but only the owner can sign in: Claude signs
+in through GitHub, and only the GitHub login in `OWNER_GITHUB_LOGIN` gets a token. The plugin
+marketplace that installs it is private too. To use Lifescape from claude.ai on the web or mobile,
+[deploy your own](#deploy-your-own) instance.
+
+The repository root is the plugin: `.claude-plugin/plugin.json` names it, `.mcp.json` points at
+the hosted server, and `skills/lifescape` is the skill. Check it with `claude plugin validate .`.
+Point `.mcp.json` at your own deployment before you install it from your own marketplace.
+
+[`/privacy`](https://lifescape.buildproven.ai/privacy) states what the hosted server stores (the
+research packets and report indexes in the owner's database), that only the owner's GitHub
+account can sign in, and how to delete the data. The plugin manifest names it as
+`privacyPolicyUrl`.
+
+### Deploy your own
+
+Deploy the repository to Vercel (`api/index.py` is the entry). You need a Postgres database (the
+Neon integration sets `DATABASE_URL`) and a GitHub OAuth app whose callback is
+`<origin>/oauth/github/callback`. `.env.example` lists every variable; the hosted server needs
+these:
 
 | Variable                               | Holds                                                               |
 | -------------------------------------- | ------------------------------------------------------------------- |
-| `OWNER_GITHUB_LOGIN`                   | the owner's GitHub login                                            |
+| `OWNER_GITHUB_LOGIN`                   | your GitHub login, the only account that can sign in                |
 | `LIFESCAPE_GITHUB_OAUTH_CLIENT_ID`     | the GitHub OAuth app (callback `<origin>/oauth/github/callback`)    |
 | `LIFESCAPE_GITHUB_OAUTH_CLIENT_SECRET` | that app's client secret                                            |
 | `LIFESCAPE_OAUTH_SIGNING_KEY`          | at least 32 characters, such as `openssl rand -base64 48`           |
@@ -78,14 +93,6 @@ GitHub login in `OWNER_GITHUB_LOGIN` gets a token. The Vercel project needs thes
 
 If one is missing or unusable, `/api/mcp` answers 503 with the names to set or fix (never the
 values), and the landing, demo, and privacy pages still serve.
-
-[`/privacy`](https://lifescape.buildproven.ai/privacy) states what the hosted server stores (the
-research packets and report indexes in the owner's database), that only the owner's GitHub
-account can sign in, and how to delete the data. The plugin manifest names it as
-`privacyPolicyUrl`.
-
-The web UI is frozen: it gets fixes but no new features. It still runs as described in
-[Web app quick start](#web-app-quick-start).
 
 ## What Lifescape does
 
@@ -150,6 +157,22 @@ uv run playwright install chromium
 npm ci          # Node.js 24.18.x
 uv run lifescape app
 ```
+
+### Build the desktop packages
+
+Each release attaches `lifescape.mcpb` and `lifescape-skill.zip`. To build them yourself from a
+checkout (needs Node.js and `zip`), run the command below. It installs the `@anthropic-ai/mcpb`
+version pinned in `package.json` when needed; `npm run mcpb` builds just the extension when the
+dependencies are already installed:
+
+```bash
+make mcpb
+```
+
+This writes `dist/lifescape.mcpb` (the desktop extension, packed from `manifest.json`) and
+`dist/lifescape-skill.zip` (the skill ZIP), and replaces any earlier copies. `.mcpbignore` keeps
+the local `.venv`, `node_modules`, `outputs`, `.git`, and caches out of the extension, so you can
+pack from a working checkout.
 
 ## What discovery uses
 

@@ -359,8 +359,8 @@ def test_req_cat_4_the_shipped_manifest_pins_the_committed_response() -> None:
 
 def test_req_cat_4_changelog_says_hospital_distances_may_shift() -> None:
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    unreleased = changelog.split("## Unreleased", 1)[1].split("\n## ", 1)[0]
-    entry = next(item for item in unreleased.split("\n- ") if "BUI-1722" in item)
+    release = changelog.split("\n## 1.2.0", 1)[1].split("\n## ", 1)[0]
+    entry = next(item for item in release.split("\n- ") if "BUI-1722" in item)
 
     assert "hospital" in entry.casefold()
     assert "re-matched" in entry
