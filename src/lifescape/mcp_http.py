@@ -188,13 +188,19 @@ def create_owner_http_app(
 
     Reads the OAuth settings from ``env`` first, so a missing variable stops the server at
     start (``OAuthConfigError`` names it). ``store`` unset, ``LIFESCAPE_STORE`` in ``env`` picks
-    it. ``github_transport`` replaces the network for tests.
+    it. A database store also records spent codes and refresh tokens, so every replica on that
+    database refuses a grant another replica exchanged (BUI-2027); the local store is one
+    process, so they are recorded in it. ``github_transport`` replaces the network for tests.
     """
     settings = OAuthSettings.from_env(env)
     origin = public_origin(base_url)
     records = store_from_env(output_dir, env) if store is None else store
     authorization = OwnerAuthorizationServer(
-        settings, issuer=origin, resource=origin, github_transport=github_transport
+        settings,
+        issuer=origin,
+        resource=origin,
+        grants=records if isinstance(records, DatabaseStore) else None,
+        github_transport=github_transport,
     )
     app = create_http_app(
         output_dir=output_dir,

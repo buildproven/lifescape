@@ -7,10 +7,14 @@ accept ``postgres://`` at all. The tables hold each record as the same JSON
 document the local adapter writes, keyed by its ID, so both adapters give the same results. The
 tables are created on first use. A connection or driver failure raises
 ``StoreUnavailableError`` naming the store, with the password masked.
+
+The same database holds the OAuth codes and refresh tokens already spent (``claim_grant``), so
+every hosted replica refuses a grant any other replica has exchanged (BUI-2027).
 """
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Self
@@ -19,11 +23,13 @@ from sqlalchemy import (
     Column,
     Connection,
     Engine,
+    Float,
     MetaData,
     String,
     Table,
     Text,
     create_engine,
+    delete,
     insert,
     select,
     update,
@@ -32,6 +38,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import (
     ArgumentError,
     DBAPIError,
+    IntegrityError,
     InterfaceError,
     NoSuchModuleError,
     OperationalError,
@@ -63,6 +70,13 @@ RUN_INDEXES = Table(
     METADATA,
     Column("run_id", String(16), primary_key=True),
     Column("document", Text, nullable=False),
+)
+# One row per spent grant ID (``code:<jti>`` or ``refresh:<jti>``) until the grant expires.
+SPENT_GRANTS = Table(
+    "spent_oauth_grants",
+    METADATA,
+    Column("grant_id", String(128), primary_key=True),
+    Column("expires_at", Float, nullable=False),
 )
 
 
@@ -162,6 +176,28 @@ class DatabaseStore:
 
     def save_run_index(self, index: RunReportIndex) -> None:
         self._upsert(RUN_INDEXES, check_run_id(index.run_id), index.model_dump_json())
+
+    def claim_grant(self, grant_id: str, expires_at: float) -> bool:
+        """True on the first claim of ``grant_id`` by any store on this database only.
+
+        The primary key makes the insert the claim: of two replicas inserting one ID, the
+        database lets one commit and refuses the other. Rows past their expiry are dropped
+        first; a grant past its expiry no longer opens (``exp`` is checked), so dropping its row
+        cannot let it back in.
+        """
+        with self._transaction() as connection:
+            connection.execute(delete(SPENT_GRANTS).where(SPENT_GRANTS.c.expires_at <= time.time()))
+        try:
+            with self._transaction() as connection:
+                connection.execute(
+                    insert(SPENT_GRANTS).values(grant_id=grant_id, expires_at=expires_at)
+                )
+        except StoreError as exc:
+            # Only a duplicate key means "already spent"; any other failure stays an error.
+            if isinstance(exc.__cause__, IntegrityError):
+                return False
+            raise
+        return True
 
     def _parse[T](self, parse: Callable[[str], T], kind: str, key: object, document: object) -> T:
         try:
