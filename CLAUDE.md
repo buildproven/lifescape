@@ -21,6 +21,8 @@ A plain `.venv/bin/...` also works (`.venv/bin/pip install -e ".[dev]"`).
 - Single test: `.venv/bin/pytest -n 0 tests/test_gates.py::test_name` (`-n 0` skips worker
   start-up). Do not use `-p no:xdist`: it fails with `unrecognized arguments: -n`, because
   `addopts` pass `-n`.
+- Each run prints one `test files (N): …` line after collection (`tests/conftest.py`), so
+  Keel's `testCommand` sees every test file without `-v` (one line per test).
 - Lint / types: `.venv/bin/ruff check .`, `.venv/bin/mypy src` (strict)
 - Benchmark: `.venv/bin/lifescape benchmark --output-dir outputs/benchmark`
 - Run the app: `lifescape app` (FastAPI, default port 8765)
