@@ -3,7 +3,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from collections.abc import Iterable, Sequence
 from datetime import date
+from typing import Any
 
 import pytest
 
@@ -23,9 +25,55 @@ BUDGET_PREFIX = "test_release_budget"
 BUDGET_MARK = "release_budget"
 SERIAL_PASS = "LIFESCAPE_RELEASE_BUDGET_PASS"
 
+# At verbosity 0 xdist prints only dots, so Keel's red proof (which looks for each new test file's
+# name in the output) needed `-v`: one line per test, ~1,200 per run (BUI-2026). Instead, the run
+# prints every test file it collected on one line, before the tests run, so failure details stay at
+# the end of the output, where Keel reads its tail.
+TEST_FILES_PREFIX = "test files"
+
+
+def is_xdist_worker(config: pytest.Config) -> bool:
+    """Return whether this pytest process is an xdist worker, not an inherited child."""
+    return hasattr(config, "workerinput")
+
+
+def files_line(nodeids: Iterable[str]) -> str | None:
+    """One line naming each test file of `nodeids` once, in collection order."""
+    files = list(dict.fromkeys(nodeid.split("::", 1)[0] for nodeid in nodeids))
+    if not files:
+        return None
+    return f"{TEST_FILES_PREFIX} ({len(files)}): {' '.join(files)}"
+
+
+class FileListReporter:
+    """Writes the test-file line once per run: from the xdist controller, else after collection."""
+
+    def __init__(self, config: pytest.Config) -> None:
+        self.config = config
+        self.written = False
+
+    def write(self, nodeids: Iterable[str]) -> None:
+        line = files_line(nodeids)
+        reporter = self.config.pluginmanager.get_plugin("terminalreporter")
+        if self.written or line is None or reporter is None:
+            return
+        self.written = True
+        reporter.ensure_newline()
+        reporter.write_line(line)
+
+    def pytest_collection_finish(self, session: pytest.Session) -> None:
+        self.write(item.nodeid for item in session.items)
+
+    @pytest.hookimpl(optionalhook=True)
+    def pytest_xdist_node_collection_finished(self, node: Any, ids: Sequence[str]) -> None:
+        # Every worker collects the same ids (xdist refuses to run otherwise); write them once.
+        self.write(ids)
+
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", f"{BUDGET_MARK}: a CPU-time budget that must run alone")
+    if not is_xdist_worker(config):
+        config.pluginmanager.register(FileListReporter(config), "lifescape-test-file-list")
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -33,7 +81,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     budget = [item for item in items if item.name.startswith(BUDGET_PREFIX)]
     for item in budget:
         item.add_marker(BUDGET_MARK)
-    if budget and "PYTEST_XDIST_WORKER" in os.environ:
+    if budget and is_xdist_worker(config):
         config.hook.pytest_deselected(items=budget)
         items[:] = [item for item in items if item not in budget]
 
@@ -41,7 +89,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     config = session.config
     if (
-        "PYTEST_XDIST_WORKER" in os.environ
+        is_xdist_worker(config)
         or SERIAL_PASS in os.environ
         or not config.pluginmanager.has_plugin("dsession")
     ):
@@ -69,9 +117,14 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if result.returncode == pytest.ExitCode.NO_TESTS_COLLECTED:
         return
     reporter = config.pluginmanager.get_plugin("terminalreporter")
-    summary = (result.stdout.strip().splitlines() or ["no output"])[-1]
+    lines = result.stdout.strip().splitlines()
+    summary = (lines or ["no output"])[-1]
     if reporter is not None:
         reporter.write_line(f"release-budget tests run serially: {summary}")
+        # Workers deselect budget tests, so a file holding only budget tests is named by this pass.
+        files = [line for line in lines if line.startswith(f"{TEST_FILES_PREFIX} (")]
+        if files:
+            reporter.write_line(f"release-budget {files[0]}")
         if result.returncode != pytest.ExitCode.OK:
             reporter.write_line(result.stdout + result.stderr)
     if result.returncode != pytest.ExitCode.OK:
