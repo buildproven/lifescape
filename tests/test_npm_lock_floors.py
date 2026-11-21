@@ -1,8 +1,10 @@
-"""BUI-2061: locked npm dev packages stay at or above their first patched release.
+"""BUI-2061, BUI-2070: locked npm dev packages stay at or above their first patched release.
 
 Dependabot flagged `tmp` (high, fixed 0.2.6; low, fixed 0.2.4), pulled in by
-`external-editor` through the commitlint prompt tooling. A `package.json`
-`overrides` entry raises it; this test fails if the lockfile drops below the floor.
+`external-editor` through the commitlint prompt tooling. `npm audit` flagged
+`colord` 2.9.3 (moderate, GHSA-2wm5-q62r-hmrv, fixed 2.9.4), pulled in by stylelint.
+`package.json` `overrides` entries raise them; this test fails if the lockfile drops
+below a floor.
 """
 
 from __future__ import annotations
@@ -16,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCKFILE = ROOT / "package-lock.json"
 
 # Requirement BUI-2061: every locked `tmp` version shall be >= 0.2.6.
-FLOORS = {"tmp": (0, 2, 6)}
+# Requirement BUI-2070: every locked `colord` version shall be >= 2.9.4.
+FLOORS = {"tmp": (0, 2, 6), "colord": (2, 9, 4)}
 
 
 def parse(text: str) -> tuple[int, ...]:
@@ -61,3 +64,17 @@ def test_bui_2061_nested_copies_are_checked() -> None:
     assert parse("0.2.5") < FLOORS["tmp"]
     assert parse("0.2.6") >= FLOORS["tmp"]
     assert parse("1.0.0-rc.1") >= FLOORS["tmp"]
+
+
+def test_bui_2070_colord_floor_is_2_9_4() -> None:
+    assert FLOORS["colord"] == (2, 9, 4)
+    assert parse("2.9.3") < FLOORS["colord"]
+    assert parse("2.9.4") >= FLOORS["colord"]
+    lock = {
+        "packages": {
+            "node_modules/colord": {"version": "2.9.4"},
+            "node_modules/stylelint/node_modules/colord": {"version": "2.9.3"},
+        }
+    }
+    low = [v for _, v in locked_versions(lock, "colord") if parse(v) < FLOORS["colord"]]
+    assert low == ["2.9.3"]
