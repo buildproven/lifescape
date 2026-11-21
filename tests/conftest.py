@@ -32,6 +32,11 @@ SERIAL_PASS = "LIFESCAPE_RELEASE_BUDGET_PASS"
 TEST_FILES_PREFIX = "test files"
 
 
+def is_xdist_worker(config: pytest.Config) -> bool:
+    """Return whether this pytest process is an xdist worker, not an inherited child."""
+    return hasattr(config, "workerinput")
+
+
 def files_line(nodeids: Iterable[str]) -> str | None:
     """One line naming each test file of `nodeids` once, in collection order."""
     files = list(dict.fromkeys(nodeid.split("::", 1)[0] for nodeid in nodeids))
@@ -67,7 +72,7 @@ class FileListReporter:
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", f"{BUDGET_MARK}: a CPU-time budget that must run alone")
-    if "PYTEST_XDIST_WORKER" not in os.environ:
+    if not is_xdist_worker(config):
         config.pluginmanager.register(FileListReporter(config), "lifescape-test-file-list")
 
 
@@ -76,7 +81,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     budget = [item for item in items if item.name.startswith(BUDGET_PREFIX)]
     for item in budget:
         item.add_marker(BUDGET_MARK)
-    if budget and "PYTEST_XDIST_WORKER" in os.environ:
+    if budget and is_xdist_worker(config):
         config.hook.pytest_deselected(items=budget)
         items[:] = [item for item in items if item not in budget]
 
@@ -84,7 +89,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     config = session.config
     if (
-        "PYTEST_XDIST_WORKER" in os.environ
+        is_xdist_worker(config)
         or SERIAL_PASS in os.environ
         or not config.pluginmanager.has_plugin("dsession")
     ):

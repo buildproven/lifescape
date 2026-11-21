@@ -84,6 +84,18 @@ def test_req_keel_4_empty_selection_prints_no_file_line() -> None:
     assert _file_lines(result.stdout) == []
 
 
+def test_req_keel_4_nested_controller_ignores_inherited_worker_environment() -> None:
+    result = _pytest(
+        *_test_command_args(),
+        "-n",
+        "0",
+        *FILES,
+        env={"PYTEST_XDIST_WORKER": "gw0"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _file_lines(result.stdout) == [f"test files ({len(FILES)}): {' '.join(FILES)}"]
+
+
 def test_req_keel_5_failure_details_follow_the_file_line(tmp_path: Path) -> None:
     # Keel reads the tail of the output, so the file list must not push failure details out of it.
     (tmp_path / "test_fails.py").write_text(
