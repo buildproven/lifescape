@@ -25,9 +25,15 @@ benchmark:
 app:
 	uv run lifescape app
 
-# Pack the Claude Desktop extension and the skill ZIP; .mcpbignore keeps local files out.
+# Pack the Claude Desktop extension (the mcpb devDependency, pinned in package.json) and the
+# skill ZIP; .mcpbignore keeps local files out. A clean checkout installs the locked dependencies.
 mcpb:
 	mkdir -p dist
 	rm -f dist/lifescape.mcpb dist/lifescape-skill.zip
-	npx --yes @anthropic-ai/mcpb@2.1.2 pack . dist/lifescape.mcpb
+	if [ ! -x node_modules/.bin/mcpb ] \
+		|| [ package.json -nt node_modules/.bin/mcpb ] \
+		|| [ package-lock.json -nt node_modules/.bin/mcpb ]; then \
+		npm ci --ignore-scripts --no-audit --no-fund; \
+	fi
+	npm run --silent mcpb
 	cd skills && zip -qr ../dist/lifescape-skill.zip lifescape -x '*/__pycache__/*' '*/.DS_Store'
