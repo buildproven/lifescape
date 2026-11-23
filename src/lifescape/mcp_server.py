@@ -569,7 +569,9 @@ def create_server(
     ) -> dict[str, Any]:
         """Find towns that feel like the profile: up to two example towns (place IDs from
         find_place), explicit targets, priorities 1-5, hard min/max limits, and state or region
-        filters. Results are discovery leads from catalog data, not verified evidence."""
+        filters. Results are discovery leads from catalog data, not verified evidence. Each match
+        and exemplar carries its catalog latitude and longitude (null when unknown) so a map
+        can be drawn in chat."""
         result = discovery().search(profile, limit=limit)
         return {
             "profile": result["profile"],
@@ -582,6 +584,8 @@ def create_server(
                     "place_id": match["place_id"],
                     "label": match["label"],
                     "population": match["population"],
+                    "latitude": match["latitude"],
+                    "longitude": match["longitude"],
                     "match_percent": match["match_percent"],
                     "match_band": match["match_band"],
                     "feel_summary": match["feel_summary"],

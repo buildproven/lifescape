@@ -62,6 +62,10 @@ and keep their rules: preferences discover, gates eliminate, weights rank, evide
 - Every tool takes a strict input schema; an unknown or missing argument is a tool error (PRD FR17).
 - `find_place` and `discover_towns` return Tier C discovery leads and never affect a gate or score
   (PRD FR18).
+- Each `discover_towns` match and each `profile.exemplars` entry carries `latitude` and
+  `longitude`, the place's Census internal point from the packaged catalog, or `null` when the
+  catalog has none (PRD FR18). Claude draws a requested map in chat from these fields; no tile
+  service is called, so the profile does not leave the conversation.
 - `compare_finalists` is the only ranking tool. A finalist with failed or unknown critical evidence
   is blocked and unranked (PRD FR19).
 - `explain_town` returns the research card bucket and the next action for each unresolved critical

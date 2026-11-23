@@ -67,6 +67,15 @@ owner what is missing; do not make up a value or a file.
    run's Markdown comparison and CSV reports as text, and give that text to the owner; the
    hosted server's file paths cannot be opened. If `export_report` says the run has no report text, run `compare_finalists` again.
 
+## Maps
+
+When the owner asks for a map, draw one from the `latitude` and `longitude` that
+`discover_towns` returns for the exemplars and matches, labelled by rank (mark the exemplars as
+the owner's examples). Draw it in this chat, for example as an SVG or an HTML artifact with no
+map tiles. Do not send the profile or the towns to a map service, a tile server, or a geocoder.
+A town whose `latitude` and `longitude` are null has no catalog point: list it beside the map and
+do not guess where it is.
+
 ## Tools
 
 - `find_place`: look up place IDs by town name or "Name, ST".

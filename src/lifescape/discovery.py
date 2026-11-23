@@ -221,6 +221,9 @@ class Place:
     values: dict[str, float | None]
     climate_sources: dict[str, tuple[str, str, float]] = dataclass_field(default_factory=dict)
     hospital_source: tuple[str, str, float, str] | None = None
+    # The Census internal point of the place; None when the catalog row has no coordinates.
+    latitude: float | None = None
+    longitude: float | None = None
 
     @property
     def population(self) -> float | None:
@@ -362,7 +365,32 @@ def _parse_place(row: dict[str, str]) -> Place:
         values,
         _parse_climate_sources(row["climate_sources"], row["place_id"], values),
         _parse_hospital_source(row["hospital_source"], row["place_id"], values),
+        *_parse_coordinates(row["latitude"], row["longitude"], row["place_id"]),
     )
+
+
+def _parse_coordinates(
+    raw_latitude: str, raw_longitude: str, place_id: str
+) -> tuple[float | None, float | None]:
+    """The place's ``(latitude, longitude)``; both blank means the catalog has no point.
+
+    A half-blank pair, a non-finite value, or a value off the globe makes the catalog unusable,
+    so a map is never drawn from a made-up or partial point.
+    """
+    if not raw_latitude and not raw_longitude:
+        return None, None
+    try:
+        latitude, longitude = float(raw_latitude), float(raw_longitude)
+    except ValueError as exc:
+        raise ValueError(f"invalid coordinates for {place_id}") from exc
+    if not (
+        math.isfinite(latitude)
+        and math.isfinite(longitude)
+        and -90 <= latitude <= 90
+        and -180 <= longitude <= 180
+    ):
+        raise ValueError(f"invalid coordinates for {place_id}")
+    return latitude, longitude
 
 
 _CLIMATE_GROUP_FIELDS: Final[dict[str, tuple[str, ...]]] = {
@@ -819,6 +847,8 @@ class DiscoveryService:
             "state": place.state,
             "label": place.label,
             "population": place.population,
+            "latitude": place.latitude,
+            "longitude": place.longitude,
             "total_match": total,
             "match_percent": round(total * 100),
             "match_band": match_band(total),
@@ -950,7 +980,14 @@ class DiscoveryService:
     ) -> dict[str, Any]:
         return {
             "exemplars": [
-                {"place_id": p.place_id, "name": p.name, "state": p.state, "label": p.label}
+                {
+                    "place_id": p.place_id,
+                    "name": p.name,
+                    "state": p.state,
+                    "label": p.label,
+                    "latitude": p.latitude,
+                    "longitude": p.longitude,
+                }
                 for p in exemplars
             ],
             "exclude_places": sorted(profile.exclude_places),
