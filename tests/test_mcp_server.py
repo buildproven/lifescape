@@ -6,9 +6,15 @@ Every tool is called through an MCP client session (in-memory JSON-RPC streams, 
 
 from __future__ import annotations
 
+import csv
+import gzip
+import hashlib
+import io
+import json
 import shutil
 import sys
 from collections.abc import Awaitable, Callable
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +24,12 @@ import yaml
 from mcp import Client, StdioServerParameters
 from mcp_types import CallToolResult, TextContent
 
+from lifescape.discovery import (
+    CATALOG_COLUMNS,
+    CatalogUnavailableError,
+    PlaceCatalog,
+    parse_catalog,
+)
 from lifescape.mcp_server import create_server
 
 FIXTURES = Path(__file__).parent / "fixtures" / "mcp"
@@ -208,6 +220,101 @@ def test_req_mcp_2_discover_towns_reports_profile_errors(tmp_path: Path) -> None
 
     assert result.is_error
     assert "unknown exemplar town: no-such-town" in _text(result)
+
+
+def _in_us_bounds(latitude: object, longitude: object) -> bool:
+    """Inside the box that holds every U.S. place, Hawaii and Alaska (past 180°) included."""
+    if not (isinstance(latitude, float) and isinstance(longitude, float)):
+        return False
+    return 18.0 <= latitude <= 72.0 and (-180.0 <= longitude <= -64.0 or longitude >= 172.0)
+
+
+def test_req_mcp_2_discover_towns_returns_coordinates_for_a_map(tmp_path: Path) -> None:
+    """BUI-2149: each match and each exemplar carries its catalog latitude and longitude."""
+    profile = {"exemplars": [NEW_BERN], "include_states": ["NC", "SC", "VA"]}
+    payload = _ok(_call(tmp_path, "discover_towns", {"profile": profile, "limit": 5}))
+
+    matches = payload["matches"]
+    assert len(matches) == 5
+    for match in matches:
+        assert _in_us_bounds(match["latitude"], match["longitude"]), match
+        # NC, SC, and VA lie between 32°N and 40°N, west of 75°W.
+        assert 32.0 <= match["latitude"] <= 40.0, match
+        assert -85.0 <= match["longitude"] <= -75.0, match
+    (exemplar,) = payload["profile"]["exemplars"]
+    assert exemplar["place_id"] == NEW_BERN
+    assert _in_us_bounds(exemplar["latitude"], exemplar["longitude"]), exemplar
+    # New Bern's Census internal point is at about 35.1°N, 77.1°W.
+    assert exemplar["latitude"] == pytest.approx(35.1, abs=0.2)
+    assert exemplar["longitude"] == pytest.approx(-77.1, abs=0.2)
+
+
+def _coordinate_catalog(coordinates: dict[str, tuple[str, str]]) -> PlaceCatalog:
+    """A small catalog whose places differ only in their catalog latitude and longitude."""
+    manifest = json.loads(
+        resources.files("lifescape").joinpath("data/place-catalog.manifest.json").read_text("utf-8")
+    )
+    known = {"population": "5000", "median_home_value": "300000", "population_density": "500"}
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=CATALOG_COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    for place_id, (latitude, longitude) in coordinates.items():
+        row = dict.fromkeys(CATALOG_COLUMNS, "")
+        row.update(known)
+        row.update(
+            place_id=place_id,
+            name=f"Town {place_id}",
+            state="NC",
+            region="South",
+            land_area_sqmi="1.0",
+            latitude=latitude,
+            longitude=longitude,
+        )
+        writer.writerow(row)
+    compressed = gzip.compress(buffer.getvalue().encode(), mtime=0)
+    manifest.update(
+        row_count=len(coordinates), output_sha256=hashlib.sha256(compressed).hexdigest()
+    )
+    return parse_catalog(compressed, manifest)
+
+
+def test_req_mcp_2_discover_towns_returns_null_when_the_catalog_has_no_coordinates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUI-2149: a place with blank catalog coordinates gets null, never a made-up point."""
+    catalog = _coordinate_catalog({"EX": ("", ""), "BLANK": ("", ""), "PLACED": ("35.5", "-78.25")})
+    monkeypatch.setattr("lifescape.mcp_server.load_place_catalog", lambda: catalog)
+
+    payload = _ok(_call(tmp_path, "discover_towns", {"profile": {"exemplars": ["EX"]}}))
+
+    by_id = {match["place_id"]: match for match in payload["matches"]}
+    assert set(by_id) == {"BLANK", "PLACED"}
+    assert by_id["BLANK"]["latitude"] is None
+    assert by_id["BLANK"]["longitude"] is None
+    assert (by_id["PLACED"]["latitude"], by_id["PLACED"]["longitude"]) == (35.5, -78.25)
+    (exemplar,) = payload["profile"]["exemplars"]
+    assert exemplar["latitude"] is None
+    assert exemplar["longitude"] is None
+
+
+@pytest.mark.parametrize(
+    ("latitude", "longitude"),
+    [
+        ("91", "-78"),
+        ("35", "-181"),
+        ("nan", "-78"),
+        ("35", "inf"),
+        ("north", "-78"),
+        ("35", ""),
+        ("", "-78"),
+    ],
+)
+def test_req_mcp_2_catalog_refuses_coordinates_that_are_not_a_point(
+    latitude: str, longitude: str
+) -> None:
+    """BUI-2149: an impossible or half-blank coordinate makes the catalog unusable."""
+    with pytest.raises(CatalogUnavailableError, match="coordinates"):
+        _coordinate_catalog({"EX": (latitude, longitude)})
 
 
 # REQ-MCP-3 ---------------------------------------------------------------------------------

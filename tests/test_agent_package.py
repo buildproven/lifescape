@@ -167,3 +167,21 @@ def test_req_agent_3_readme_starts_with_use_lifescape_in_claude() -> None:
     assert "ZIP" in section
     assert "claude mcp add" in section
     assert "web UI is frozen" in section
+
+
+def test_req_agent_1_skill_says_to_draw_a_map_from_the_coordinates_in_chat() -> None:
+    """BUI-2149: a map is drawn in chat from discover_towns coordinates, never by a map service."""
+    _, body = _skill_parts()
+    section = re.search(r"^## Maps\n(.*?)(?=^## |\Z)", body, flags=re.MULTILINE | re.DOTALL)
+    assert section, "SKILL.md needs a ## Maps section"
+    maps = " ".join(section.group(1).lower().split())
+
+    for phrase in (
+        "when the owner asks for a map",
+        "draw one",
+        "`latitude` and `longitude`",
+        "exemplars and matches",
+        "labelled by rank",
+        "do not send the profile or the towns to a map service",
+    ):
+        assert phrase in maps, phrase
