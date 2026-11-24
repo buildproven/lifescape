@@ -11,7 +11,8 @@ picks local files or a hosted database. The evidence tools read either a local e
 (``evidence_path``) or a stored packet's approved evidence (``packet_id``); the hosted database
 store has no owner files, so there they take ``packet_id`` only. ``inspect_evidence`` and
 ``explain_town`` report the critical values a packet still lacks; ``compare_finalists`` refuses a
-packet until every town has approved critical evidence.
+packet until every town has approved critical evidence. A server on the database store also has
+``delete_my_data``: it deletes every packet and run index the signed-in user owns (BUI-2213).
 """
 
 from __future__ import annotations
@@ -448,6 +449,42 @@ def _gate_payload(run: RunResult, metric_by_gate: dict[str, str]) -> dict[str, l
             }
         )
     return by_place
+
+
+def _delete_my_data_tool(
+    store: DatabaseStore, current_user: Callable[[], str | None]
+) -> ToolFunction:
+    """The ``delete_my_data`` tool over ``store``, for the user ``current_user`` names."""
+
+    def delete_my_data(
+        confirm: Annotated[
+            bool,
+            Field(
+                description=(
+                    "true only after the user asked in this chat to delete all their Lifescape "
+                    "data; the delete cannot be undone"
+                )
+            ),
+        ],
+    ) -> dict[str, Any]:
+        """Delete every research packet and run report index stored under the signed-in
+        user's GitHub login, and return how many of each were deleted. Other users' records
+        stay. The delete cannot be undone: call it only when the user asks to delete their data,
+        with confirm true."""
+        if not confirm:
+            raise ValueError(
+                "delete_my_data deleted nothing: pass confirm true only after the user asks to "
+                "delete all their data"
+            )
+        user = current_user()
+        deleted = store.delete_user_data(user=user)
+        return {
+            "user": user,
+            "deleted_packets": deleted.packets,
+            "deleted_run_indexes": deleted.run_indexes,
+        }
+
+    return delete_my_data
 
 
 def create_server(
@@ -1097,6 +1134,19 @@ def create_server(
         ),
         (export_report, read_only),
     ]
+    if isinstance(records, DatabaseStore):
+        # Only the database store keeps records per user; local files are the user's own.
+        tools.append(
+            (
+                _delete_my_data_tool(records, current_user),
+                ToolAnnotations(
+                    read_only_hint=False,
+                    destructive_hint=True,
+                    idempotent_hint=True,
+                    open_world_hint=False,
+                ),
+            )
+        )
     registered = [_register(tool, annotations) for tool, annotations in tools]
     by_name = {tool.name: tool for tool in registered}
 
@@ -1183,7 +1233,8 @@ def create_server(
             "reason; a rejected value cannot be approved. "
             "After approve_evidence, pass its packet_id (never a file path) to "
             "compare_finalists, explain_town, and inspect_evidence. "
-            "Never present a blocked town as ranked."
+            "Never present a blocked town as ranked. "
+            "Call delete_my_data only when the user asks to delete all their Lifescape data."
         ),
         tools=[*registered, door],
         auth=auth,

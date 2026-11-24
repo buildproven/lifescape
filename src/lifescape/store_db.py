@@ -13,7 +13,8 @@ or ``NO_USER`` (``''``) for a store with no user (the stdio server, and servers 
 auth). Reads and writes see only the caller's rows, so another user's ID reads as not found
 (BUI-2211). A run ID is a hash of the run's inputs, so two users can make the same one: run
 indexes are keyed by (owner, run ID). Packet IDs are random, so packets stay keyed by packet
-ID, and a save never replaces a packet another user owns.
+ID, and a save never replaces a packet another user owns. ``delete_user_data`` deletes every
+packet and run index one user owns, and no other user's rows (BUI-2213).
 
 A database made before rows had an owner migrates on first use, in one transaction:
 ``research_packets`` gets the ``owner`` column, ``run_report_indexes`` is rebuilt with the new
@@ -30,7 +31,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Self
+from typing import NamedTuple, Self
 
 from sqlalchemy import (
     Column,
@@ -119,6 +120,13 @@ SPENT_GRANTS = Table(
     Column("grant_id", String(128), primary_key=True),
     Column("expires_at", Float, nullable=False),
 )
+
+
+class DeletedRecords(NamedTuple):
+    """How many of one user's rows ``delete_user_data`` deleted."""
+
+    packets: int
+    run_indexes: int
 
 
 class DatabaseStore:
@@ -295,6 +303,16 @@ class DatabaseStore:
         self._upsert(
             RUN_INDEXES, "run_id", check_run_id(index.run_id), index.model_dump_json(), user
         )
+
+    def delete_user_data(self, user: str | None = None) -> DeletedRecords:
+        """Delete every packet and run index ``user`` owns, in one transaction, and count them.
+        Rows of other users stay; with no user, only the rows saved with no user go."""
+        with self._transaction() as connection:
+            packets = connection.execute(delete(PACKETS).where(self._owned_by(PACKETS, user)))
+            run_indexes = connection.execute(
+                delete(RUN_INDEXES).where(self._owned_by(RUN_INDEXES, user))
+            )
+        return DeletedRecords(packets=packets.rowcount, run_indexes=run_indexes.rowcount)
 
     def claim_grant(self, grant_id: str, expires_at: float) -> bool:
         """True on the first claim of ``grant_id`` by any store on this database only.
