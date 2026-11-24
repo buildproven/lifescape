@@ -42,7 +42,7 @@
     },
     {
       "name": "inspect_evidence",
-      "description": "Check an evidence CSV for validation errors and missing metrics"
+      "description": "Check a local evidence CSV or a research packet's approved evidence for validation errors and missing metrics"
     },
     {
       "name": "fetch_live_evidence",
