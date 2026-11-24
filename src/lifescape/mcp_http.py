@@ -16,7 +16,9 @@ sign-in belongs to the authorization server named by ``issuer_url``.
   resource (``AccessToken.resource``, the RFC 8707 resource indicator).
 
 ``create_owner_http_app`` is the hosted app: the same origin also serves the authorization
-server (``lifescape.oauth``) that signs the owner in through GitHub and issues those tokens.
+server (``lifescape.oauth``) that signs users in through GitHub and issues those tokens: the
+owner only, or any GitHub user with ``LIFESCAPE_SIGNUP=open`` (BUI-2212). Each tool call acts for
+the token's ``sub`` and counts against that user's ``LIFESCAPE_DAILY_CALLS`` for the UTC day.
 ``create_hosted_mcp_app`` builds it from the deployment's environment for the public site
 (``lifescape.web.create_hosted_site``); with a setting missing or unusable, every owner path
 answers 503 naming the variables, so the site's pages still serve.
@@ -38,7 +40,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from lifescape.mcp_server import create_server
+from lifescape.mcp_server import (
+    DAILY_CALLS_ENV,
+    CallLimit,
+    CallLimitConfigError,
+    create_server,
+    daily_calls_from_env,
+)
 from lifescape.oauth import (
     AUTHORIZE_PATH,
     GITHUB_CALLBACK_PATH,
@@ -139,11 +147,13 @@ def create_http_app(
     token_verifier: TokenVerifier,
     config_dir: Path | None = None,
     store: Store | None = None,
+    call_limit: CallLimit | None = None,
 ) -> Starlette:
     """Build the ASGI app for the hosted endpoint at ``<base_url>/api/mcp``.
 
     ``store`` keeps research packets and run report indexes; unset, ``LIFESCAPE_STORE`` in the
-    process environment picks it (``lifescape.mcp_server.create_server``).
+    process environment picks it (``lifescape.mcp_server.create_server``). ``call_limit`` sets
+    each signed-in user's tool calls per UTC day (default ``CallLimit()``).
 
     Run its lifespan (any ASGI server does) before serving requests: it starts the Streamable
     HTTP session manager. Sessions are stateless and answers are JSON, so any replica can serve
@@ -164,6 +174,7 @@ def create_http_app(
         auth=auth,
         token_verifier=token_verifier,
         store=store,
+        call_limit=call_limit,
     )
     return server.streamable_http_app(
         streamable_http_path=MCP_PATH,
@@ -184,16 +195,20 @@ def create_owner_http_app(
     config_dir: Path | None = None,
     github_transport: httpx2.AsyncBaseTransport | None = None,
     store: Store | None = None,
+    call_limit: CallLimit | None = None,
 ) -> Starlette:
-    """Build the hosted app: the MCP endpoint and its owner-only authorization server.
+    """Build the hosted app: the MCP endpoint and its authorization server.
 
     Reads the OAuth settings from ``env`` first, so a missing variable stops the server at
-    start (``OAuthConfigError`` names it). ``store`` unset, ``LIFESCAPE_STORE`` in ``env`` picks
-    it. A database store also records spent codes and refresh tokens, so every replica on that
-    database refuses a grant another replica exchanged (BUI-2027); the local store is one
-    process, so they are recorded in it. ``github_transport`` replaces the network for tests.
+    start (``OAuthConfigError`` names it), and so does an unusable ``LIFESCAPE_DAILY_CALLS``
+    (``CallLimitConfigError``). ``call_limit`` unset, that variable sets the daily limit.
+    ``store`` unset, ``LIFESCAPE_STORE`` in ``env`` picks it. A database store also records
+    spent codes and refresh tokens, so every replica on that database refuses a grant another
+    replica exchanged (BUI-2027); the local store is one process, so they are recorded in it.
+    ``github_transport`` replaces the network for tests.
     """
     settings = OAuthSettings.from_env(env)
+    limit = CallLimit(per_day=daily_calls_from_env(env)) if call_limit is None else call_limit
     origin = public_origin(base_url)
     records = store_from_env(output_dir, env) if store is None else store
     authorization = OwnerAuthorizationServer(
@@ -210,6 +225,7 @@ def create_owner_http_app(
         token_verifier=authorization,
         config_dir=config_dir,
         store=records,
+        call_limit=limit,
     )
     app.router.routes.extend(authorization.routes())
     return app
@@ -276,6 +292,10 @@ def create_hosted_mcp_app(
     except OAuthConfigError as error:
         missing.extend(error.missing)
         invalid.extend(error.invalid)
+    try:
+        daily_calls_from_env(env)
+    except CallLimitConfigError:
+        invalid.append(DAILY_CALLS_ENV)
     store, store_missing, store_invalid = _hosted_store(env)
     missing.extend(store_missing)
     invalid.extend(store_invalid)

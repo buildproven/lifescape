@@ -1,7 +1,11 @@
 """OAuth 2.1 authorization server for the hosted Lifescape MCP endpoint (BUI-1903).
 
-Claude's and ChatGPT's OAuth clients sign the owner in here; sign-in is delegated to GitHub,
-and only the GitHub login in ``OWNER_GITHUB_LOGIN`` gets a token. Port of retire-runway BUI-1857.
+Claude's and ChatGPT's OAuth clients sign users in here; sign-in is delegated to GitHub. With
+``LIFESCAPE_SIGNUP`` unset or ``owner``, only the GitHub login in ``OWNER_GITHUB_LOGIN`` gets a
+token; with ``open``, any GitHub login does (BUI-2212). Each token's ``sub`` is the user the hosted
+store keeps records for: the exact ``OWNER_GITHUB_LOGIN`` value for the owner (BUI-2211 moved the
+owner's rows to it), the GitHub login in lower case for anyone else (GitHub logins ignore case).
+Port of retire-runway BUI-1857.
 
 The MCP SDK handlers serve ``/authorize`` and ``/token`` (they check PKCE S256, the client, the
 redirect, and the code's client and expiry). This module adds the server metadata, dynamic
@@ -73,6 +77,10 @@ GITHUB_CLIENT_ID_ENV = "LIFESCAPE_GITHUB_OAUTH_CLIENT_ID"
 GITHUB_CLIENT_SECRET_ENV = "LIFESCAPE_GITHUB_OAUTH_CLIENT_SECRET"
 SIGNING_KEY_ENV = "LIFESCAPE_OAUTH_SIGNING_KEY"
 REQUIRED_ENV = (OWNER_ENV, GITHUB_CLIENT_ID_ENV, GITHUB_CLIENT_SECRET_ENV, SIGNING_KEY_ENV)
+# Optional: who may sign in. Unset or ``owner``, the owner only; ``open``, every GitHub login.
+SIGNUP_ENV = "LIFESCAPE_SIGNUP"
+SIGNUP_OWNER = "owner"
+SIGNUP_OPEN = "open"
 MIN_SIGNING_KEY_LENGTH = 32
 
 METADATA_PATH = "/.well-known/oauth-authorization-server"
@@ -147,6 +155,7 @@ class OAuthSettings:
     github_client_id: str
     github_client_secret: str
     signing_key: str
+    open_signup: bool = False
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> OAuthSettings:
@@ -166,6 +175,12 @@ class OAuthSettings:
                 f"{SIGNING_KEY_ENV} must be at least {MIN_SIGNING_KEY_LENGTH} characters "
                 "(for example the output of `openssl rand -base64 48`)"
             )
+        signup = env.get(SIGNUP_ENV, "").strip()
+        if signup not in ("", SIGNUP_OWNER, SIGNUP_OPEN):
+            problems[SIGNUP_ENV] = (
+                f"{SIGNUP_ENV} must be {SIGNUP_OPEN} (any GitHub login signs in) or "
+                f"{SIGNUP_OWNER} (only {OWNER_ENV}), or unset for {SIGNUP_OWNER}"
+            )
         if problems:
             raise OAuthConfigError("; ".join(problems.values()), invalid=tuple(problems))
         return cls(
@@ -173,6 +188,7 @@ class OAuthSettings:
             github_client_id=values[GITHUB_CLIENT_ID_ENV],
             github_client_secret=values[GITHUB_CLIENT_SECRET_ENV],
             signing_key=values[SIGNING_KEY_ENV],
+            open_signup=signup == SIGNUP_OPEN,
         )
 
 
@@ -362,7 +378,8 @@ def _github_text(response: httpx2.Response, name: str) -> str:
 class OwnerAuthorizationServer(
     OAuthAuthorizationServerProvider[AuthorizationCode, RefreshToken, AccessToken]
 ):
-    """The authorization server and the token verifier for one owner.
+    """The authorization server and the token verifier for one owner, and, with signup open,
+    for every GitHub user.
 
     ``issuer`` is the origin serving the OAuth endpoints; ``resource`` is the MCP resource
     identifier every access token is issued for (its ``aud``). ``grants`` records spent codes
@@ -449,6 +466,19 @@ class OwnerAuthorizationServer(
     def _is_owner(self, login: str) -> bool:
         return login.lower() == self._settings.owner_login.lower()
 
+    def _subject(self, login: str) -> str | None:
+        """The ``sub`` a GitHub login signs in as, or None when it may not sign in."""
+        if self._is_owner(login):
+            return self._settings.owner_login
+        if self._settings.open_signup and GITHUB_LOGIN_PATTERN.match(login):
+            return login.lower()
+        return None
+
+    def _admits(self, subject: str) -> bool:
+        """Whether a token for ``subject`` is good now: closing signup refuses every token
+        given to anyone but the owner while it was open."""
+        return bool(subject) and self._subject(subject) == subject
+
     # ------------------------------------------------- SDK provider protocol
 
     def _client(self, client_id: str, claims: _ClientClaims) -> OwnerClient:
@@ -533,9 +563,12 @@ class OwnerAuthorizationServer(
     async def exchange_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode
     ) -> OAuthToken:
-        if not self._is_owner(authorization_code.subject or ""):
-            raise TokenError("invalid_grant", "the authorization code is not for the owner")
-        return self._issue(authorization_code.client_id, authorization_code.scopes)
+        subject = authorization_code.subject or ""
+        if not self._admits(subject):
+            raise TokenError(
+                "invalid_grant", "the authorization code is not for a user who can sign in"
+            )
+        return self._issue(authorization_code.client_id, authorization_code.scopes, subject=subject)
 
     async def load_refresh_token(
         self, client: OAuthClientInformationFull, refresh_token: str
@@ -560,13 +593,14 @@ class OwnerAuthorizationServer(
         refresh_token: RefreshToken,
         scopes: list[str],
     ) -> OAuthToken:
-        if not self._is_owner(refresh_token.subject or ""):
-            raise TokenError("invalid_grant", "the refresh token is not for the owner")
-        return self._issue(refresh_token.client_id, scopes)
+        subject = refresh_token.subject or ""
+        if not self._admits(subject):
+            raise TokenError("invalid_grant", "the refresh token is not for a user who can sign in")
+        return self._issue(refresh_token.client_id, scopes, subject=subject)
 
     async def load_access_token(self, token: str) -> AccessToken | None:
         claims = self._open("access", token, _AccessClaims)
-        if claims is None or not self._is_owner(claims.sub):
+        if claims is None or not self._admits(claims.sub):
             return None
         return AccessToken(
             token=token,
@@ -585,15 +619,18 @@ class OwnerAuthorizationServer(
         """``TokenVerifier`` for the resource server (BUI-1901)."""
         return await self.load_access_token(token)
 
-    def _issue(self, client_id: str, scopes: list[str]) -> OAuthToken:
-        owner = self._settings.owner_login
+    def _issue(
+        self, client_id: str, scopes: list[str], *, subject: str | None = None
+    ) -> OAuthToken:
+        """Tokens for ``subject``; unset, for the owner."""
+        subject = self._settings.owner_login if subject is None else subject
         access = self._sign(
             "access",
-            {"sub": owner, "client_id": client_id, "scope": " ".join(scopes)},
+            {"sub": subject, "client_id": client_id, "scope": " ".join(scopes)},
             ACCESS_TOKEN_SECONDS,
         )
         refresh = self._sign(
-            "refresh", {"sub": owner, "cid": client_id, "sc": scopes}, REFRESH_TOKEN_SECONDS
+            "refresh", {"sub": subject, "cid": client_id, "sc": scopes}, REFRESH_TOKEN_SECONDS
         )
         return OAuthToken(
             access_token=access,
@@ -666,7 +703,8 @@ class OwnerAuthorizationServer(
         return response
 
     async def github_callback(self, request: Request) -> Response:
-        """Finish sign-in: only the owner's GitHub login gets an authorization code."""
+        """Finish sign-in: the owner's GitHub login, or with signup open any GitHub login,
+        gets an authorization code for its ``sub`` (``_subject``)."""
         params = request.query_params
         sealed = params.get("state", "")
         state = self._open("state", sealed, _StateClaims) if sealed else None
@@ -684,7 +722,8 @@ class OwnerAuthorizationServer(
             login = await self._github_login(code)
         except GitHubSignInError as error:
             return self._refuse(502, f"GitHub could not confirm who you are ({error}). Try again.")
-        if not self._is_owner(login):
+        subject = self._subject(login)
+        if subject is None:
             return self._refuse(
                 403, "This server serves only its owner. Sign in with the owner's GitHub account."
             )
@@ -692,7 +731,7 @@ class OwnerAuthorizationServer(
         authorization_code = self._sign(
             "code",
             {
-                "sub": self._settings.owner_login,
+                "sub": subject,
                 "cid": state.cid,
                 "ru": state.ru,
                 "rx": state.rx,

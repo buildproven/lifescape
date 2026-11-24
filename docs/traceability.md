@@ -102,3 +102,16 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
   The landing page's "Use it in Claude" section and the README give
   `https://lifescape.buildproven.ai/api/mcp` as the claude.ai connector and keep the desktop
   extension as the local option. `tests/test_delete_my_data.py` proves it (REQ-DEL-1..3).
+- Hosted signup open (BUI-2212): `src/lifescape/oauth.py::OAuthSettings` reads `LIFESCAPE_SIGNUP`.
+  Unset or `owner`, only `OWNER_GITHUB_LOGIN` signs in (403 for anyone else); `open`, any GitHub
+  login gets a code and tokens. `src/lifescape/oauth.py::OwnerAuthorizationServer` gives the owner
+  the exact `OWNER_GITHUB_LOGIN` value as `sub` (BUI-2211 moved the owner's rows to it) and anyone
+  else their login in lower case; closing signup again refuses every non-owner token and refresh.
+  Any other value stops the server, and the hosted app answers 503 naming it.
+  `src/lifescape/mcp_server.py::create_server` acts for the token's `sub` on every tool call and
+  counts it: past `LIFESCAPE_DAILY_CALLS` (default 200, `src/lifescape/mcp_server.py::daily_calls_from_env`)
+  calls in one UTC day, the next call is refused until the next UTC day with a message naming the
+  limit. `run_tool` counts once, not again for the tool it runs. The count is kept in the database
+  every replica shares (`src/lifescape/store_db.py::DatabaseStore.count_call`, table
+  `daily_tool_calls`, only the current day kept), or in the process for another store. The stdio
+  server has no user and no limit. `tests/test_oauth_open_signup.py` proves it (REQ-SIGNUP-1..3).

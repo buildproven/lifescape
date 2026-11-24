@@ -13,6 +13,9 @@ store has no owner files, so there they take ``packet_id`` only. ``inspect_evide
 ``explain_town`` report the critical values a packet still lacks; ``compare_finalists`` refuses a
 packet until every town has approved critical evidence. A server on the database store also has
 ``delete_my_data``: it deletes every packet and run index the signed-in user owns (BUI-2213).
+On the hosted server each signed-in user may make ``LIFESCAPE_DAILY_CALLS`` (default 200) tool
+calls per UTC day; the next call is refused until the next UTC day, to protect the free public
+data APIs the tools call (BUI-2212). The stdio server has no user and no limit.
 """
 
 from __future__ import annotations
@@ -20,14 +23,15 @@ from __future__ import annotations
 import csv
 import hashlib
 import sqlite3
-from collections.abc import Callable, Iterator, Sequence
+import threading
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from functools import cache, wraps
 from io import StringIO
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Protocol, cast
 
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import TokenVerifier
@@ -98,6 +102,10 @@ FETCH_BRIEF = SearchBrief(
     preferences="Live public-source evidence the owner requested through the Lifescape MCP server."
 )
 FETCH_RATIONALE = "The owner named this town for live evidence through the MCP server."
+# Tool calls one signed-in user may make per UTC day (BUI-2212). A starting value, with no
+# standard behind it, to protect the free public data APIs; the deployment changes it here.
+DAILY_CALLS_ENV = "LIFESCAPE_DAILY_CALLS"
+DEFAULT_DAILY_CALLS = 200
 
 PlaceId = Annotated[str, Field(min_length=1, max_length=64)]
 MetricId = Annotated[str, Field(min_length=1, max_length=64)]
@@ -151,6 +159,78 @@ IsoDate = Annotated[
 
 class EvidenceSelectionError(ValueError):
     """Raised when the requested towns cannot be selected from an evidence CSV."""
+
+
+class CallLimitConfigError(ValueError):
+    """``LIFESCAPE_DAILY_CALLS`` is not a whole number of at least 1."""
+
+
+class CallLimitError(ValueError):
+    """The signed-in user has made every tool call allowed this UTC day."""
+
+
+class CallLedger(Protocol):
+    """Counts each user's tool calls per UTC day.
+
+    ``count_call`` adds one call to ``user``'s count for ``day`` (``YYYY-MM-DD``) and returns
+    the new count; it raises when the count cannot be read or written, so a failure never
+    passes for an allowed call. ``lifescape.store_db.DatabaseStore`` keeps the count in the
+    database every hosted replica shares; ``DailyCalls`` keeps it in one process.
+    """
+
+    def count_call(self, user: str, day: str) -> int: ...
+
+
+class DailyCalls:
+    """Each user's tool calls per UTC day, in this process only. Past days are dropped."""
+
+    def __init__(self) -> None:
+        self._counts: dict[tuple[str, str], int] = {}
+        self._lock = threading.Lock()
+
+    def count_call(self, user: str, day: str) -> int:
+        with self._lock:
+            self._counts = {key: n for key, n in self._counts.items() if key[1] >= day}
+            count = self._counts.get((user, day), 0) + 1
+            self._counts[(user, day)] = count
+            return count
+
+    def __len__(self) -> int:
+        return len(self._counts)
+
+
+def _utc_today() -> date:
+    return datetime.now(UTC).date()
+
+
+@dataclass(frozen=True)
+class CallLimit:
+    """How many tool calls a signed-in user may make per UTC day.
+
+    ``ledger`` unset, a server on the database store counts in its database and any other
+    server counts in its process. ``today`` gives the UTC day the calls count in.
+    """
+
+    per_day: int = DEFAULT_DAILY_CALLS
+    ledger: CallLedger | None = None
+    today: Callable[[], date] = field(default=_utc_today)
+
+
+def daily_calls_from_env(env: Mapping[str, str]) -> int:
+    """``LIFESCAPE_DAILY_CALLS`` from ``env``: a whole number of at least 1, default 200."""
+    raw = env.get(DAILY_CALLS_ENV, "").strip()
+    if not raw:
+        return DEFAULT_DAILY_CALLS
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 0
+    if value < 1:
+        raise CallLimitConfigError(
+            f"{DAILY_CALLS_ENV} must be a whole number of at least 1 (tool calls per user each "
+            f"UTC day), or unset for {DEFAULT_DAILY_CALLS}"
+        )
+    return value
 
 
 @dataclass(frozen=True)
@@ -208,10 +288,26 @@ def _reporting(fn: ToolFunction) -> ToolFunction:
     return run
 
 
-def _register(fn: ToolFunction, annotations: ToolAnnotations | None = None) -> Tool:
-    """Build a tool that rejects unknown arguments (``additionalProperties: false``)."""
+def _metered(fn: ToolFunction, admit: Callable[[], None]) -> ToolFunction:
+    """``fn``, run only after ``admit`` counts the call and lets it through."""
+
+    @wraps(fn)
+    def run(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        admit()
+        return fn(*args, **kwargs)
+
+    return run
+
+
+def _register(
+    fn: ToolFunction,
+    annotations: ToolAnnotations | None = None,
+    admit: Callable[[], None] | None = None,
+) -> Tool:
+    """Build a tool that rejects unknown arguments (``additionalProperties: false``). With
+    ``admit``, each call is counted against the daily limit first."""
     tool = Tool.from_function(fn, annotations=annotations)
-    tool.fn = _reporting(fn)
+    tool.fn = _reporting(fn if admit is None else _metered(fn, admit))
     base = tool.fn_metadata.arg_model
     strict_model = cast(
         type[ArgModelBase],
@@ -495,6 +591,7 @@ def create_server(
     auth: AuthSettings | None = None,
     token_verifier: TokenVerifier | None = None,
     store: Store | None = None,
+    call_limit: CallLimit | None = None,
 ) -> MCPServer:
     """Build the Lifescape MCP server. ``config_dir`` defaults to the packaged config;
     ``live_connectors`` builds the public-data connectors each ``fetch_live_evidence`` uses.
@@ -503,10 +600,19 @@ def create_server(
     packets and run report indexes; unset, ``LIFESCAPE_STORE`` picks it (``store_from_env``)
     and a bad setting fails here, before any tool runs. ``LIFESCAPE_RESEARCH_GEOGRAPHIES``
     supplies configured source geographies (such as NOAA station-years) for
-    ``fetch_live_evidence``; a malformed value also fails here."""
+    ``fetch_live_evidence``; a malformed value also fails here. ``call_limit`` sets how many
+    tool calls each signed-in user may make per UTC day (default ``CallLimit()``)."""
     records = store_from_env(output_dir) if store is None else store
     configured_geographies = research_geographies_from_environment()
     hosted = auth is not None or token_verifier is not None
+    limit = CallLimit() if call_limit is None else call_limit
+    ledger: CallLedger = (
+        limit.ledger
+        if limit.ledger is not None
+        else records
+        if isinstance(records, DatabaseStore)
+        else DailyCalls()
+    )
 
     def current_user() -> str | None:
         """The signed-in user's subject, which keys every packet and run index the store
@@ -522,6 +628,19 @@ def create_server(
                 "has no subject, so no record was read or saved"
             )
         return None
+
+    def admit_call() -> None:
+        """Count a signed-in user's tool call; refuse it past the day's limit. Every call acts
+        for the token's subject, so a hosted token without one is refused here too."""
+        user = current_user()
+        if user is None:
+            return
+        day = limit.today().isoformat()
+        if ledger.count_call(user, day) > limit.per_day:
+            raise CallLimitError(
+                f"Lifescape allows {limit.per_day} tool calls per user each UTC day, and "
+                f"{user} has made them all on {day}. Try again after 00:00 UTC."
+            )
 
     @contextmanager
     def configuration() -> Iterator[Path]:
@@ -1147,8 +1266,12 @@ def create_server(
                 ),
             )
         )
-    registered = [_register(tool, annotations) for tool, annotations in tools]
+    registered = [_register(tool, annotations, admit_call) for tool, annotations in tools]
     by_name = {tool.name: tool for tool in registered}
+    # run_tool counts as the one call: the tool it runs is not counted again.
+    uncounted = {
+        entry.name: _reporting(fn) for entry, (fn, _) in zip(registered, tools, strict=True)
+    }
 
     def run_tool(
         tool: Annotated[
@@ -1185,7 +1308,7 @@ def create_server(
                 for error in exc.errors()
             )
             raise ValueError(f"{tool}: {problems}") from exc
-        result: dict[str, Any] = entry.fn(**model.model_dump_one_level())
+        result: dict[str, Any] = uncounted[tool](**model.model_dump_one_level())
         return result
 
     def tool_catalog() -> list[dict[str, Any]]:
@@ -1214,6 +1337,7 @@ def create_server(
             idempotent_hint=False,
             open_world_hint=True,
         ),
+        admit_call,
     )
     return MCPServer(
         "lifescape",
