@@ -69,3 +69,10 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
 - FR18 (BUI-2149): each `discover_towns` match and each `profile.exemplars` entry returns
   `latitude` and `longitude` from the packaged catalog, or `null` when the catalog has none, so
   Claude can draw a map in chat. The FR18 row traces the tests that prove both fields.
+- Hosted MCP OAuth (BUI-2207): ChatGPT apps (OpenAI Apps SDK) sign in to the hosted server as
+  Claude does. `src/lifescape/oauth.py::allowed_redirect` accepts
+  `https://chatgpt.com/connector_platform_oauth_redirect` and
+  `https://chatgpt.com/connector/oauth/<callback_id>` beside Claude and loopback; a `resource`
+  in the authorization request must be the MCP origin, the token's `aud`, and `/api/mcp`
+  answers 401 to any other audience. `tests/test_oauth_chatgpt.py` proves each
+  (REQ-CHATGPT-1 to REQ-CHATGPT-3).
