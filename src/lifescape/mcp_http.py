@@ -53,6 +53,7 @@ from lifescape.oauth import (
 from lifescape.store import (
     DATABASE_STORE,
     DATABASE_URL_ENV,
+    OWNER_LOGIN_ENV,
     STORE_ENV,
     Store,
     StoreConfigError,
@@ -218,6 +219,7 @@ def _hosted_store(env: Mapping[str, str]) -> tuple[Store | None, list[str], list
     """The hosted database store, or the store variables that are missing or unusable.
 
     The hosted server has no disk that outlives a request, so only the database store serves.
+    Rows saved before they had an owner go to ``OWNER_GITHUB_LOGIN`` (BUI-2211).
     """
     kind = env.get(STORE_ENV, "").strip()
     url = env.get(DATABASE_URL_ENV, "").strip()
@@ -226,7 +228,8 @@ def _hosted_store(env: Mapping[str, str]) -> tuple[Store | None, list[str], list
     if missing or invalid:
         return None, missing, invalid
     try:
-        return DatabaseStore.from_url(url), [], []
+        owner = env.get(OWNER_LOGIN_ENV, "").strip() or None
+        return DatabaseStore.from_url(url, owner=owner), [], []
     except StoreConfigError:
         # The message can name the URL's host and user; the 503 names the variable only.
         return None, [], [DATABASE_URL_ENV]

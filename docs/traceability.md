@@ -81,3 +81,13 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
   non-loopback redirect. The metadata already listed S256, `/register` and auth method `none`, and
   tokens were already bound to the server's resource. `tests/test_oauth_chatgpt.py` proves all three
   (REQ-CHATGPT-1..3).
+- Hosted store, per user (BUI-2211): `research_packets` and `run_report_indexes` have an `owner`
+  column holding the signed-in user's token `sub` (`''` for no user). `src/lifescape/store_db.py::DatabaseStore`
+  reads and writes only the caller's rows, so another user's packet or run ID reads as not found.
+  A run ID hashes the run's inputs, so run indexes are keyed by (owner, run ID); packet IDs are
+  random, and a save never replaces a packet another user owns. `src/lifescape/mcp_server.py::create_server`
+  takes the user from the access token and refuses a hosted token with no subject. A database
+  made before the column existed migrates once, in one transaction, and its rows go to
+  `OWNER_GITHUB_LOGIN`; with rows and no owner set, the store refuses instead of guessing. Rows
+  saved later with no user stay the no-user's rows. The stdio server has no user and is unchanged.
+  `tests/test_store_per_user.py` proves it (REQ-USER-1..3).
