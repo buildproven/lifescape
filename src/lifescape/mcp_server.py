@@ -9,9 +9,9 @@ Live-fetched evidence stays a proposal until ``approve_evidence`` records a name
 Research packets and run report indexes go through ``lifescape.store``; ``LIFESCAPE_STORE``
 picks local files or a hosted database. The evidence tools read either a local evidence CSV
 (``evidence_path``) or a stored packet's approved evidence (``packet_id``); the hosted database
-store has no owner files, so there they take ``packet_id`` only. ``inspect_evidence`` and
-``explain_town`` report the critical values a packet still lacks; ``compare_finalists`` refuses a
-packet until every town has approved critical evidence.
+store has no owner files, so there they take ``packet_id`` only and refuse ``manifest_path``.
+``inspect_evidence`` and ``explain_town`` report the critical values a packet still lacks;
+``compare_finalists`` refuses a packet until every town has approved critical evidence.
 """
 
 from __future__ import annotations
@@ -115,6 +115,17 @@ EvidencePath = Annotated[
             "Path to a local wide evidence CSV (one row per town, one column per metric). "
             "Local server only; pass packet_id instead on the hosted server. "
             "Give exactly one of evidence_path and packet_id."
+        ),
+    ),
+]
+ManifestPath = Annotated[
+    str | None,
+    Field(
+        min_length=1,
+        max_length=4096,
+        description=(
+            "Optional per-metric provenance manifest CSV for the evidence. "
+            "Local server only; the hosted server refuses it."
         ),
     ),
 ]
@@ -512,6 +523,18 @@ def create_server(
             path=path, identity=f"packet:{packet_id}", in_memory=True, packet=stored
         )
 
+    def manifest_input(manifest_path: str | None) -> Path | None:
+        """Return the owner's local manifest CSV, or None. The hosted server refuses a path: it
+        would name a file on the server's disk, not the caller's."""
+        if manifest_path is None:
+            return None
+        if isinstance(records, DatabaseStore):
+            raise ValueError(
+                "the hosted server cannot read manifest_path from a file; omit manifest_path "
+                "on the hosted server"
+            )
+        return _existing_file(manifest_path, "manifest")
+
     @cache
     def discovery() -> DiscoveryService:
         return DiscoveryService(load_place_catalog())
@@ -692,14 +715,7 @@ def create_server(
         place_id: PlaceId,
         evidence_path: EvidencePath = None,
         packet_id: EvidencePacketId = None,
-        manifest_path: Annotated[
-            str | None,
-            Field(
-                min_length=1,
-                max_length=4096,
-                description="Optional per-metric provenance manifest CSV for the evidence.",
-            ),
-        ] = None,
+        manifest_path: ManifestPath = None,
         as_of: IsoDate = None,
     ) -> dict[str, Any]:
         """Explain where one town stands on the evidence: its research card (known reject,
@@ -713,7 +729,7 @@ def create_server(
             evidence_input(evidence_path, packet_id, require_complete=False) as evidence,
             configuration() as config,
         ):
-            manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
+            manifest = manifest_input(manifest_path)
             unapproved = _unapproved_lead(evidence, place_id)
             if unapproved is not None:
                 return _card_payload(
@@ -736,14 +752,7 @@ def create_server(
     def inspect_evidence(
         evidence_path: EvidencePath = None,
         packet_id: EvidencePacketId = None,
-        manifest_path: Annotated[
-            str | None,
-            Field(
-                min_length=1,
-                max_length=4096,
-                description="Optional per-metric provenance manifest CSV for the evidence.",
-            ),
-        ] = None,
+        manifest_path: ManifestPath = None,
         as_of: IsoDate = None,
     ) -> dict[str, Any]:
         """Check an evidence CSV before using it: the strict loader's validation errors, and
@@ -761,7 +770,7 @@ def create_server(
             configuration() as config,
         ):
             evidence = source.path
-            manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
+            manifest = manifest_input(manifest_path)
             loaded = load_configuration(config, None, config / LIVE_RESEARCH_BRIEF)
             try:
                 ingest_csv(
