@@ -124,9 +124,8 @@
           <p class="section-number">In Claude</p>
           <h2 id="claude-title">Use it in Claude</h2>
           <p>
-            Lifescape is a free Claude plugin: a skill with the decision workflow and a local server
-            with the Lifescape tools. Claude only explains what the tools return, and your searches
-            and evidence stay on your computer.
+            Lifescape is a free Claude plugin: a skill with the decision workflow and a server with
+            the Lifescape tools. Claude only explains what the tools return.
           </p>
         </div>
         <ol class="in-claude-steps">
@@ -135,13 +134,18 @@
             <div>
               <h3>Add the Lifescape plugin to Claude.</h3>
               <p>
-                From the latest release, install the desktop extension
+                On claude.ai, add a custom connector with the server URL
+                <code>https://<wbr />lifescape.buildproven.ai<wbr />/api/mcp</code> and sign in with
+                GitHub. It works on the web, on your phone, and in Claude Desktop.
+              </p>
+              <p>
+                To keep your searches and evidence on your computer, install the desktop extension
                 <a
                   href="https://github.com/buildproven/lifescape/releases/latest/download/lifescape.mcpb"
                   rel="noreferrer"
                   ><code>lifescape.mcpb</code></a
                 >
-                in Claude Desktop, then upload the skill
+                in Claude Desktop instead. Either way, upload the skill
                 <a
                   href="https://github.com/buildproven/lifescape/releases/latest/download/lifescape-skill.zip"
                   rel="noreferrer"
@@ -164,8 +168,8 @@
           </li>
         </ol>
         <p class="in-claude-note">
-          Claude on the web and on your phone reaches Lifescape through a server you deploy
-          yourself.
+          The hosted server stores your research under your GitHub login, and only you can read it.
+          Ask Claude to run <code>delete_my_data</code> to remove it.
           <a
             class="text-link"
             href="https://github.com/buildproven/lifescape#use-lifescape-in-claude"

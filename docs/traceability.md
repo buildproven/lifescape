@@ -91,3 +91,14 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
   `OWNER_GITHUB_LOGIN`; with rows and no owner set, the store refuses instead of guessing. Rows
   saved later with no user stay the no-user's rows. The stdio server has no user and is unchanged.
   `tests/test_store_per_user.py` proves it (REQ-USER-1..3).
+- Hosted store, delete my data (BUI-2213): `src/lifescape/store_db.py::DatabaseStore.delete_user_data`
+  deletes every `research_packets` and `run_report_indexes` row the user owns, in one
+  transaction, and counts them; other users' rows stay. `src/lifescape/mcp_server.py::create_server`
+  adds the `delete_my_data` tool only on the database store (the local files are the user's own);
+  it takes the user from the access token, refuses a token with no subject, needs `confirm` true,
+  and returns the user and both counts. The privacy page (`src/lifescape/templates/privacy.html`)
+  says that with signup open any GitHub account can sign in, that each user's records are stored
+  under their GitHub login and only they can read them, and that `delete_my_data` removes them.
+  The landing page's "Use it in Claude" section and the README give
+  `https://lifescape.buildproven.ai/api/mcp` as the claude.ai connector and keep the desktop
+  extension as the local option. `tests/test_delete_my_data.py` proves it (REQ-DEL-1..3).

@@ -2,13 +2,30 @@
 
 ## Use Lifescape in Claude
 
-Lifescape is free for everyone under the [MIT License](LICENSE), with no paid tier. It runs on
-your computer: you need only your own Claude account, and your searches, evidence, and reports stay
-on your machine. Claude gets a skill with the decision workflow (discover towns, build a shortlist,
-gather evidence, approve each value yourself, and compare finalists) and a local MCP server with the
-Lifescape tools. The engines find, gate, and rank; Claude only explains the tool results.
+Lifescape is free for everyone under the [MIT License](LICENSE), with no paid tier. You need only
+your own Claude account. Claude gets a skill with the decision workflow (discover towns, build a
+shortlist, gather evidence, approve each value yourself, and compare finalists) and an MCP server
+with the Lifescape tools. Connect the hosted server from claude.ai, or run the server on your
+computer with the desktop extension. The engines find, gate, and rank; Claude only explains the
+tool results.
+
+### Connect from claude.ai
+
+1. In Claude, open the "+" menu, choose "Add custom connector", and enter the hosted server URL
+   `https://lifescape.buildproven.ai/api/mcp`. Claude opens GitHub to sign you in. The connector
+   works on claude.ai, in Claude Desktop, and in the mobile apps.
+2. In Claude, go to Customize > Skills, add a skill, choose "Upload a skill", and upload
+   [`lifescape-skill.zip`](https://github.com/buildproven/lifescape/releases/latest/download/lifescape-skill.zip).
+
+The hosted server stores your research packets and run report indexes under your GitHub login, and
+only you can read them. Ask Claude to delete your data: `delete_my_data` removes all of them and
+returns how many it deleted. [`/privacy`](https://lifescape.buildproven.ai/privacy) gives the
+details.
 
 ### Install in Claude Desktop
+
+The local option: the desktop extension runs the server on your computer, and your searches,
+evidence, and reports stay on your machine.
 
 1. Download the two files from the latest GitHub release:
    - the desktop extension,
@@ -33,7 +50,7 @@ claude mcp add --transport stdio --scope user lifescape \
 
 The tools are `find_place`, `discover_towns`, `explain_town`, `inspect_evidence`,
 `fetch_live_evidence`, `approve_evidence`, `reject_evidence`, `compare_finalists`, and
-`export_report`. Fetched values stay proposals until you approve or reject each one by name in
+`export_report`; the hosted server also has `delete_my_data`. Fetched values stay proposals until you approve or reject each one by name in
 chat; the server refuses an AI or model name as the reviewer.
 
 ### Local web app
@@ -61,19 +78,22 @@ uvx --from git+https://github.com/buildproven/lifescape lifescape run --help
 ## Hosted server (the author's instance)
 
 `https://lifescape.buildproven.ai/api/mcp` is the author's own instance. It serves the same tools
-over Streamable HTTP for Claude on the web and mobile, but only the owner can sign in: Claude signs
-in through GitHub, and only the GitHub login in `OWNER_GITHUB_LOGIN` gets a token. The plugin
-marketplace that installs it is private too. To use Lifescape from claude.ai on the web or mobile,
+over Streamable HTTP for Claude on the web, desktop, and mobile
+([Connect from claude.ai](#connect-from-claudeai)). Claude signs in through GitHub. When the owner
+opens signup, any GitHub account can sign in; while signup is closed, only the GitHub login in
+`OWNER_GITHUB_LOGIN` gets a token. Each user's research packets and run report indexes are stored
+under their GitHub login, and only they can read them. `delete_my_data` deletes all of the
+signed-in user's records and returns how many it deleted. The plugin marketplace that installs
+the plugin is private, so connect by URL. To run the server yourself,
 [deploy your own](#deploy-your-own) instance.
 
 The repository root is the plugin: `.claude-plugin/plugin.json` names it, `.mcp.json` points at
 the hosted server, and `skills/lifescape` is the skill. Check it with `claude plugin validate .`.
 Point `.mcp.json` at your own deployment before you install it from your own marketplace.
 
-[`/privacy`](https://lifescape.buildproven.ai/privacy) states what the hosted server stores (the
-research packets and report indexes in the owner's database), that only the owner's GitHub
-account can sign in, and how to delete the data. The plugin manifest names it as
-`privacyPolicyUrl`.
+[`/privacy`](https://lifescape.buildproven.ai/privacy) states what the hosted server stores (each
+user's research packets and report indexes, under their GitHub login), who can sign in, and how to
+delete the data with `delete_my_data`. The plugin manifest names it as `privacyPolicyUrl`.
 
 ### Deploy your own
 
@@ -84,7 +104,7 @@ these:
 
 | Variable                               | Holds                                                               |
 | -------------------------------------- | ------------------------------------------------------------------- |
-| `OWNER_GITHUB_LOGIN`                   | your GitHub login, the only account that can sign in                |
+| `OWNER_GITHUB_LOGIN`                   | your GitHub login, the account that can always sign in              |
 | `LIFESCAPE_GITHUB_OAUTH_CLIENT_ID`     | the GitHub OAuth app (callback `<origin>/oauth/github/callback`)    |
 | `LIFESCAPE_GITHUB_OAUTH_CLIENT_SECRET` | that app's client secret                                            |
 | `LIFESCAPE_OAUTH_SIGNING_KEY`          | at least 32 characters, such as `openssl rand -base64 48`           |

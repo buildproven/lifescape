@@ -47,19 +47,24 @@
     <main id="main" class="policy">
       <p class="kicker">Hosted Lifescape server</p>
       <h1>Privacy policy</h1>
-      <p>Last updated: November 20, 2026</p>
+      <p>Last updated: November 24, 2026</p>
 
       <h2>The short version</h2>
       <p>
         The Lifescape Claude plugin connects to the hosted server at
-        <code>https://lifescape.buildproven.ai/api/mcp</code>. Each deployment serves one owner. The
-        server keeps that owner's research in the owner's own database and nowhere else. It does not
-        sell, share, or analyze the data. It sets one short-lived cookie during sign-in, to tie the
-        GitHub sign-in to the browser that started it, and no tracking cookies.
+        <code>https://lifescape.buildproven.ai/api/mcp</code>. You sign in with your GitHub account.
+        The server keeps your research packets and run report indexes in the deployment owner's own
+        database, stored under your GitHub login. Only you can read them through Lifescape, and
+        <code>delete_my_data</code> removes them. The server does not sell, share, or analyze the
+        data. It sets one short-lived cookie during sign-in, to tie the GitHub sign-in to the
+        browser that started it, and no tracking cookies.
       </p>
 
       <h2>What the hosted server stores</h2>
-      <p>The server writes these records to the owner's own database (Postgres, such as Neon):</p>
+      <p>
+        The server writes these records to the owner's own database (Postgres, such as Neon). Each
+        record is stored under your GitHub login, the login GitHub confirmed when you signed in:
+      </p>
       <ul>
         <li>
           <strong>Research packets</strong> (table <code>research_packets</code>): the search
@@ -68,13 +73,17 @@
         </li>
         <li>
           <strong>Comparison report indexes</strong> (table <code>run_report_indexes</code>): for
-          each comparison run, the names of the report files it wrote and their SHA-256 digests.
+          each comparison run, the names of the report files it wrote, their SHA-256 digests, and
+          the report text that <code>export_report</code> returns.
         </li>
       </ul>
       <p>
-        The comparison report files themselves are written to the server's temporary working
-        directory, which the hosting platform clears; they are not kept elsewhere. The server does
-        not store your GitHub password or your GitHub access token.
+        Only you can read them through Lifescape: each tool reads and writes only the records stored
+        under the signed-in GitHub login, so another user's packet or run reads as not found. The
+        deployment's owner runs the database and can see its rows there. The comparison report files
+        themselves are written to the server's temporary working directory, which the hosting
+        platform clears; they are not kept elsewhere. The server does not store your GitHub password
+        or your GitHub access token.
       </p>
       <p>
         The landing page and the demo store nothing. The demo uses invented evidence and runs no
@@ -83,9 +92,11 @@
 
       <h2>Who can sign in</h2>
       <p>
-        Only the owner's GitHub account can sign in. Claude signs in through GitHub, and the server
-        gives a token only to the GitHub login set as the deployment's owner. Every other GitHub
-        account is refused, and the tools answer 401 without a valid token.
+        Claude signs in through GitHub, and the tools answer 401 without a valid token. When signup
+        is open, any GitHub account can sign in, and each account gets its own records. If the
+        deployment's owner closes signup, the rule is stricter. Only the owner's GitHub account can
+        sign in then: the server gives a token only to the GitHub login set as the deployment's
+        owner, and every other GitHub account is refused.
       </p>
 
       <h2>Services that handle the data</h2>
@@ -101,20 +112,22 @@
       <p>Each service handles data under its own privacy policy.</p>
 
       <h2>Delete your data</h2>
-      <p>The data is in the owner's database, so the owner controls its deletion:</p>
       <ol>
         <li>
-          To delete all records, run
-          <code>DROP TABLE research_packets, run_report_indexes;</code> in the database, or delete
-          the database (in Neon: the project's settings, then Delete project).
-        </li>
-        <li>
-          To delete one research packet, delete its row:
-          <code>DELETE FROM research_packets WHERE packet_id = '&lt;id&gt;';</code>
+          Ask Claude to delete your Lifescape data. It calls <code>delete_my_data</code>, which
+          removes every research packet and run report index stored under your GitHub login and
+          returns how many of each it deleted. Other users' records stay. The delete cannot be
+          undone.
         </li>
         <li>
           To stop all access, remove the Lifescape connector in Claude and revoke the Lifescape
           OAuth app in GitHub (Settings, then Applications).
+        </li>
+        <li>
+          The deployment's owner can also delete records in the database itself: one user's with
+          <code>DELETE FROM research_packets WHERE owner = '&lt;login&gt;';</code> and the same
+          statement on <code>run_report_indexes</code>, or all of them by deleting the database (in
+          Neon: the project's settings, then Delete project).
         </li>
       </ol>
 
