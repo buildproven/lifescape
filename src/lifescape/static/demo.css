@@ -179,10 +179,11 @@ a:focus-visible {
 }
 
 .decision-answer::after {
-  content: "LEAD\\A CANDIDATE";
-  position: absolute;
-  top: 120px;
-  right: 10px;
+  content: "LEAD\A CANDIDATE";
+  order: -1;
+  flex: none;
+  align-self: flex-end;
+  margin-bottom: 18px;
   width: 112px;
   height: 112px;
   display: grid;
@@ -274,6 +275,7 @@ a:focus-visible {
   font-weight: 500;
 }
 
+.path,
 .ranking,
 .why-williamsburg,
 .blocked,
@@ -650,12 +652,6 @@ a:focus-visible {
 
 .demo-footer {
   min-height: 105px;
-}
-
-@media (max-width: 1100px) {
-  .decision-answer::after {
-    display: none;
-  }
 }
 
 @media (max-width: 1000px) {
