@@ -12,21 +12,28 @@ picks local files or a hosted database. The evidence tools read either a local e
 store has no owner files, so there they take ``packet_id`` only. ``inspect_evidence`` and
 ``explain_town`` report the critical values a packet still lacks; ``compare_finalists`` refuses a
 packet until every town has approved critical evidence.
+
+The hosted server meters each signed-in user (BUI-2212): after ``LIFESCAPE_DAILY_CALLS`` tool
+calls (200 by default) in a UTC day, the user's next call that day is refused, to protect the
+free public data APIs the tools call. The stdio server has no user and no limit.
 """
 
 from __future__ import annotations
 
 import csv
 import hashlib
+import os
 import sqlite3
-from collections.abc import Callable, Iterator, Sequence
+import threading
+import time
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from functools import cache, wraps
 from io import StringIO
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Protocol, cast
 
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import TokenVerifier
@@ -88,6 +95,10 @@ from lifescape.store import RunReportIndex, Store, StoreError, store_from_env
 from lifescape.store_db import DatabaseStore
 
 LIVE_RESEARCH_BRIEF = "research_brief.live.yaml"
+# Tool calls a signed-in user may make in one UTC day. A starting value with no standard behind
+# it, set to protect the free public data APIs; the deployment changes it with the variable.
+DAILY_CALLS_ENV = "LIFESCAPE_DAILY_CALLS"
+DEFAULT_DAILY_CALLS = 200
 MAX_FINALISTS = 25
 # The report key of the Markdown comparison; every other stored report text is a CSV.
 MARKDOWN_REPORT = "markdown"
@@ -186,6 +197,68 @@ class _InMemoryEvidence:
 
 ToolFunction = Callable[..., dict[str, Any]]
 ConnectorFactory = Callable[[], Sequence[Connector]]
+
+
+class DailyCallsConfigError(ValueError):
+    """``LIFESCAPE_DAILY_CALLS`` is not a whole number of at least 1."""
+
+
+def daily_calls_from_env(env: Mapping[str, str]) -> int:
+    """The daily tool-call limit per user: ``LIFESCAPE_DAILY_CALLS``, or 200 when unset."""
+    raw = env.get(DAILY_CALLS_ENV, "").strip()
+    if not raw:
+        return DEFAULT_DAILY_CALLS
+    if not (raw.isascii() and raw.isdigit()) or int(raw) < 1:
+        raise DailyCallsConfigError(
+            f"{DAILY_CALLS_ENV} must be a whole number of tool calls of at least 1, not {raw!r}"
+        )
+    return int(raw)
+
+
+def utc_today() -> date:
+    """The current UTC day, which the daily tool-call limit counts in (from the system clock,
+    ``time.time``)."""
+    return datetime.fromtimestamp(time.time(), UTC).date()
+
+
+class CallCounter(Protocol):
+    """Counts each user's tool calls per UTC day.
+
+    ``count_call`` records one call and returns the user's calls that day so far, this one
+    included; it raises when the count cannot be read or written, so no call goes uncounted.
+    """
+
+    def count_call(self, user: str, day: date) -> int: ...
+
+
+class DailyCalls:
+    """Each user's tool calls per UTC day, in this process only.
+
+    Right for a server that runs as one process. The hosted database store counts in the
+    database every replica shares instead (``DatabaseStore.count_call``).
+    """
+
+    def __init__(self) -> None:
+        self._calls: dict[tuple[str, date], int] = {}
+        self._lock = threading.Lock()
+
+    def count_call(self, user: str, day: date) -> int:
+        with self._lock:
+            self._calls = {key: n for key, n in self._calls.items() if key[1] >= day}
+            calls = self._calls.get((user, day), 0) + 1
+            self._calls[(user, day)] = calls
+            return calls
+
+
+_LOCAL_DAILY_CALLS: dict[str, DailyCalls] = {}
+_LOCAL_DAILY_CALLS_LOCK = threading.Lock()
+
+
+def local_daily_calls(store_label: str) -> DailyCalls:
+    """The in-process call count for the store named ``store_label``: every server this
+    process builds on one store shares it, as they share the store's records."""
+    with _LOCAL_DAILY_CALLS_LOCK:
+        return _LOCAL_DAILY_CALLS.setdefault(store_label, DailyCalls())
 
 
 def _reporting(fn: ToolFunction) -> ToolFunction:
@@ -454,20 +527,33 @@ def create_server(
     *,
     output_dir: Path,
     config_dir: Path | None = None,
-    live_connectors: ConnectorFactory = _default_connectors,
+    live_connectors: ConnectorFactory | None = None,
     auth: AuthSettings | None = None,
     token_verifier: TokenVerifier | None = None,
     store: Store | None = None,
+    daily_calls: int | None = None,
 ) -> MCPServer:
     """Build the Lifescape MCP server. ``config_dir`` defaults to the packaged config;
-    ``live_connectors`` builds the public-data connectors each ``fetch_live_evidence`` uses.
+    ``live_connectors`` builds the public-data connectors each ``fetch_live_evidence`` uses
+    (unset, the real Census and NOAA connectors).
     ``auth`` and ``token_verifier`` make the hosted HTTP app an OAuth resource server
     (``lifescape.mcp_http``); the stdio server leaves both unset. ``store`` keeps research
     packets and run report indexes; unset, ``LIFESCAPE_STORE`` picks it (``store_from_env``)
     and a bad setting fails here, before any tool runs. ``LIFESCAPE_RESEARCH_GEOGRAPHIES``
     supplies configured source geographies (such as NOAA station-years) for
-    ``fetch_live_evidence``; a malformed value also fails here."""
+    ``fetch_live_evidence``; a malformed value also fails here. A signed-in user gets
+    ``daily_calls`` tool calls per UTC day; unset, ``LIFESCAPE_DAILY_CALLS`` sets it (200 when
+    that is unset too) and a bad value fails here. A database store counts the calls in the
+    database; any other store counts them in this process, shared by every server on that store
+    (``local_daily_calls``)."""
+    limit = daily_calls_from_env(os.environ) if daily_calls is None else daily_calls
+    connector_factory = _default_connectors if live_connectors is None else live_connectors
+    if limit < 1:
+        raise DailyCallsConfigError(f"daily_calls must be at least 1, not {limit}")
     records = store_from_env(output_dir) if store is None else store
+    counter: CallCounter = (
+        records if isinstance(records, DatabaseStore) else local_daily_calls(records.label)
+    )
     configured_geographies = research_geographies_from_environment()
     hosted = auth is not None or token_verifier is not None
 
@@ -485,6 +571,30 @@ def create_server(
                 "has no subject, so no record was read or saved"
             )
         return None
+
+    def metered(fn: ToolFunction) -> ToolFunction:
+        """Count the call for the signed-in user, and refuse it past the daily limit. With no
+        user (the stdio server), nothing is counted."""
+
+        @wraps(fn)
+        def run(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            try:
+                user = current_user()
+                if user is not None:
+                    day = utc_today()
+                    if counter.count_call(user, day) > limit:
+                        raise ToolError(
+                            f"Daily limit reached: Lifescape allows {limit} tool calls "
+                            f"per user each UTC day (the daily limit, set by {DAILY_CALLS_ENV}, "
+                            "protects the free public data sources), and you have used them "
+                            f"all on {day.isoformat()}. The limit resets at 00:00 UTC; try "
+                            "again then."
+                        )
+            except StoreError as exc:
+                raise ToolError(str(exc)) from exc
+            return fn(*args, **kwargs)
+
+        return run
 
     @contextmanager
     def configuration() -> Iterator[Path]:
@@ -854,7 +964,7 @@ def create_server(
             raise ValueError(f"unknown metric IDs: {unknown}")
         connectors = tuple(
             connector
-            for connector in live_connectors()
+            for connector in connector_factory()
             if set(connector.supported_metric_ids) & set(wanted)
         )
         fetchable = {
@@ -1099,6 +1209,8 @@ def create_server(
     ]
     registered = [_register(tool, annotations) for tool, annotations in tools]
     by_name = {tool.name: tool for tool in registered}
+    # ``run_tool`` runs a tool unmetered: the ``run_tool`` call itself was counted.
+    unmetered = {tool.name: tool.fn for tool in registered}
 
     def run_tool(
         tool: Annotated[
@@ -1135,7 +1247,7 @@ def create_server(
                 for error in exc.errors()
             )
             raise ValueError(f"{tool}: {problems}") from exc
-        result: dict[str, Any] = entry.fn(**model.model_dump_one_level())
+        result: dict[str, Any] = unmetered[tool](**model.model_dump_one_level())
         return result
 
     def tool_catalog() -> list[dict[str, Any]]:
@@ -1165,6 +1277,8 @@ def create_server(
             open_world_hint=True,
         ),
     )
+    for each_tool in [*registered, door]:
+        each_tool.fn = metered(each_tool.fn)
     return MCPServer(
         "lifescape",
         instructions=(

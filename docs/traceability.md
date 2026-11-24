@@ -91,3 +91,14 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
   `OWNER_GITHUB_LOGIN`; with rows and no owner set, the store refuses instead of guessing. Rows
   saved later with no user stay the no-user's rows. The stdio server has no user and is unchanged.
   `tests/test_store_per_user.py` proves it (REQ-USER-1..3).
+- Hosted sign-up, open (BUI-2212): with `LIFESCAPE_SIGNUP=open`, `src/lifescape/oauth.py::OwnerAuthorizationServer`
+  gives a code and tokens to any GitHub login, with the login in lower case as the token `sub`;
+  the owner keeps `OWNER_GITHUB_LOGIN` as its `sub`, so the owner's rows stay theirs. Unset or
+  `owner`, only the owner gets in, as before; any other value stops the server and the hosted
+  503 names it. Each code, refresh token and access token is checked against the rule again when
+  used, so closing signup voids other users' tokens. Tools act for the token's `sub` (BUI-2211).
+  `src/lifescape/mcp_server.py::create_server` counts each signed-in user's tool calls per UTC
+  day (`DatabaseStore.count_call` on the database every replica shares, else in one process) and
+  refuses the next call after `LIFESCAPE_DAILY_CALLS` (read from the deployment's environment;
+  200 when unset) with a message that names the limit; a call through `run_tool` counts once, and the stdio server has no user and no
+  limit. `tests/test_oauth_open_signup.py` proves it (REQ-SIGNUP-1..3).

@@ -20,6 +20,11 @@ server (``lifescape.oauth``) that signs the owner in through GitHub and issues t
 ``create_hosted_mcp_app`` builds it from the deployment's environment for the public site
 (``lifescape.web.create_hosted_site``); with a setting missing or unusable, every owner path
 answers 503 naming the variables, so the site's pages still serve.
+
+Two settings are optional: ``LIFESCAPE_SIGNUP`` (``lifescape.oauth``: ``open`` lets any GitHub
+user sign in; unset, only the owner) and ``LIFESCAPE_DAILY_CALLS`` (each signed-in user's tool
+calls per UTC day, 200 when unset; ``lifescape.mcp_server``). An unusable value is named in the
+503 too (BUI-2212).
 """
 
 from __future__ import annotations
@@ -38,7 +43,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from lifescape.mcp_server import create_server
+from lifescape.mcp_server import (
+    DAILY_CALLS_ENV,
+    ConnectorFactory,
+    DailyCallsConfigError,
+    create_server,
+    daily_calls_from_env,
+)
 from lifescape.oauth import (
     AUTHORIZE_PATH,
     GITHUB_CALLBACK_PATH,
@@ -139,11 +150,16 @@ def create_http_app(
     token_verifier: TokenVerifier,
     config_dir: Path | None = None,
     store: Store | None = None,
+    daily_calls: int | None = None,
+    live_connectors: ConnectorFactory | None = None,
 ) -> Starlette:
     """Build the ASGI app for the hosted endpoint at ``<base_url>/api/mcp``.
 
     ``store`` keeps research packets and run report indexes; unset, ``LIFESCAPE_STORE`` in the
-    process environment picks it (``lifescape.mcp_server.create_server``).
+    process environment picks it (``lifescape.mcp_server.create_server``). Each signed-in user
+    (the token ``sub``) gets ``daily_calls`` tool calls per UTC day; unset,
+    ``LIFESCAPE_DAILY_CALLS`` in the process environment sets it. ``live_connectors`` replaces
+    the public-data connectors (``create_server``); unset, the real ones serve.
 
     Run its lifespan (any ASGI server does) before serving requests: it starts the Streamable
     HTTP session manager. Sessions are stateless and answers are JSON, so any replica can serve
@@ -164,6 +180,8 @@ def create_http_app(
         auth=auth,
         token_verifier=token_verifier,
         store=store,
+        daily_calls=daily_calls,
+        live_connectors=live_connectors,
     )
     return server.streamable_http_app(
         streamable_http_path=MCP_PATH,
@@ -184,16 +202,20 @@ def create_owner_http_app(
     config_dir: Path | None = None,
     github_transport: httpx2.AsyncBaseTransport | None = None,
     store: Store | None = None,
+    live_connectors: ConnectorFactory | None = None,
 ) -> Starlette:
-    """Build the hosted app: the MCP endpoint and its owner-only authorization server.
+    """Build the hosted app: the MCP endpoint and its authorization server.
 
     Reads the OAuth settings from ``env`` first, so a missing variable stops the server at
-    start (``OAuthConfigError`` names it). ``store`` unset, ``LIFESCAPE_STORE`` in ``env`` picks
+    start (``OAuthConfigError`` names it); an unusable ``LIFESCAPE_DAILY_CALLS`` stops it too
+    (``DailyCallsConfigError``). ``store`` unset, ``LIFESCAPE_STORE`` in ``env`` picks
     it. A database store also records spent codes and refresh tokens, so every replica on that
     database refuses a grant another replica exchanged (BUI-2027); the local store is one
-    process, so they are recorded in it. ``github_transport`` replaces the network for tests.
+    process, so they are recorded in it. ``github_transport`` and ``live_connectors`` replace
+    the network for tests.
     """
     settings = OAuthSettings.from_env(env)
+    daily_calls = daily_calls_from_env(env)
     origin = public_origin(base_url)
     records = store_from_env(output_dir, env) if store is None else store
     authorization = OwnerAuthorizationServer(
@@ -210,6 +232,8 @@ def create_owner_http_app(
         token_verifier=authorization,
         config_dir=config_dir,
         store=records,
+        daily_calls=daily_calls,
+        live_connectors=live_connectors,
     )
     app.router.routes.extend(authorization.routes())
     return app
@@ -276,6 +300,10 @@ def create_hosted_mcp_app(
     except OAuthConfigError as error:
         missing.extend(error.missing)
         invalid.extend(error.invalid)
+    try:
+        daily_calls_from_env(env)
+    except DailyCallsConfigError:
+        invalid.append(DAILY_CALLS_ENV)
     store, store_missing, store_invalid = _hosted_store(env)
     missing.extend(store_missing)
     invalid.extend(store_invalid)

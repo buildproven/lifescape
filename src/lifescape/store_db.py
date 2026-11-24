@@ -22,7 +22,9 @@ owners, so a row saved later with no user stays the no-user's row. If such rows 
 owner is set, the store refuses (``StoreConfigError``) instead of guessing whose they are.
 
 The same database holds the OAuth codes and refresh tokens already spent (``claim_grant``), so
-every hosted replica refuses a grant any other replica has exchanged (BUI-2027).
+every hosted replica refuses a grant any other replica has exchanged (BUI-2027), and each user's
+tool calls per UTC day (``count_call``), so every replica holds a user to one daily limit
+(BUI-2212).
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import date
 from typing import Self
 
 from sqlalchemy import (
@@ -37,6 +40,7 @@ from sqlalchemy import (
     Connection,
     Engine,
     Float,
+    Integer,
     MetaData,
     PrimaryKeyConstraint,
     String,
@@ -118,6 +122,15 @@ SPENT_GRANTS = Table(
     METADATA,
     Column("grant_id", String(128), primary_key=True),
     Column("expires_at", Float, nullable=False),
+)
+# One row per user and UTC day (ISO ``YYYY-MM-DD``): the tool calls that user made that day.
+DAILY_CALLS = Table(
+    "daily_tool_calls",
+    METADATA,
+    Column(OWNER_COLUMN, String(OWNER_LENGTH), nullable=False),
+    Column("day", String(10), nullable=False),
+    Column("calls", Integer, nullable=False),
+    PrimaryKeyConstraint(OWNER_COLUMN, "day"),
 )
 
 
@@ -317,6 +330,38 @@ class DatabaseStore:
                 return False
             raise
         return True
+
+    def count_call(self, user: str, day: date) -> int:
+        """Count one tool call by ``user`` on the UTC ``day``; return the calls that day so far.
+
+        The increment runs in the database, so calls on every replica add up. The first call of
+        a user's day inserts its row and drops the rows of earlier days. Of two replicas that
+        insert one user's first row at once, the primary key refuses one; it counts again on
+        the row the other made.
+        """
+        stamp = day.isoformat()
+        mine = (DAILY_CALLS.c.owner == user) & (DAILY_CALLS.c.day == stamp)
+        try:
+            return self._count(mine, user, stamp)
+        except StoreError as exc:
+            if not isinstance(exc.__cause__, IntegrityError):
+                raise
+        return self._count(mine, user, stamp)
+
+    def _count(self, mine: ColumnElement[bool], user: str, stamp: str) -> int:
+        with self._transaction() as connection:
+            updated = connection.execute(
+                update(DAILY_CALLS).where(mine).values(calls=DAILY_CALLS.c.calls + 1)
+            )
+            if updated.rowcount == 0:
+                connection.execute(delete(DAILY_CALLS).where(DAILY_CALLS.c.day < stamp))
+                connection.execute(insert(DAILY_CALLS).values(owner=user, day=stamp, calls=1))
+                calls = 1
+            else:
+                calls = int(
+                    connection.execute(select(DAILY_CALLS.c.calls).where(mine)).scalar_one()
+                )
+        return calls
 
     def _parse[T](self, parse: Callable[[str], T], kind: str, key: object, document: object) -> T:
         try:
