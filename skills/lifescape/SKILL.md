@@ -88,6 +88,9 @@ do not guess where it is.
 - `reject_evidence`: record the named human owner's rejection of one value, with a reason.
 - `compare_finalists`: gate, rank, and stress-test finalists on reviewed evidence.
 - `export_report`: return the Markdown and CSV report text of a comparison run.
+- `run_tool`: with no arguments, list every tool the server has now; with a tool name and
+  arguments, run that tool. Call it first in a chat, and use it for a tool missing from your list
+  (added after the chat started) instead of asking the owner to start a new chat.
 
 ## When not to use
 

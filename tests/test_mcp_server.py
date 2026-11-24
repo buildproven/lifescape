@@ -47,6 +47,7 @@ TOOLS = {
     "approve_evidence",
     "reject_evidence",
     "export_report",
+    "run_tool",
 }
 GATE_STATES = {"PASS", "FAIL", "UNKNOWN", "WAIVED"}
 CRITICAL_GATES = {
@@ -113,7 +114,8 @@ def test_req_mcp_1_lists_four_tools_with_strict_input_schemas(tmp_path: Path) ->
         assert schema["additionalProperties"] is False, name
         # inspect_evidence takes exactly one of evidence_path or packet_id, checked at call time
         # (BUI-2018 REQ-PKT-1, REQ-PKT-2), so its schema has no required argument.
-        if name != "inspect_evidence":
+        # run_tool with no arguments lists the tools (REQ-MCP-5).
+        if name not in {"inspect_evidence", "run_tool"}:
             assert schema["required"], name
     assert "required" not in schemas["inspect_evidence"]
     assert schemas["compare_finalists"]["properties"]["place_ids"]["minItems"] == 2

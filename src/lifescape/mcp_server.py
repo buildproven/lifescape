@@ -1077,9 +1077,81 @@ def create_server(
         ),
         (export_report, read_only),
     ]
+    registered = [_register(tool, annotations) for tool, annotations in tools]
+    by_name = {tool.name: tool for tool in registered}
+
+    def run_tool(
+        tool: Annotated[
+            str | None,
+            Field(
+                description="The tool to run. Leave it out to list every tool the server has now."
+            ),
+        ] = None,
+        arguments: Annotated[
+            dict[str, Any] | None,
+            Field(description="The tool's own arguments, as an object."),
+        ] = None,
+    ) -> dict[str, Any]:
+        """Run any Lifescape tool by name, or list every tool the server has now.
+
+        Claude keeps the tool list from the start of a chat, so a tool added in a later
+        release is missing from it. Call this with no arguments first in a chat to get
+        ``tools``: each tool's name, summary and arguments (required ones end in ``*``).
+        Call a tool in that list but not in yours with ``tool`` and ``arguments``; they are
+        checked against the tool's current schema and the result is the tool's own.
+        Never ask the owner to start a new chat for a missing tool.
+        """
+        if tool is None:
+            return {"tools": tool_catalog()}
+        entry = by_name.get(tool)
+        if entry is None:
+            names = ", ".join(sorted(by_name))
+            raise ValueError(f'no tool named "{tool}" can be run here; the tools are: {names}')
+        try:
+            model = entry.fn_metadata.arg_model.model_validate(arguments or {})
+        except ValidationError as exc:
+            problems = "; ".join(
+                f"arguments.{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+                for error in exc.errors()
+            )
+            raise ValueError(f"{tool}: {problems}") from exc
+        result: dict[str, Any] = entry.fn(**model.model_dump_one_level())
+        return result
+
+    def tool_catalog() -> list[dict[str, Any]]:
+        catalog = []
+        for entry in [*registered, door]:
+            schema = entry.parameters
+            required = set(schema.get("required", []))
+            summary = (entry.description or "").strip().split("\n")[0]
+            catalog.append(
+                {
+                    "name": entry.name,
+                    "summary": summary[:240],
+                    "arguments": [
+                        f"{key}*" if key in required else key
+                        for key in schema.get("properties", {})
+                    ],
+                }
+            )
+        return sorted(catalog, key=lambda item: str(item["name"]))
+
+    door = _register(
+        run_tool,
+        ToolAnnotations(
+            read_only_hint=False,
+            destructive_hint=True,
+            idempotent_hint=False,
+            open_world_hint=True,
+        ),
+    )
     return MCPServer(
         "lifescape",
         instructions=(
+            "Start each chat with run_tool and no arguments: it lists every tool the server has "
+            "now. A tool in that list but not in your tool list was added after this chat started: "
+            "call it through run_tool with its name and arguments, never by asking the owner to "
+            "start a new chat. "
             "Lifescape helps choose a retirement town. Use find_place to get place IDs, "
             "discover_towns to find towns that feel like the owner's examples (leads only), "
             "compare_finalists to rank finalists on reviewed evidence, explain_town for "
@@ -1093,7 +1165,7 @@ def create_server(
             "compare_finalists, explain_town, and inspect_evidence. "
             "Never present a blocked town as ranked."
         ),
-        tools=[_register(tool, annotations) for tool, annotations in tools],
+        tools=[*registered, door],
         auth=auth,
         token_verifier=token_verifier,
     )
