@@ -23,7 +23,9 @@ owners, so a row saved later with no user stays the no-user's row. If such rows 
 owner is set, the store refuses (``StoreConfigError``) instead of guessing whose they are.
 
 The same database holds the OAuth codes and refresh tokens already spent (``claim_grant``), so
-every hosted replica refuses a grant any other replica has exchanged (BUI-2027).
+every hosted replica refuses a grant any other replica has exchanged (BUI-2027), and each
+user's tool calls per UTC day (``count_call``), so the daily limit holds across replicas
+(BUI-2212). Only the current day's counts are kept.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from sqlalchemy import (
     Connection,
     Engine,
     Float,
+    Integer,
     MetaData,
     PrimaryKeyConstraint,
     String,
@@ -119,6 +122,17 @@ SPENT_GRANTS = Table(
     METADATA,
     Column("grant_id", String(128), primary_key=True),
     Column("expires_at", Float, nullable=False),
+)
+
+
+# One row per user per UTC day (``YYYY-MM-DD``) with that day's tool calls; past days are dropped.
+DAILY_CALLS = Table(
+    "daily_tool_calls",
+    METADATA,
+    Column(OWNER_COLUMN, String(OWNER_LENGTH), nullable=False),
+    Column("day", String(10), nullable=False),
+    Column("calls", Integer, nullable=False),
+    PrimaryKeyConstraint(OWNER_COLUMN, "day"),
 )
 
 
@@ -335,6 +349,32 @@ class DatabaseStore:
                 return False
             raise
         return True
+
+    def count_call(self, user: str, day: str) -> int:
+        """Add one call to ``user``'s count for ``day`` and return the new count, as every
+        store on this database sees it. Counts of days before ``day`` are dropped.
+
+        The first call of a day inserts the row; when another replica inserts it first, the
+        primary key refuses this insert, and the second try adds to that replica's row."""
+        try:
+            return self._add_call(user, day)
+        except StoreError as exc:
+            if not isinstance(exc.__cause__, IntegrityError):
+                raise
+        return self._add_call(user, day)
+
+    def _add_call(self, user: str, day: str) -> int:
+        owned = (DAILY_CALLS.c.owner == user, DAILY_CALLS.c.day == day)
+        with self._transaction() as connection:
+            connection.execute(delete(DAILY_CALLS).where(DAILY_CALLS.c.day < day))
+            # The update locks the row, so two replicas' calls are counted one after the other.
+            updated = connection.execute(
+                update(DAILY_CALLS).where(*owned).values(calls=DAILY_CALLS.c.calls + 1)
+            )
+            if updated.rowcount == 0:
+                connection.execute(insert(DAILY_CALLS).values(owner=user, day=day, calls=1))
+            count = connection.execute(select(DAILY_CALLS.c.calls).where(*owned)).scalar_one()
+        return int(count)
 
     def _parse[T](self, parse: Callable[[str], T], kind: str, key: object, document: object) -> T:
         try:
