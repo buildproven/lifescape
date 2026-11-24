@@ -9,10 +9,11 @@ Live-fetched evidence stays a proposal until ``approve_evidence`` records a name
 Research packets and run report indexes go through ``lifescape.store``; ``LIFESCAPE_STORE``
 picks local files or a hosted database. The evidence tools read either a local evidence CSV
 (``evidence_path``) or a stored packet's approved evidence (``packet_id``); the hosted database
-store has no owner files, so there they take ``packet_id`` only. ``inspect_evidence`` and
-``explain_town`` report the critical values a packet still lacks; ``compare_finalists`` refuses a
-packet until every town has approved critical evidence. A server on the database store also has
-``delete_my_data``: it deletes every packet and run index the signed-in user owns (BUI-2213).
+store has no owner files, so there they take ``packet_id`` only and refuse ``manifest_path``.
+``inspect_evidence`` and ``explain_town`` report the critical values a packet still lacks;
+``compare_finalists`` refuses a packet until every town has approved critical evidence. A server
+on the database store also has ``delete_my_data``: it deletes every packet and run index the
+signed-in user owns (BUI-2213).
 """
 
 from __future__ import annotations
@@ -566,6 +567,20 @@ def create_server(
             path=path, identity=f"packet:{packet_id}", in_memory=True, packet=stored
         )
 
+    def manifest_input(manifest_path: str | None) -> Path | None:
+        """The owner's local provenance manifest CSV, if given. The hosted database store has
+        no owner files, so there a manifest path would read an arbitrary server file: refuse
+        it, as ``evidence_input`` refuses ``evidence_path`` (BUI-2166)."""
+        if manifest_path is None:
+            return None
+        if isinstance(records, DatabaseStore):
+            raise ValueError(
+                "the hosted server cannot read manifest_path from a file; omit manifest_path "
+                "and pass packet_id (a research packet approved with approve_evidence) on the "
+                "hosted server"
+            )
+        return _existing_file(manifest_path, "manifest")
+
     @cache
     def discovery() -> DiscoveryService:
         return DiscoveryService(load_place_catalog())
@@ -767,7 +782,7 @@ def create_server(
             evidence_input(evidence_path, packet_id, require_complete=False) as evidence,
             configuration() as config,
         ):
-            manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
+            manifest = manifest_input(manifest_path)
             unapproved = _unapproved_lead(evidence, place_id)
             if unapproved is not None:
                 return _card_payload(
@@ -815,7 +830,7 @@ def create_server(
             configuration() as config,
         ):
             evidence = source.path
-            manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
+            manifest = manifest_input(manifest_path)
             loaded = load_configuration(config, None, config / LIVE_RESEARCH_BRIEF)
             try:
                 ingest_csv(
