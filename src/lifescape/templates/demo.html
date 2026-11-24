@@ -14,6 +14,20 @@
       href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%226%22 fill=%22%23f1eee5%22/><path d=%22M15 14v36h34%22 fill=%22none%22 stroke=%22%23172c22%22 stroke-width=%226%22/><circle cx=%2246%22 cy=%2218%22 r=%226%22 fill=%22%23bd5f3b%22/></svg>"
     />
     <link rel="stylesheet" href="/static/demo.css" />
+    <style>
+      .footer-links {
+        justify-self: end;
+        display: flex;
+        gap: 24px;
+      }
+      .footer-links a {
+        padding-bottom: 4px;
+        border-bottom: 1px solid currentColor;
+        font-size: 11px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+    </style>
   </head>
   <body>
     <a class="skip-link" href="#decision">Skip to decision</a>
@@ -291,7 +305,10 @@
     <footer class="demo-footer">
       <a class="wordmark" href="/">Lifescape</a>
       <p>Synthetic demonstration · not purchase research</p>
-      <a href="/">How it works →</a>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/privacy">Privacy</a>
+        <a href="/">How it works →</a>
+      </nav>
     </footer>
   </body>
 </html>
