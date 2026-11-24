@@ -28,6 +28,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Annotated, Any, cast
 
+from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import MCPServer
@@ -468,6 +469,22 @@ def create_server(
     ``fetch_live_evidence``; a malformed value also fails here."""
     records = store_from_env(output_dir) if store is None else store
     configured_geographies = research_geographies_from_environment()
+    hosted = auth is not None or token_verifier is not None
+
+    def current_user() -> str | None:
+        """The signed-in user's subject, which keys every packet and run index the store
+        reads or writes (BUI-2211). The stdio server has no user (``None``). A hosted token
+        with no subject is refused: it must never read or write another user's records."""
+        token = get_access_token()
+        subject = None if token is None else token.subject
+        if subject:
+            return subject
+        if hosted:
+            raise StoreError(
+                "the hosted server cannot tell which user is signed in: the access token "
+                "has no subject, so no record was read or saved"
+            )
+        return None
 
     @contextmanager
     def configuration() -> Iterator[Path]:
@@ -499,7 +516,7 @@ def create_server(
             return
         if evidence_path is not None:
             raise ValueError(f"{both_or_neither}, not both")
-        stored = records.get_packet(packet_id)
+        stored = records.get_packet(packet_id, user=current_user())
         if stored is None:
             raise ValueError(f"research packet {packet_id} not found; call fetch_live_evidence")
         with configuration() as config:
@@ -672,7 +689,7 @@ def create_server(
             sha256={key: hashlib.sha256(data).hexdigest() for key, data in written.items()},
             contents={key: data.decode("utf-8") for key, data in written.items()},
         )
-        records.save_run_index(index)
+        records.save_run_index(index, user=current_user())
         has_synthetic_evidence = any(item.source.synthetic for item in run.observations)
         return {
             "run_id": run.run_id,
@@ -869,7 +886,10 @@ def create_server(
         proposed = tuple(item for item in fetched.observations if item.metric_id in wanted)
         result = EvidenceFetchResult(observations=proposed, errors=fetched.errors)
         records.save_packet(
-            StoredResearchPacket(packet=packet, fetch_history=(ResearchWorkspace.snapshot(result),))
+            StoredResearchPacket(
+                packet=packet, fetch_history=(ResearchWorkspace.snapshot(result),)
+            ),
+            user=current_user(),
         )
         found = {(item.place.place_id, item.metric_id) for item in proposed}
         return {
@@ -890,7 +910,7 @@ def create_server(
         packet_id: str, place_id: str, metric_id: str
     ) -> tuple[StoredResearchPacket, ObservationRecord]:
         """The stored packet and its latest fetched value that no reviewer has decided yet."""
-        stored = records.get_packet(packet_id)
+        stored = records.get_packet(packet_id, user=current_user())
         if stored is None:
             raise ValueError(f"research packet {packet_id} not found; call fetch_live_evidence")
         latest = stored.fetch_history[-1].result if stored.fetch_history else None
@@ -951,7 +971,7 @@ def create_server(
                 "reviews": (*stored.reviews, review),
             }
         )
-        records.save_packet(updated)
+        records.save_packet(updated, user=current_user())
         return {
             "packet_id": packet_id,
             "reviewer": promotion.reviewer,
@@ -998,7 +1018,7 @@ def create_server(
             metrics = load_metrics(config)
             review = record_rejection(request, packet=stored.packet, metrics=metrics)
         updated = stored.model_copy(update={"reviews": (*stored.reviews, review)})
-        records.save_packet(updated)
+        records.save_packet(updated, user=current_user())
         return {
             "packet_id": packet_id,
             "reviewer": review.reviewer,
@@ -1018,7 +1038,7 @@ def create_server(
         text, read from the store, with the paths where the run wrote its report files. The
         local server also checks those files and keeps the SQLite run database; it fails when
         a later run overwrote them. Compare the finalists again then."""
-        index = records.get_run_index(run_id)
+        index = records.get_run_index(run_id, user=current_user())
         if index is None:
             raise ValueError(f"no reports for run {run_id}; call compare_finalists first")
         if index.run_id != run_id:

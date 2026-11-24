@@ -8,6 +8,19 @@ document the local adapter writes, keyed by its ID, so both adapters give the sa
 tables are created on first use. A connection or driver failure raises
 ``StoreUnavailableError`` naming the store, with the password masked.
 
+Each packet and run index row has an ``owner``: the signed-in user's subject (the token ``sub``),
+or ``NO_USER`` (``''``) for a store with no user (the stdio server, and servers built without
+auth). Reads and writes see only the caller's rows, so another user's ID reads as not found
+(BUI-2211). A run ID is a hash of the run's inputs, so two users can make the same one: run
+indexes are keyed by (owner, run ID). Packet IDs are random, so packets stay keyed by packet
+ID, and a save never replaces a packet another user owns.
+
+A database made before rows had an owner migrates on first use, in one transaction:
+``research_packets`` gets the ``owner`` column, ``run_report_indexes`` is rebuilt with the new
+key, and the rows already there go to ``owner`` (``OWNER_GITHUB_LOGIN``). Only that step assigns
+owners, so a row saved later with no user stays the no-user's row. If such rows exist and no
+owner is set, the store refuses (``StoreConfigError``) instead of guessing whose they are.
+
 The same database holds the OAuth codes and refresh tokens already spent (``claim_grant``), so
 every hosted replica refuses a grant any other replica has exchanged (BUI-2027).
 """
@@ -25,13 +38,17 @@ from sqlalchemy import (
     Engine,
     Float,
     MetaData,
+    PrimaryKeyConstraint,
     String,
     Table,
     Text,
     create_engine,
     delete,
+    func,
     insert,
+    inspect,
     select,
+    text,
     update,
 )
 from sqlalchemy.engine import make_url
@@ -43,9 +60,11 @@ from sqlalchemy.exc import (
     NoSuchModuleError,
     OperationalError,
 )
+from sqlalchemy.sql.elements import ColumnElement
 
 from lifescape.research_workspace import StoredResearchPacket
 from lifescape.store import (
+    OWNER_LOGIN_ENV,
     RunReportIndex,
     StoreConfigError,
     StoreError,
@@ -58,19 +77,41 @@ from lifescape.store import (
 POSTGRES_SCHEMES = frozenset({"postgres", "postgresql"})
 POSTGRES_DRIVER = "postgresql+psycopg"
 
+# A GitHub login is at most 39 characters; the column leaves room for another identity provider.
+OWNER_LENGTH = 255
+OWNER_COLUMN = "owner"
+# The owner of a row saved with no user (``user=None``).
+NO_USER = ""
+PACKETS_TABLE = "research_packets"
+RUN_INDEXES_TABLE = "run_report_indexes"
+# The rebuilt run index table is made under this name, then renamed over the old one.
+RUN_INDEXES_REBUILD = "run_report_indexes_rebuild"
+
+
+def _owner_column() -> Column[str]:
+    return Column(OWNER_COLUMN, String(OWNER_LENGTH), nullable=False, server_default=text("''"))
+
+
+def _run_indexes(name: str, metadata: MetaData) -> Table:
+    return Table(
+        name,
+        metadata,
+        _owner_column(),
+        Column("run_id", String(16), nullable=False),
+        Column("document", Text, nullable=False),
+        PrimaryKeyConstraint(OWNER_COLUMN, "run_id"),
+    )
+
+
 METADATA = MetaData()
 PACKETS = Table(
-    "research_packets",
+    PACKETS_TABLE,
     METADATA,
     Column("packet_id", String(12), primary_key=True),
     Column("document", Text, nullable=False),
+    _owner_column(),
 )
-RUN_INDEXES = Table(
-    "run_report_indexes",
-    METADATA,
-    Column("run_id", String(16), primary_key=True),
-    Column("document", Text, nullable=False),
-)
+RUN_INDEXES = _run_indexes(RUN_INDEXES_TABLE, METADATA)
 # One row per spent grant ID (``code:<jti>`` or ``refresh:<jti>``) until the grant expires.
 SPENT_GRANTS = Table(
     "spent_oauth_grants",
@@ -83,13 +124,16 @@ SPENT_GRANTS = Table(
 class DatabaseStore:
     """Research packets and run report indexes in one SQL database."""
 
-    def __init__(self, engine: Engine) -> None:
+    def __init__(self, engine: Engine, owner: str | None = None) -> None:
         self._engine = engine
+        self._owner = owner
         self._schema_ready = False
 
     @classmethod
-    def from_url(cls, url: str) -> Self:
-        """Build the adapter without connecting; the first call connects."""
+    def from_url(cls, url: str, owner: str | None = None) -> Self:
+        """Build the adapter without connecting; the first call connects.
+
+        ``owner`` is the user who gets the rows saved before rows had an owner (``_migrate``)."""
         try:
             parsed = make_url(url)
         except (ArgumentError, ValueError) as exc:
@@ -104,7 +148,7 @@ class DatabaseStore:
             engine = create_engine(parsed, pool_pre_ping=True)
         except (ArgumentError, NoSuchModuleError, ImportError) as exc:
             raise StoreConfigError(f"database store at {masked} cannot be built: {exc}") from exc
-        return cls(engine)
+        return cls(engine, owner)
 
     @property
     def label(self) -> str:
@@ -116,6 +160,7 @@ class DatabaseStore:
         try:
             with self._engine.begin() as connection:
                 if not self._schema_ready:
+                    self._migrate(connection)
                     METADATA.create_all(connection)
                 yield connection
             self._schema_ready = True
@@ -124,58 +169,132 @@ class DatabaseStore:
         except DBAPIError as exc:
             raise StoreError(f"{self.label} refused the request: {_reason(exc)}") from exc
 
-    def _document(self, connection: Connection, table: Table, key: str) -> str | None:
+    def _migrate(self, connection: Connection) -> None:
+        """Give the record tables made before rows had an owner their ``owner`` column, and
+        their rows to ``self._owner``. Only a table without the column is changed, so this
+        assigns each row once. A second replica that migrates at the same time fails on the
+        schema change and rolls back; its next request finds the tables migrated."""
+        inspector = inspect(connection)
+        tables = set(inspector.get_table_names())
+        legacy = [
+            name
+            for name in (PACKETS_TABLE, RUN_INDEXES_TABLE)
+            if name in tables
+            and OWNER_COLUMN not in {column["name"] for column in inspector.get_columns(name)}
+        ]
+        if not legacy:
+            return
+        held = sum(
+            int(connection.execute(select(func.count()).select_from(text(name))).scalar_one())
+            for name in legacy
+        )
+        if held and self._owner is None:
+            raise StoreConfigError(
+                f"the {self.label} holds {held} record(s) saved before records had an owner; "
+                f"set {OWNER_LOGIN_ENV} to the GitHub login that owns them and restart"
+            )
+        owner = NO_USER if self._owner is None else self._owner
+        if PACKETS_TABLE in legacy:
+            connection.execute(
+                text(
+                    f"ALTER TABLE {PACKETS_TABLE} ADD COLUMN {OWNER_COLUMN} "
+                    f"VARCHAR({OWNER_LENGTH}) NOT NULL DEFAULT ''"
+                )
+            )
+            connection.execute(
+                text(f"UPDATE {PACKETS_TABLE} SET {OWNER_COLUMN} = :owner"), {"owner": owner}
+            )
+        if RUN_INDEXES_TABLE in legacy:
+            # The key changes from run_id to (owner, run_id): build the table again.
+            rebuild = _run_indexes(RUN_INDEXES_REBUILD, MetaData())
+            rebuild.create(connection)
+            connection.execute(
+                text(
+                    f"INSERT INTO {RUN_INDEXES_REBUILD} ({OWNER_COLUMN}, run_id, document) "
+                    f"SELECT :owner, run_id, document FROM {RUN_INDEXES_TABLE}"
+                ),
+                {"owner": owner},
+            )
+            connection.execute(text(f"DROP TABLE {RUN_INDEXES_TABLE}"))
+            connection.execute(
+                text(f"ALTER TABLE {RUN_INDEXES_REBUILD} RENAME TO {RUN_INDEXES_TABLE}")
+            )
+
+    @staticmethod
+    def _owned_by(table: Table, user: str | None) -> ColumnElement[bool]:
+        """The rows ``user`` owns; with no user, the rows saved with no user."""
+        return table.c.owner == (NO_USER if user is None else user)
+
+    def _document(
+        self, connection: Connection, table: Table, key_name: str, key: str, user: str | None
+    ) -> str | None:
+        key_column = table.c[key_name]
         document = connection.execute(
-            select(table.c.document).where(table.primary_key.columns[0] == key)
+            select(table.c.document).where(key_column == key, self._owned_by(table, user))
         ).scalar_one_or_none()
         return None if document is None else str(document)
 
-    def _upsert(self, table: Table, key: str, document: str) -> None:
-        key_column = table.primary_key.columns[0]
+    def _upsert(
+        self, table: Table, key_name: str, key: str, document: str, user: str | None
+    ) -> None:
+        """Replace the user's row with this key, or insert it. A packet ID another user owns
+        makes the insert fail on the primary key (``StoreError``): it is never replaced."""
+        key_column = table.c[key_name]
+        owner = NO_USER if user is None else user
         with self._transaction() as connection:
             updated = connection.execute(
-                update(table).where(key_column == key).values(document=document)
+                update(table)
+                .where(key_column == key, self._owned_by(table, user))
+                .values(document=document)
             )
             if updated.rowcount == 0:
                 connection.execute(
-                    insert(table).values({key_column.name: key, "document": document})
+                    insert(table).values(
+                        {key_column.name: key, "document": document, OWNER_COLUMN: owner}
+                    )
                 )
 
-    def load_packets(self) -> tuple[StoredResearchPacket, ...]:
+    def load_packets(self, user: str | None = None) -> tuple[StoredResearchPacket, ...]:
         with self._transaction() as connection:
             rows = connection.execute(
-                select(PACKETS.c.packet_id, PACKETS.c.document).order_by(PACKETS.c.packet_id)
+                select(PACKETS.c.packet_id, PACKETS.c.document)
+                .where(self._owned_by(PACKETS, user))
+                .order_by(PACKETS.c.packet_id)
             ).all()
         return tuple(
             self._parse(StoredResearchPacket.model_validate_json, "research packet", key, doc)
             for key, doc in rows
         )
 
-    def get_packet(self, packet_id: str) -> StoredResearchPacket | None:
+    def get_packet(self, packet_id: str, user: str | None = None) -> StoredResearchPacket | None:
         check_packet_id(packet_id)
         with self._transaction() as connection:
-            document = self._document(connection, PACKETS, packet_id)
+            document = self._document(connection, PACKETS, "packet_id", packet_id, user)
         if document is None:
             return None
         return self._parse(
             StoredResearchPacket.model_validate_json, "research packet", packet_id, document
         )
 
-    def save_packet(self, stored: StoredResearchPacket) -> None:
-        self._upsert(PACKETS, check_packet_id(stored.packet.id), stored.model_dump_json())
+    def save_packet(self, stored: StoredResearchPacket, user: str | None = None) -> None:
+        self._upsert(
+            PACKETS, "packet_id", check_packet_id(stored.packet.id), stored.model_dump_json(), user
+        )
 
-    def get_run_index(self, run_id: str) -> RunReportIndex | None:
+    def get_run_index(self, run_id: str, user: str | None = None) -> RunReportIndex | None:
         check_run_id(run_id)
         with self._transaction() as connection:
-            document = self._document(connection, RUN_INDEXES, run_id)
+            document = self._document(connection, RUN_INDEXES, "run_id", run_id, user)
         if document is None:
             return None
         return self._parse(
             RunReportIndex.model_validate_json, "report index of run", run_id, document
         )
 
-    def save_run_index(self, index: RunReportIndex) -> None:
-        self._upsert(RUN_INDEXES, check_run_id(index.run_id), index.model_dump_json())
+    def save_run_index(self, index: RunReportIndex, user: str | None = None) -> None:
+        self._upsert(
+            RUN_INDEXES, "run_id", check_run_id(index.run_id), index.model_dump_json(), user
+        )
 
     def claim_grant(self, grant_id: str, expires_at: float) -> bool:
         """True on the first claim of ``grant_id`` by any store on this database only.

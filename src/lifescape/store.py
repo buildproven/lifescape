@@ -6,6 +6,12 @@ A hosted server has no Mac disk (machine-setup ``docs/AGENT-FIRST.md``), so rese
 stdio server) keeps JSON files under the output directory; ``database`` keeps them in the
 SQLAlchemy database named by ``DATABASE_URL`` (``lifescape.store_db``). A database
 that cannot be reached is an error naming the store; nothing falls back to local files.
+
+The hosted server serves more than one user, so every read and write takes the signed-in user's
+subject (the token ``sub``) as ``user``. The database adapter keys each row by it and returns
+only that user's rows; another user's ID reads as not found. The stdio server has no user
+(``user=None``), and the local adapter, which keeps one person's files, ignores it
+(BUI-2211).
 """
 
 from __future__ import annotations
@@ -23,6 +29,9 @@ from lifescape.research_workspace import ResearchWorkspace, StoredResearchPacket
 STORE_ENV = "LIFESCAPE_STORE"
 # The name the Vercel Neon integration sets.
 DATABASE_URL_ENV = "DATABASE_URL"
+# The GitHub login that owns the rows saved before they had an owner (``lifescape.oauth``
+# signs in only this login, and its token ``sub`` is this value).
+OWNER_LOGIN_ENV = "OWNER_GITHUB_LOGIN"
 LOCAL_STORE = "local"
 DATABASE_STORE = "database"
 RESEARCH_WORKSPACE = "research-workspace"
@@ -57,27 +66,33 @@ class RunReportIndex(StrictModel):
 
 
 class Store(Protocol):
-    """Read and write research packets and run report indexes, by ID."""
+    """Read and write research packets and run report indexes, by ID.
+
+    ``user`` is the signed-in user's subject; ``None`` is the stdio server's single user."""
 
     @property
     def label(self) -> str:
         """Names the adapter and where it keeps records, without credentials."""
         ...
 
-    def load_packets(self) -> tuple[StoredResearchPacket, ...]:
-        """Every stored packet, in packet ID order."""
+    def load_packets(self, user: str | None = None) -> tuple[StoredResearchPacket, ...]:
+        """Every packet stored for ``user``, in packet ID order."""
         ...
 
-    def get_packet(self, packet_id: str) -> StoredResearchPacket | None: ...
-
-    def save_packet(self, stored: StoredResearchPacket) -> None:
-        """Insert the packet, or replace the stored packet with the same ID."""
+    def get_packet(self, packet_id: str, user: str | None = None) -> StoredResearchPacket | None:
+        """The packet, or ``None`` when ``user`` has no packet with that ID."""
         ...
 
-    def get_run_index(self, run_id: str) -> RunReportIndex | None: ...
+    def save_packet(self, stored: StoredResearchPacket, user: str | None = None) -> None:
+        """Insert the packet, or replace the packet ``user`` stored with the same ID."""
+        ...
 
-    def save_run_index(self, index: RunReportIndex) -> None:
-        """Insert the index, or replace the stored index with the same run ID."""
+    def get_run_index(self, run_id: str, user: str | None = None) -> RunReportIndex | None:
+        """The index, or ``None`` when ``user`` has no index for that run."""
+        ...
+
+    def save_run_index(self, index: RunReportIndex, user: str | None = None) -> None:
+        """Insert the index, or replace the index ``user`` stored with the same run ID."""
         ...
 
 
@@ -105,18 +120,21 @@ class LocalStore:
     def label(self) -> str:
         return f"local store at {self.output_dir}"
 
-    def load_packets(self) -> tuple[StoredResearchPacket, ...]:
+    def load_packets(self, user: str | None = None) -> tuple[StoredResearchPacket, ...]:
+        del user  # one person's files: the local adapter has no other user
         return self._workspace.load()
 
-    def get_packet(self, packet_id: str) -> StoredResearchPacket | None:
+    def get_packet(self, packet_id: str, user: str | None = None) -> StoredResearchPacket | None:
         check_packet_id(packet_id)
         return next((item for item in self.load_packets() if item.packet.id == packet_id), None)
 
-    def save_packet(self, stored: StoredResearchPacket) -> None:
+    def save_packet(self, stored: StoredResearchPacket, user: str | None = None) -> None:
+        del user
         check_packet_id(stored.packet.id)
         self._workspace.save(stored)
 
-    def get_run_index(self, run_id: str) -> RunReportIndex | None:
+    def get_run_index(self, run_id: str, user: str | None = None) -> RunReportIndex | None:
+        del user
         path = self._runs / f"{check_run_id(run_id)}.json"
         if not path.is_file():
             return None
@@ -125,7 +143,8 @@ class LocalStore:
         except ValueError as exc:
             raise ValueError(f"cannot load report index of run {run_id} at {path}: {exc}") from exc
 
-    def save_run_index(self, index: RunReportIndex) -> None:
+    def save_run_index(self, index: RunReportIndex, user: str | None = None) -> None:
+        del user
         path = self._runs / f"{check_run_id(index.run_id)}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
@@ -152,4 +171,4 @@ def store_from_env(output_dir: Path, environ: Mapping[str, str] | None = None) -
     # Imported here: the database adapter imports this module for the interface types.
     from lifescape.store_db import DatabaseStore
 
-    return DatabaseStore.from_url(url)
+    return DatabaseStore.from_url(url, owner=settings.get(OWNER_LOGIN_ENV, "").strip() or None)
