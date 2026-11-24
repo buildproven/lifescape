@@ -179,12 +179,12 @@ a:focus-visible {
 }
 
 .decision-answer::after {
-  content: "LEAD\\A CANDIDATE";
+  content: "LEAD\A CANDIDATE";
   position: absolute;
-  top: 120px;
+  top: 12px;
   right: 10px;
-  width: 112px;
-  height: 112px;
+  width: 92px;
+  height: 92px;
   display: grid;
   place-items: center;
   border: 2px solid var(--clay);
@@ -274,6 +274,7 @@ a:focus-visible {
   font-weight: 500;
 }
 
+.path,
 .ranking,
 .why-williamsburg,
 .blocked,
