@@ -224,6 +224,11 @@ This PRD corrects a gap between the original implementation milestone and the in
 - FR20: The `explain_town` tool reports a town's research card bucket and one next action for each
   unresolved critical metric. A town with all critical evidence reports no next action. A missing
   manifest returns a tool error (REQ-MCP-4).
+- FR21: The `run_tool` tool keeps the agent surface stable across releases. Called with no
+  arguments it lists every tool the server has now with its arguments; called with a tool name and
+  arguments it checks them against that tool's current schema and returns the tool's own result,
+  so a tool added after a chat started is still reachable. An unknown tool or an argument outside
+  the schema is a tool error that names the problem (REQ-MCP-5).
 
 ## 6. Non-functional requirements
 

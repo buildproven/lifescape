@@ -59,6 +59,10 @@
     {
       "name": "export_report",
       "description": "Return the report file paths of a comparison run"
+    },
+    {
+      "name": "run_tool",
+      "description": "List every tool the server has now (no arguments), or run any tool by name with its arguments."
     }
   ],
   "compatibility": {

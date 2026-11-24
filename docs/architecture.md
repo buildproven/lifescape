@@ -70,6 +70,10 @@ and keep their rules: preferences discover, gates eliminate, weights rank, evide
   is blocked and unranked (PRD FR19).
 - `explain_town` returns the research card bucket and the next action for each unresolved critical
   metric (PRD FR20).
+- `run_tool` is the one stable door (PRD FR21): Claude keeps a connector's tool list from the start of
+  a chat, so a tool added later is missing from an open chat. With no arguments it lists every tool;
+  with a name it validates the arguments against that tool's current schema and calls it. The
+  server instructions tell the agent to call it first and never to ask for a new chat.
 
 ## Experimental AI-assisted discovery boundary
 
