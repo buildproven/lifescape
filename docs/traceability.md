@@ -102,3 +102,11 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
   The landing page's "Use it in Claude" section and the README give
   `https://lifescape.buildproven.ai/api/mcp` as the claude.ai connector and keep the desktop
   extension as the local option. `tests/test_delete_my_data.py` proves it (REQ-DEL-1..3).
+- FR16 surface, demo layout (BUI-2209): the hero stamp in `src/lifescape/static/demo.css`
+  (`.decision-answer::after`) uses the CSS escape `\A` with `white-space: pre`, so it reads
+  "LEAD" and "CANDIDATE" on two lines, and it sits in the answer column's empty top padding, clear
+  of the headline; at 1100 px and less it stays hidden. The "How this field was found." section
+  (`.path`) joins the shared `width: var(--page); margin: 0 auto` gutter rule with `.ranking`.
+  `tests/test_demo_layout.py` checks the CSS, that every top-level demo section (except the
+  full-bleed `.demo-cta`) keeps the gutter, and, in Chromium at 1101–1920 px, that the stamp
+  overlaps no hero text and `.path` lines up with `.ranking`.
