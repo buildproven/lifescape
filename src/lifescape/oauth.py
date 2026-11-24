@@ -1,7 +1,7 @@
 """OAuth 2.1 authorization server for the hosted Lifescape MCP endpoint (BUI-1903).
 
-Claude's OAuth client signs the owner in here; sign-in is delegated to GitHub, and only the
-GitHub login in ``OWNER_GITHUB_LOGIN`` gets a token. Port of retire-runway BUI-1857.
+Claude's and ChatGPT's OAuth clients sign the owner in here; sign-in is delegated to GitHub,
+and only the GitHub login in ``OWNER_GITHUB_LOGIN`` gets a token. Port of retire-runway BUI-1857.
 
 The MCP SDK handlers serve ``/authorize`` and ``/token`` (they check PKCE S256, the client, the
 redirect, and the code's client and expiry). This module adds the server metadata, dynamic
@@ -86,6 +86,12 @@ GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
 
 CLAUDE_REDIRECT_URI = "https://claude.ai/api/mcp/auth_callback"
+# ChatGPT apps (OpenAI Apps SDK, developers.openai.com/apps-sdk/build/auth, read 2026-11-23,
+# BUI-2207): the stable callback, or one per connector under /connector/oauth/{callback_id}.
+CHATGPT_REDIRECT_URI = "https://chatgpt.com/connector_platform_oauth_redirect"
+CHATGPT_CALLBACK_PREFIX = "https://chatgpt.com/connector/oauth/"
+# The callback ID is one path segment of RFC 3986 unreserved characters, never "." or "..".
+CHATGPT_CALLBACK_ID_PATTERN = re.compile(r"(?!\.+\Z)[A-Za-z0-9._~-]{1,128}")
 LOOPBACK_REDIRECT_HOSTS = frozenset({"localhost", "127.0.0.1"})
 LOOPBACK_REDIRECT_PATH = "/callback"
 MAX_REDIRECT_URIS = 5
@@ -224,9 +230,21 @@ def _loopback_redirect(value: str) -> tuple[str, int | None] | None:
     return parts.hostname, port
 
 
+def _chatgpt_redirect(value: str) -> bool:
+    """ChatGPT's stable callback, or ``https://chatgpt.com/connector/oauth/{callback_id}``."""
+    if value == CHATGPT_REDIRECT_URI:
+        return True
+    callback_id = value.removeprefix(CHATGPT_CALLBACK_PREFIX)
+    return callback_id != value and CHATGPT_CALLBACK_ID_PATTERN.fullmatch(callback_id) is not None
+
+
 def allowed_redirect(value: str) -> bool:
-    """Claude's hosted callback, or a loopback callback (Claude Code, Claude Desktop)."""
-    return value == CLAUDE_REDIRECT_URI or _loopback_redirect(value) is not None
+    """Claude's or ChatGPT's hosted callback, or a loopback callback (Claude Code, Desktop)."""
+    return (
+        value == CLAUDE_REDIRECT_URI
+        or _chatgpt_redirect(value)
+        or _loopback_redirect(value) is not None
+    )
 
 
 class OwnerClient(OAuthClientInformationFull):
@@ -601,6 +619,7 @@ class OwnerAuthorizationServer(
             return _registration_error(
                 "invalid_redirect_uri",
                 f"redirect_uris must list up to {MAX_REDIRECT_URIS} of {CLAUDE_REDIRECT_URI}, "
+                f"{CHATGPT_REDIRECT_URI}, {CHATGPT_CALLBACK_PREFIX}<callback_id>, "
                 f"http://localhost[:port]{LOOPBACK_REDIRECT_PATH} or "
                 f"http://127.0.0.1[:port]{LOOPBACK_REDIRECT_PATH}",
             )
@@ -656,7 +675,7 @@ class OwnerAuthorizationServer(
         cookie = request.cookies.get(BINDING_COOKIE, "")
         if not hmac.compare_digest(cookie.encode(), _binding(sealed).encode()):
             return self._refuse(
-                400, "The sign-in did not start in this browser. Start again from Claude."
+                400, "The sign-in did not start in this browser. Start again from your chat app."
             )
         code = params.get("code", "")
         if "error" in params or not code:
