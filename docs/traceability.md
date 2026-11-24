@@ -91,3 +91,10 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
   `OWNER_GITHUB_LOGIN`; with rows and no owner set, the store refuses instead of guessing. Rows
   saved later with no user stay the no-user's rows. The stdio server has no user and is unchanged.
   `tests/test_store_per_user.py` proves it (REQ-USER-1..3).
+- FR16 demo layout (BUI-2209): on `/demo` the round stamp's `content` is `"LEAD\A CANDIDATE"`
+  with `white-space: pre`, so it reads on two lines. At 1024 px and wider it sits in the answer
+  column's top padding, clear of the headline; below 1024 px it moves into the flow above the
+  headline (`src/lifescape/static/demo.css`). The "How this field was found." section (`.path`)
+  takes the shared `width: var(--page)` gutter rule with the ranking section.
+  `tests/test_demo_layout.py` proves both (REQ-DEMO-STAMP-1, REQ-DEMO-GUTTER-1) and checks that
+  every top-level demo section keeps the page gutter.

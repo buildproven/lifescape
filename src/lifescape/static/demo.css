@@ -178,10 +178,11 @@ a:focus-visible {
   padding: 115px 0 80px clamp(58px, 8vw, 125px);
 }
 
+/* The stamp sits in the top padding band, above the eyebrow, so it never covers the headline. */
 .decision-answer::after {
-  content: "LEAD\\A CANDIDATE";
+  content: "LEAD\A CANDIDATE";
   position: absolute;
-  top: 120px;
+  top: 8px;
   right: 10px;
   width: 112px;
   height: 112px;
@@ -274,6 +275,7 @@ a:focus-visible {
   font-weight: 500;
 }
 
+.path,
 .ranking,
 .why-williamsburg,
 .blocked,
@@ -652,9 +654,15 @@ a:focus-visible {
   min-height: 105px;
 }
 
-@media (max-width: 1100px) {
+/* Below 1024px the column is too narrow for a corner stamp: it moves into the flow, above the
+   headline, at the top right of the answer column. */
+@media (max-width: 1023px) {
   .decision-answer::after {
-    display: none;
+    position: static;
+    order: -1;
+    align-self: flex-end;
+    flex: none;
+    margin: 0 10px 18px 0;
   }
 }
 
