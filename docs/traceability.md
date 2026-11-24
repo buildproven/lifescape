@@ -75,3 +75,9 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
   the desktop extension and skill from the README's "Install in Claude Desktop" steps and lists
   three example asks. `tests/test_landing_claude_section.py` checks the heading, the asks, and that
   every link matches the README.
+- FR17 surface, hosted (BUI-2207): the hosted MCP server's OAuth (`src/lifescape/oauth.py::allowed_redirect`)
+  also accepts ChatGPT's redirects, `https://chatgpt.com/connector_platform_oauth_redirect` and
+  `https://chatgpt.com/connector/oauth/{callback_id}`, and still refuses every other non-Claude,
+  non-loopback redirect. The metadata already listed S256, `/register` and auth method `none`, and
+  tokens were already bound to the server's resource. `tests/test_oauth_chatgpt.py` proves all three
+  (REQ-CHATGPT-1..3).
