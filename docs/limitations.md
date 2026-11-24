@@ -36,12 +36,12 @@
   since are not reflected.
 - Car-light commute share is an ACS commute-mode proxy, not a walkability score.
 - Recommendations and examples cover places with a known population of 2,500 or more (10,215
-  places in catalog `us-places-acs2024-noaa1991-2020-character-hospital-v5`). Smaller towns can be looked up and added to a
+  places in catalog `us-places-acs2024-noaa1991-2020-character-hospital-v6`). Smaller towns can be looked up and added to a
   shortlist by hand but receive no match score. Puerto Rico and other territories are outside this
   catalog.
 - The catalog uses ACS 2020–2024 five-year estimates. It does not use margins of error, so close
-  scores are not statistically distinguishable. Match percentages rank similarity; they are not
-  probabilities or quality scores.
+  scores are not statistically distinguishable. The Strong, Good, and Possible match bands group
+  places by similarity; they are not probabilities or quality scores.
 - Home value is the owner-occupied median, not a current listing price. Discovery never replaces
   the evidence run: a discovery match cannot clear a gate or change an evidence-backed score.
 - Shortlists live in one browser's local storage. Clearing site data or switching browsers loses
