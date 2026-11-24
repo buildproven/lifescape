@@ -69,8 +69,8 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
 - FR18 (BUI-2149): each `discover_towns` match and each `profile.exemplars` entry returns
   `latitude` and `longitude` from the packaged catalog, or `null` when the catalog has none, so
   Claude can draw a map in chat. The FR18 row traces the tests that prove both fields.
-- FR17 (BUI-2199): the hosted landing page (`src/lifescape/templates/landing.html`) has one "Use it
-  in Claude" section after the hero. It links the desktop extension and skill from the README's
-  "Install in Claude Desktop" steps and lists three example asks.
-  `tests/test_landing_claude_section.py` checks the heading, the asks, and that every link matches
-  the README.
+- FR16 (BUI-2199): the read-only hosted landing page (`src/lifescape/templates/landing.html`) has
+  one static "Use it in Claude" section after the hero, with no inputs and no new routes. It links
+  the desktop extension and skill from the README's "Install in Claude Desktop" steps and lists
+  three example asks. `tests/test_landing_claude_section.py` checks the heading, the asks, and that
+  every link matches the README.

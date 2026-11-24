@@ -1475,4 +1475,9 @@ a:focus-visible {
     grid-template-columns: 42px 1fr;
     gap: 18px;
   }
+
+  .in-claude .route-number {
+    width: 42px;
+    height: 42px;
+  }
 }

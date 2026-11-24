@@ -129,3 +129,45 @@ def test_bui_2199_req_2_section_links_the_readme_install_source(claude_section: 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for link in external:
         assert link.split("#")[0] in readme, f"{link} is not named in the README"
+
+
+def _media_blocks(css: str, query: str) -> list[str]:
+    blocks = []
+    start = css.find(query)
+    while start != -1:
+        depth = 0
+        open_at = css.index("{", start)
+        for position in range(open_at, len(css)):
+            depth += {"{": 1, "}": -1}.get(css[position], 0)
+            if depth == 0:
+                blocks.append(css[open_at + 1 : position])
+                break
+        start = css.find(query, open_at)
+    return blocks
+
+
+def _rules(block: str) -> dict[str, dict[str, str]]:
+    rules = {}
+    for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", block):
+        declarations = dict(
+            (name.strip(), value.strip())
+            for name, value in (item.split(":", 1) for item in body.split(";") if ":" in item)
+        )
+        rules[" ".join(selector.split())] = declarations
+    return rules
+
+
+def test_bui_2199_req_1_step_number_fits_its_column_on_tablet_widths() -> None:
+    css = (ROOT / "src/lifescape/static/landing.css").read_text(encoding="utf-8")
+    tablet = [
+        _rules(block)
+        for block in _media_blocks(css, "@media (max-width: 860px)")
+        if ".in-claude-steps > li" in block
+    ]
+    assert len(tablet) == 1, "one 860px rule set must shape the Claude steps"
+    rules = tablet[0]
+    column = int(rules[".in-claude-steps > li"]["grid-template-columns"].split("px")[0])
+    circle = rules.get(".in-claude .route-number", {})
+    for side in ("width", "height"):
+        assert side in circle, f"the step number keeps its 56px {side} next to a {column}px column"
+        assert int(circle[side].removesuffix("px")) <= column
