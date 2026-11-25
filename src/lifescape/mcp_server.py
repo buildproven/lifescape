@@ -9,7 +9,8 @@ Live-fetched evidence stays a proposal until ``approve_evidence`` records a name
 Research packets and run report indexes go through ``lifescape.store``; ``LIFESCAPE_STORE``
 picks local files or a hosted database. The evidence tools read either a local evidence CSV
 (``evidence_path``) or a stored packet's approved evidence (``packet_id``); the hosted database
-store has no owner files, so there they take ``packet_id`` only. ``inspect_evidence`` and
+store has no owner files, so there they take ``packet_id`` only and refuse a ``manifest_path``.
+``inspect_evidence`` and
 ``explain_town`` report the critical values a packet still lacks; ``compare_finalists`` refuses a
 packet until every town has approved critical evidence. A server on the database store also has
 ``delete_my_data``: it deletes every packet and run index the signed-in user owns (BUI-2213).
@@ -685,6 +686,19 @@ def create_server(
             path=path, identity=f"packet:{packet_id}", in_memory=True, packet=stored
         )
 
+    def manifest_input(manifest_path: str | None) -> Path | None:
+        """The owner's local provenance manifest CSV, if one is given. The hosted (database
+        store) server refuses a manifest path before it reads any file, as it refuses an
+        evidence path: the path would name a file on the server's disk, not the user's."""
+        if manifest_path is None:
+            return None
+        if isinstance(records, DatabaseStore):
+            raise ValueError(
+                "the hosted server cannot read manifest_path from a file; leave manifest_path "
+                "unset on the hosted server"
+            )
+        return _existing_file(manifest_path, "manifest")
+
     @cache
     def discovery() -> DiscoveryService:
         return DiscoveryService(load_place_catalog())
@@ -870,7 +884,10 @@ def create_server(
             Field(
                 min_length=1,
                 max_length=4096,
-                description="Optional per-metric provenance manifest CSV for the evidence.",
+                description=(
+                    "Optional local per-metric provenance manifest CSV for the evidence; "
+                    "the hosted server refuses it."
+                ),
             ),
         ] = None,
         as_of: IsoDate = None,
@@ -882,11 +899,11 @@ def create_server(
         (packet_id). A packet may still lack values: each critical metric without an approved
         value is unknown, which blocks the town, and is listed as unresolved."""
         evaluated_as_of = _parse_date(as_of)
+        manifest = manifest_input(manifest_path)
         with (
             evidence_input(evidence_path, packet_id, require_complete=False) as evidence,
             configuration() as config,
         ):
-            manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
             unapproved = _unapproved_lead(evidence, place_id)
             if unapproved is not None:
                 return _card_payload(
@@ -914,7 +931,10 @@ def create_server(
             Field(
                 min_length=1,
                 max_length=4096,
-                description="Optional per-metric provenance manifest CSV for the evidence.",
+                description=(
+                    "Optional local per-metric provenance manifest CSV for the evidence; "
+                    "the hosted server refuses it."
+                ),
             ),
         ] = None,
         as_of: IsoDate = None,
@@ -929,12 +949,12 @@ def create_server(
         evaluated_as_of = _parse_date(as_of)
         errors: list[str] = []
         audit: EvidenceAudit | None = None
+        manifest = manifest_input(manifest_path)
         with (
             evidence_input(evidence_path, packet_id, require_complete=False) as source,
             configuration() as config,
         ):
             evidence = source.path
-            manifest = None if manifest_path is None else _existing_file(manifest_path, "manifest")
             loaded = load_configuration(config, None, config / LIVE_RESEARCH_BRIEF)
             try:
                 ingest_csv(
