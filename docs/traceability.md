@@ -132,3 +132,11 @@ requirements (PRD) ─▶ architecture/design (ADR, docs) ─▶ code ─▶ uni
   hosted store (`src/lifescape/store_db.py::DatabaseStore`, `src/lifescape/templates/privacy.html`).
   `tests/test_traceability_privacy.py` proves the row does so (REQ-PRIV-1..2). The quoted PRD
   text is unchanged: the approved PRD is the owner's decision to amend, not this table's.
+- FR17 surface, plugin marketplace (BUI-2236): the public repository is its own one-plugin
+  marketplace. `.claude-plugin/marketplace.json` names the marketplace `lifescape` (owner
+  `BuildProven`) and lists one plugin, `lifescape`, with `"source": "./"` (the repository root)
+  and the description from `.claude-plugin/plugin.json`. The README tells Claude Code users to run
+  `/plugin marketplace add buildproven/lifescape` then `/plugin install lifescape@lifescape`, and
+  claude.ai users to add the connector URL `https://lifescape.buildproven.ai/api/mcp`.
+  `tests/test_plugin.py` proves it (REQ-MARKET-1..3), and checks that the entry name stays equal
+  to the `plugin.json` name.

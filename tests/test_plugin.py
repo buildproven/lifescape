@@ -157,3 +157,42 @@ def test_req_plugin_4_manifest_names_the_hosted_privacy_policy() -> None:
 
     assert plugin.get("privacyPolicyUrl") == f"{HOSTED_ORIGIN}/privacy"
     assert plugin["privacyPolicyUrl"] == "https://lifescape.buildproven.ai/privacy"
+
+
+MARKETPLACE = REPOSITORY / ".claude-plugin" / "marketplace.json"
+README = REPOSITORY / "README.md"
+
+
+def test_req_market_1_repo_is_its_own_one_plugin_marketplace() -> None:
+    """BUI-2236: the public repo lists the root plugin, so `/plugin marketplace add` works."""
+    marketplace = _json(MARKETPLACE)
+    plugin = _json(PLUGIN)
+
+    assert marketplace["name"] == "lifescape"
+    assert marketplace["owner"]["name"] == "BuildProven"
+    assert len(marketplace["plugins"]) == 1
+    entry = marketplace["plugins"][0]
+    assert entry["name"] == "lifescape"
+    assert entry["source"] == "./"
+    assert entry["description"] == plugin["description"]
+
+
+def test_req_market_2_marketplace_entry_name_matches_the_plugin_manifest() -> None:
+    marketplace = _json(MARKETPLACE)
+    plugin = _json(PLUGIN)
+
+    assert [entry["name"] for entry in marketplace["plugins"]] == [plugin["name"]]
+    # The install command names the plugin and the marketplace; both must be the plugin's name.
+    assert marketplace["name"] == plugin["name"]
+
+
+def test_req_market_3_readme_gives_the_public_install_and_connector_url() -> None:
+    text = " ".join(README.read_text(encoding="utf-8").split())
+
+    assert "/plugin marketplace add buildproven/lifescape" in text
+    assert "/plugin install lifescape@lifescape" in text
+    assert text.index("/plugin marketplace add buildproven/lifescape") < text.index(
+        "/plugin install lifescape@lifescape"
+    )
+    assert f"`{HOSTED_URL}`" in text
+    assert "marketplace that installs the plugin is private" not in text

@@ -83,13 +83,24 @@ over Streamable HTTP for Claude on the web, desktop, and mobile
 opens signup, any GitHub account can sign in; while signup is closed, only the GitHub login in
 `OWNER_GITHUB_LOGIN` gets a token. Each user's research packets and run report indexes are stored
 under their GitHub login, and only they can read them. `delete_my_data` deletes all of the
-signed-in user's records and returns how many it deleted. The plugin marketplace that installs
-the plugin is private, so connect by URL. To run the server yourself,
+signed-in user's records and returns how many it deleted. To run the server yourself,
 [deploy your own](#deploy-your-own) instance.
 
+**Claude Code:** this public repository is its own plugin marketplace. Add it, then install the
+plugin, which gives you the skill and the hosted server:
+
+```text
+/plugin marketplace add buildproven/lifescape
+/plugin install lifescape@lifescape
+```
+
+**claude.ai, Claude Desktop, and mobile:** add the connector URL
+`https://lifescape.buildproven.ai/api/mcp` ([Connect from claude.ai](#connect-from-claudeai)).
+
 The repository root is the plugin: `.claude-plugin/plugin.json` names it, `.mcp.json` points at
-the hosted server, and `skills/lifescape` is the skill. Check it with `claude plugin validate .`.
-Point `.mcp.json` at your own deployment before you install it from your own marketplace.
+the hosted server, and `skills/lifescape` is the skill. `.claude-plugin/marketplace.json` lists
+that one plugin with `"source": "./"`. Check both with `claude plugin validate .`. Point
+`.mcp.json` at your own deployment before you install it from your own marketplace.
 
 [`/privacy`](https://lifescape.buildproven.ai/privacy) states what the hosted server stores (each
 user's research packets and report indexes, under their GitHub login), who can sign in, and how to
