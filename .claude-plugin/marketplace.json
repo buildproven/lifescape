@@ -1,0 +1,14 @@
+{
+  "name": "lifescape",
+  "owner": {
+    "name": "BuildProven"
+  },
+  "description": "BuildProven's Lifescape plugin: place discovery and evidence-backed town comparison.",
+  "plugins": [
+    {
+      "name": "lifescape",
+      "source": "./",
+      "description": "Find U.S. towns like the ones you love, then compare finalists on reviewed evidence: gates eliminate, weights rank, evidence decides."
+    }
+  ]
+}
